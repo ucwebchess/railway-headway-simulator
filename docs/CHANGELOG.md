@@ -7,7 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P02 (Current Milestone)
+## [0.1.0-dev] - Milestone P03 (Current Milestone)
+
+### Added
+- **Rolling Stock Parameters & Mass Engine (`headway.rolling_stock.train`):**
+  - `RollingStockParameters` model capturing dimensions, mass conditions, kinematic limits, rotating mass factor $\lambda$, and adhesion properties.
+  - Three operational mass conditions: `EMPTY` (tare mass), `NOMINAL` (standard design load), and `MAXIMUM` (crush payload).
+  - Equivalent dynamic mass calculation $m_{\text{eq}} = m(1 + \lambda)$ separating gravitational physical mass from acceleration mass.
+  - `TrainFormation` model supporting multi-vehicle consists with aggregated length, mass, and governing minimum speed limit.
+- **Traction and Adhesion Physics Engine (`headway.rolling_stock.traction`):**
+  - `SimplifiedTractionModel`: Hyperbolic model $F_t(v) = \min(F_{\max}, P_{\max}/v)$ with division-by-zero protection at standstill ($F_t(0) = F_{\max}$).
+  - `DetailedTractionCurveModel`: Piecewise linear interpolation of $(v, F_t)$ points with strict validation of monotonicity and documented boundary clamping.
+  - Operational acceleration limit enforcement ($F_t \le m_{\text{eq}} \cdot a_{\max}$) and mechanical power verification ($P \le P_{\max}$).
+  - Adhesion limit model $F_{\text{adh}} = \mu \cdot m_{\text{adh}} \cdot g$ with explicit adhesive mass fraction and direction invariance.
+- **Authoritative Running, Gradient & Curvature Resistance (`headway.rolling_stock.resistance`):**
+  - `DavisResistanceModel`: SI-unit polynomial evaluation $R_D(v) = A + Bv + Cv^2$ with strict non-negativity and standstill evaluation $R_D(0) = A$.
+  - `GradientResistanceModel`: Small-gradient approximation $F_g = m g i$ with strict direction awareness and sign inversion in reverse ($F_{g,\text{rev}} = -F_{g,\text{fwd}}$).
+  - `CurvatureResistanceModel`: Roeckl formula $W_c = 650/(R - 55)$‰ for $R \ge 300\text{ m}$, tangent track ($F_c = 0$), and non-negative direction invariance.
+  - `DistributedResistanceEngine`: Mass-weighted integration over full train length $L_{\text{train}}$ across multi-link alignments and route boundary conditions.
+- **Longitudinal Force Balance & Instantaneous Acceleration (`headway.rolling_stock.force_balance`):**
+  - Net force equation $F_{\text{net}} = F_t - F_b - F_D - F_g - F_c$ and equivalent acceleration $a = F_{\text{net}} / m_{\text{eq}}$.
+  - Instantaneous operational modes (`ACCELERATING`, `CRUISING`, `COASTING`, `BRAKING`, `STANDSTILL`).
+  - Target deceleration to required braking force conversion ($F_b = m_{\text{eq}} d - \sum R$).
+  - Operational acceleration and emergency deceleration capping.
+- **Rolling Stock Diagnostics & Tabular Adapters (`headway.rolling_stock.diagnostics`):**
+  - Performance sweep generator across speed ranges $[0, v_{\max}]$, evaluating forces, mechanical power, resistances, and net acceleration.
+  - Steady-state balancing speed solver ($F_t(v) = R_{\text{tot}}(v)$) using bisection.
+  - Tabular dictionary/DataFrame export adapters for frontend integration in P13/P14.
+- **Engineering Validator (`headway.rolling_stock.validator`):**
+  - Semantic and kinematic validation for canonical `TrainType` and `RollingStockParameters`.
+  - Integration with P01 `ValidationReport` and `ValidationFinding`.
+- **Engineering Benchmarks (`tests/engineering/test_rolling_stock_benchmarks.py`):**
+  - Complete test suite for all 25 mandatory benchmarks (`P03-B001` through `P03-B025`), achieving 100% verification.
+
+---
+
+## [0.1.0-dev] - Milestone P02
 
 ### Added
 - **Permanent Forward & Reverse Operation Architecture (`headway.infrastructure.direction`):**
