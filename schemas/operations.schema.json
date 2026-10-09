@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/operations.schema.json",
+  "title": "OperationsModel",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "dataset_id",
+    "service_patterns"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "dataset_id": {
+      "type": "string"
+    },
+    "service_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "service_pattern_id",
+          "train_type_id",
+          "route_link_sequence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "service_pattern_id": {
+            "type": "string"
+          },
+          "train_type_id": {
+            "type": "string"
+          },
+          "route_link_sequence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "planned_headway_s": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 180.0
+          },
+          "stops": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "station_id",
+                "platform_id",
+                "dwell_time_s"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "station_id": {
+                  "type": "string"
+                },
+                "platform_id": {
+                  "type": "string"
+                },
+                "dwell_time_s": {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                "min_dwell_s": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 0.0
+                },
+                "is_mandatory_stop": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

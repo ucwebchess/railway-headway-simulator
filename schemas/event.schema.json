@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/event.schema.json",
+  "title": "SimulationEvent",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "event_id",
+    "simulation_time_s",
+    "event_type",
+    "train_id",
+    "resource_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "simulation_time_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "RESOURCE_REQUESTED",
+        "RESOURCE_RESERVED",
+        "RESOURCE_ENTERED",
+        "RESOURCE_FRONT_EXITED",
+        "RESOURCE_REAR_CLEARED",
+        "RESOURCE_RELEASED",
+        "ROUTE_LOCKED",
+        "ROUTE_RELEASED",
+        "MA_ISSUED",
+        "STATION_ARRIVAL",
+        "DWELL_STARTED",
+        "DWELL_COMPLETED",
+        "STATION_DEPARTURE",
+        "TVS_REQUESTED",
+        "TVS_AUTHORIZED",
+        "TVS_ENTERED",
+        "TVS_REAR_CLEARED",
+        "TVS_RELEASED"
+      ]
+    },
+    "train_id": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "location": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "link_id": {
+          "type": "string"
+        },
+        "offset_m": {
+          "type": "number",
+          "minimum": 0.0
+        }
+      }
+    },
+    "attributes": {
+      "type": "object"
+    }
+  }
+}

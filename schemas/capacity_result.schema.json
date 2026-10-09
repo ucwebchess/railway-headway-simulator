@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/capacity_result.schema.json",
+  "title": "CapacityResult",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "analysis_id",
+    "theoretical_capacity_tph",
+    "planning_capacity_tph",
+    "planning_margin_s"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "analysis_id": {
+      "type": "string"
+    },
+    "theoretical_capacity_tph": {
+      "type": "number",
+      "exclusiveMinimum": 0.0
+    },
+    "planning_capacity_tph": {
+      "type": "number",
+      "exclusiveMinimum": 0.0
+    },
+    "planning_margin_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "uic406_consumption_ratio": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0.0,
+      "maximum": 1.0
+    }
+  }
+}

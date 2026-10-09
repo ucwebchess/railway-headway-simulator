@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/analysis.schema.json",
+  "title": "AnalysisModel",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "dataset_id",
+    "analyses"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "dataset_id": {
+      "type": "string"
+    },
+    "analyses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "analysis_id",
+          "analysis_type"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "type": "string"
+          },
+          "analysis_type": {
+            "type": "string",
+            "enum": [
+              "STANDALONE",
+              "PAIRWISE_HEADWAY",
+              "REPEATED_TRAINS",
+              "TVS_COMPARISON"
+            ]
+          },
+          "leader_service_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "follower_service_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "integration_step_s": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.1
+          },
+          "headway_tolerance_s": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 0.1
+          },
+          "search_time_window_s": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 600.0
+          },
+          "planning_margin_s": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 30.0
+          },
+          "reference_link_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference_offset_m": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.0
+          }
+        }
+      }
+    }
+  }
+}

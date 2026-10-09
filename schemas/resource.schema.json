@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/resource.schema.json",
+  "title": "InfrastructureResource",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "resource_id",
+    "resource_type"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "resource_id": {
+      "type": "string"
+    },
+    "resource_type": {
+      "type": "string",
+      "enum": [
+        "BLOCK",
+        "PLATFORM",
+        "ROUTE",
+        "TVS",
+        "SWITCH",
+        "GROUP"
+      ]
+    },
+    "max_capacity": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

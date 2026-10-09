@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/headway_result.schema.json",
+  "title": "HeadwayResult",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "analysis_id",
+    "leader_service_id",
+    "follower_service_id",
+    "technical_headway_s",
+    "controlling_resource_id",
+    "is_feasible"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "analysis_id": {
+      "type": "string"
+    },
+    "leader_service_id": {
+      "type": "string"
+    },
+    "follower_service_id": {
+      "type": "string"
+    },
+    "technical_headway_s": {
+      "type": "number",
+      "exclusiveMinimum": 0.0
+    },
+    "controlling_resource_id": {
+      "type": "string"
+    },
+    "is_feasible": {
+      "type": "boolean"
+    },
+    "blocking_time_s": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  }
+}
