@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "railway-headway-simulator"
+version = "0.1.0-dev"
+description = "Microscopic railway headway, signalling blocking-time, TVS constraint, and capacity simulation application."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Proprietary / All Rights Reserved (Pending Licensing Decision)"}
+authors = [
+    {name = "Railway Simulation Software Team"}
+]
+keywords = [
+    "railway",
+    "headway",
+    "capacity",
+    "simulation",
+    "signalling",
+    "blocking-time",
+    "tvs",
+    "gradio",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Manufacturing",
+    "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "gradio>=5.0.0,<7.0.0",
+    "pydantic>=2.0.0",
+    "packaging>=24.0",
+    "openpyxl>=3.1.0",
+    "jsonschema>=4.20.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+headway-sim = "headway.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra -q --strict-markers"
+markers = [
+    "unit: Unit tests for isolated classes and functions",
+    "integration: Integration tests for inter-module communication",
+    "engineering: Engineering benchmarks and analytical verification",
+    "regression: Regression tests preventing known defects",
+    "end_to_end: Complete end-to-end operational flow tests",
+]
