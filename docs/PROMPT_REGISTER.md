@@ -17,6 +17,9 @@
 | **RHS-CI-001** | CI | Automated Testing with GitHub Actions | Completed | Milestone CI | `.github/workflows/python-tests.yml` configured, dependency caching, 64 tests verified in CI. |
 | **RHS-P02-001** | P02 | Infrastructure Network Model & Topology Engine | Completed | Milestone P02 | Physical network graph, forward/reverse route traversal, direction policy, alignment, speed, switches, stations, TVS, train footprint, preprocessor, adapters. All 10 benchmarks verified. PR #4 open. |
 | **RHS-P03-001** | P03 | Rolling Stock Characteristics & Physics | Completed | Milestone P03 | Mass parameters, equivalent mass ($m_{\text{eq}} = m(1+\lambda)$), simplified & detailed traction models, adhesion limits, Davis resistance, Roeckl curvature ($R \ge 300\text{ m}$), multi-link distributed train resistance, longitudinal force balance & acceleration utility, diagnostics sweeps. All 25 benchmarks (`P03-B001`–`P03-B025`) verified. 136 total tests passing. |
+| **RHS-P04-001** | P04 | Braking Models & Numerical Solver | Completed | Milestone P04 | Constant deceleration, speed-dependent piecewise linear curves, net effective vs brake generated deceleration, Runge-Kutta numerical solver, boundary localization, directional speed profiles. All 22 benchmarks verified. 178 total tests passing. |
+| **RHS-P05-001** | P05 | Resource Management Engine & Fixed-Block Signalling | Completed | Milestone P05 | Common resource architecture, decoupled state tracking, atomic reservations, conflict groups, switch locking, interlocking routes, sectional release, 2/3/4-aspect signals, Movement Authority, braking protection. All 30 benchmarks verified. 208 total tests passing. |
+| **RHS-P06-001** | P06 | Advanced Signalling (ETCS Level 2 & CBTC) | Completed | Milestone P06 | ETCS Level 2 with RBC, radio communication latency, multi-stage supervision curves, SvL/overlap; CBTC moving block with train localization, odometry uncertainty, protected envelope $x_{\mathrm{protected}}$, dynamic MA updates, fixed infrastructure restrictions; forward/reverse support. All 30 benchmarks verified (including Controlled Benchmarks A, B, C). 259 total tests passing. |
 
 ---
 
@@ -24,10 +27,7 @@
 
 | Prompt ID | Milestone | Title | Status | Prerequisite |
 |---|---|---|---|---|
-| **RHS-P04-001** | P04 | Braking Models & Numerical Solver | Authorized Next | RHS-P03-001 |
-| **RHS-P05-001** | P05 | Resource Management Engine & Fixed-Block Signalling | Reserved | RHS-P04-001 |
-| **RHS-P06-001** | P06 | Advanced Signalling (ETCS Level 2 & CBTC) | Reserved | RHS-P05-001 |
-| **RHS-P07-001** | P07 | Stations, Junctions & TVS Control Engine | Reserved | RHS-P06-001 |
+| **RHS-P07-001** | P07 | Stations, Junctions & TVS Control Engine | Authorized Next | RHS-P06-001 |
 | **RHS-P08-001** | P08 | Seven-Component Blocking Time & Headway Analysis | Reserved | RHS-P07-001 |
 | **RHS-P09-001** | P09 | Multi-Train Operational Simulation Engine | Reserved | RHS-P08-001 |
 | **RHS-P10-001** | P10 | Line Capacity & UIC 406-Inspired Analysis | Reserved | RHS-P09-001 |

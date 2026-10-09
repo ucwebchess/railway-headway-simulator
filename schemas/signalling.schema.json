@@ -27,7 +27,9 @@
           "enum": [
             "GENERIC_FIXED_BLOCK_ENGINEERING_MODEL",
             "ETCS_LEVEL_2",
-            "CBTC_MOVING_BLOCK"
+            "ETCS_LEVEL_2_ENGINEERING_MODEL",
+            "CBTC_MOVING_BLOCK",
+            "CBTC_MOVING_BLOCK_ENGINEERING_MODEL"
           ]
         },
         "aspect_model": {

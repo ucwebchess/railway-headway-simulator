@@ -79,3 +79,77 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **BM-HDW-001** | Headway | Homogeneous 2-train technical minimum headway | Equal train trajectories, identical block layout | $H = t_{\text{leader-release}} - t_{\text{follower-start}}$ | $\pm 0.1\text{ s}$ | Reserved (P08) | Pending P08 |
 | **BM-CAP-001** | Capacity | Homogeneous theoretical line capacity calculation | $H = 120.0\text{ s}$ | $C = 30.0\text{ trains/hour}$ | Exact | Reserved (P10) | Pending P10 |
 | **BM-CAP-002** | Capacity | Planning operational capacity with margin $M = 30\text{ s}$ | $H = 120.0\text{ s}$, $M = 30.0\text{ s}$ | $C_{\text{planning}} = 24.0\text{ trains/hour}$ | Exact | Reserved (P10) | Pending P10 |
+
+---
+
+### 5. Resource Management & Interlocking Benchmarks (Milestone P05)
+
+| Benchmark ID | Subsystem | Description | Key Inputs | Expected Analytical Result | Tolerance | Verification Status |
+|---|---|---|---|---|---|---|
+| **P05-B001** | Resources | Free resource reservation | Resource capacity = 1, initial state = FREE | Reservation granted, train_id mapped | Exact | **VERIFIED (P05)** |
+| **P05-B002** | Resources | Exclusive resource conflict | Capacity = 1, already reserved by Train 1 | Train 2 reservation rejected with ResourceConflictError | Exact | **VERIFIED (P05)** |
+| **P05-B003** | Occupation | Physical front entry | Train front enters block boundary | Front entry recorded, occupant added | Exact | **VERIFIED (P05)** |
+| **P05-B004** | Occupation | Front exit does not release block | Train front exits but rear still inside | Resource remains strictly OCCUPIED | Exact | **VERIFIED (P05)** |
+| **P05-B005** | Clearance | Rear clearance event | Train rear exits boundary | Rear cleared recorded, release pending initiated | Exact | **VERIFIED (P05)** |
+| **P05-B006** | Release | Release delay timer | Delay $t_{\text{rel}} = 4.0\text{ s}$ | Resource unavailable until $t \ge t_0 + t_{\text{rel}}$ | Exact | **VERIFIED (P05)** |
+| **P05-B007** | Occupation | Multi-resource spanning | Train length spans Block 1 and Block 2 | Both blocks simultaneously occupied | Exact | **VERIFIED (P05)** |
+| **P05-B008** | Invariant | Stationary train occupation | Stationary train remains inside block | No premature release occurs | Exact | **VERIFIED (P05)** |
+| **P05-B009** | Multi-Link | Multi-link block occupation | Block composed of LK_01 and LK_02 | Occupied until rear clears LK_02 | Exact | **VERIFIED (P05)** |
+| **P05-B010** | Reverse | Reverse block occupation | Reverse train enters from link end | Correct reverse entry detected | Exact | **VERIFIED (P05)** |
+| **P05-B011** | Reverse | Reverse rear clearance | Reverse train rear clears start node | Reverse release sequence executed | Exact | **VERIFIED (P05)** |
+| **P05-B012** | Conflict | Opposing-direction conflict | Forward route locked on bidirectional link | Reverse route request rejected | Exact | **VERIFIED (P05)** |
+| **P05-B013** | Interlocking| Route setup delay | Setup delay $t_{\text{setup}} = 3.0\text{ s}$ | Route not locked until $t \ge t_{\text{req}} + 3.0\text{ s}$ | Exact | **VERIFIED (P05)** |
+| **P05-B014** | Interlocking| Route locking | Valid free path | All route blocks and switches locked atomically | Exact | **VERIFIED (P05)** |
+| **P05-B015** | Interlocking| Complete route release | Train clears entire route | All locks removed simultaneously | Exact | **VERIFIED (P05)** |
+| **P05-B016** | Interlocking| Sectional route release | Route blocks cleared sequentially | Upstream blocks released while downstream locked | Exact | **VERIFIED (P05)** |
+| **P05-B017** | Switches | Switch position conflict | Route requires NORMAL, switch locked REVERSE | Route locking rejected with SwitchLockError | Exact | **VERIFIED (P05)** |
+| **P05-B018** | Switches | Reverse switch route | Reverse route through trailing switch | Switch verified and locked in trailing direction | Exact | **VERIFIED (P05)** |
+| **P05-B019** | Signals | Two-aspect STOP | Block ahead occupied | Signal aspect = STOP (RED) | Exact | **VERIFIED (P05)** |
+| **P05-B020** | Signals | Two-aspect PROCEED | Block ahead free | Signal aspect = PROCEED (GREEN) | Exact | **VERIFIED (P05)** |
+| **P05-B021** | Signals | Three-aspect sequence | Next block occupied, subsequent clear | RED -> YELLOW -> GREEN | Exact | **VERIFIED (P05)** |
+| **P05-B022** | Signals | Four-aspect lookahead | Lookahead over 3 blocks | RED -> YELLOW -> DOUBLE_YELLOW -> GREEN | Exact | **VERIFIED (P05)** |
+| **P05-B023** | Signals | Direction-aware signal aspects | Bidirectional track with forward/reverse signals | Signal evaluates only when facing train | Exact | **VERIFIED (P05)** |
+| **P05-B024** | Authority | Movement authority endpoint | Locked route of 2000m | EoA placed at route end (2000m) | Exact | **VERIFIED (P05)** |
+| **P05-B025** | Authority | Reverse movement authority | Reverse route of 2000m | Reverse EoA evaluated monotonically | Exact | **VERIFIED (P05)** |
+| **P05-B026** | Protection | Restrictive approach speed curve | $v_t = 0$, $b = 0.5\text{ m/s}^2$, $d = 400\text{ m}$ | $v_{\text{perm}} = \sqrt{2 \cdot 0.5 \cdot 400} = 20.0\text{ m/s}$ | Exact | **VERIFIED (P05)** |
+| **P05-B027** | Protection | Insufficient braking distance | $v = 30\text{ m/s}$, available $d = 200\text{ m}$ | Raises BrakingFeasibilityError | Exact | **VERIFIED (P05)** |
+| **P05-B028** | Coordination| Simultaneous requests | Two trains request conflicting route at same $t$ | Lowest train_id deterministic tie-break | Exact | **VERIFIED (P05)** |
+| **P05-B029** | Coordination| Deterministic event ordering | 11-step same-time ordering loop | Strict step 1 through 11 sequence verified | Exact | **VERIFIED (P05)** |
+| **P05-B030** | Safety | Resource invariant verification | Multi-train traversal simulation | Zero simultaneous occupations of capacity 1 | 0 violations | **VERIFIED (P05)** |
+
+---
+
+### 6. ETCS Level 2 & CBTC Moving-Block Benchmarks (Milestone P06)
+
+| Benchmark ID | Subsystem | Description | Key Inputs | Expected Analytical Result | Tolerance | Verification Status |
+|---|---|---|---|---|---|---|
+| **P06-B001** | Architecture | Fidelity mode selection | `BASIC`, `INTERMEDIATE`, `DETAILED` configs | Proper latency and uncertainty configuration | Exact | **VERIFIED (P06)** |
+| **P06-B002** | Architecture | Common MA interface compatibility | ETCS L2 and CBTC MA evaluation | Standardized `MovementAuthority` instances | Exact | **VERIFIED (P06)** |
+| **P06-B003** | Architecture | Train position report processing | Front pos = 500m, speed = 25m/s, $L = 200\text{ m}$ | Nominal rear = 300m, report age calculated | Exact | **VERIFIED (P06)** |
+| **P06-B004** | Logging | Standardized event logging | Position reports, radio comms, MA generation | Standardized events emitted in chronological order | Exact | **VERIFIED (P06)** |
+| **P06-B005** | Invariance | Directional MA invariance | Forward route (3000m) vs Reverse route (3000m) | Monotonic route distances, direction preserved | Exact | **VERIFIED (P06)** |
+| **P06-B006** | ETCS L2 | RBC initialization with interlocking | Interlocking routes and fixed blocks registered | Route definitions and resource controller linked | Exact | **VERIFIED (P06)** |
+| **P06-B007** | ETCS L2 | RBC radio communication latency model | $t_{\text{up}}=0.35\text{s}, t_{\text{proc}}=0.15\text{s}, t_{\text{down}}=0.50\text{s}$ | $t_{\text{comm}} = 1.0\text{ s}$ total latency | $\pm 10^{-6}\text{ s}$ | **VERIFIED (P06)** |
+| **P06-B008** | Controlled C | Effective MA receipt time | $t_{\text{issue}} = 100.0\text{ s}, t_{\text{comm}} = 1.0\text{ s}$ | $t_{\text{effective}} = 101.0\text{ s}$ | Exact ($\pm 10^{-6}\text{ s}$) | **VERIFIED (P06)** |
+| **P06-B009** | ETCS L2 | Initial MA generation up to occupied block | BLK_02 occupied at 1000m | EoA placed at entrance to BLK_02 ($1000.0\text{ m}$) | Exact | **VERIFIED (P06)** |
+| **P06-B010** | ETCS L2 | MA extension on block clearance | Downstream block cleared and locked | EoA extended to $4000.0\text{ m}$ with latency delay | Exact | **VERIFIED (P06)** |
+| **P06-B011** | ETCS L2 | Overlap / Danger Point protection | EoA = 3000m, $d_{\text{overlap}} = 50\text{ m}$ | Supervised Location $SvL = 3050.0\text{ m}$ | Exact | **VERIFIED (P06)** |
+| **P06-B012** | Controlled A | Braking supervision target distance | $v_0 = 30.0\text{ m/s}, v_t = 0, b = 0.75\text{ m/s}^2$ | $d = v_0^2 / (2b) = 600.0\text{ m}$ | Exact ($\pm 10^{-9}\text{ m}$) | **VERIFIED (P06)** |
+| **P06-B013** | ETCS L2 | Multi-curve braking supervision | $d = 600\text{ m}, b = 0.75\text{ m/s}^2$ | $v_{\text{perm}} = 30.0\text{ m/s} < v_{\text{warn}} < v_{\text{int}}$ | Exact | **VERIFIED (P06)** |
+| **P06-B014** | ETCS L2 | P04 BrakingTarget conversion | Active ETCS L2 MA with overlap | P04 `BrakingTarget` generated at EoA with margin | Exact | **VERIFIED (P06)** |
+| **P06-B015** | ETCS L2 | Stopping feasibility validation | Available $d = 200\text{ m}$, required $d = 600\text{ m}$ | Raises `BrakingFeasibilityError` | Exact | **VERIFIED (P06)** |
+| **P06-B016** | ETCS L2 | Reverse operation under RBC | Reverse train on LK_03, reverse route RT_REV | Monotonic reverse MA issued to $3000.0\text{ m}$ | Exact | **VERIFIED (P06)** |
+| **P06-B017** | ETCS L2 | Communication timeout handling | Time gap between reports $> 5.0\text{ s}$ | Raises `CommunicationTimeoutError` | Exact | **VERIFIED (P06)** |
+| **P06-B018** | CBTC | Train localization and position reporting | Front pos = 250m, speed = 20m/s | Periodic report stored, envelope calculated | Exact | **VERIFIED (P06)** |
+| **P06-B019** | CBTC | Position uncertainty model | Odometry drift and base uncertainty $\pm 25\text{ m}$ | Envelope bounds expand by $\pm 25\text{ m}$ | Exact | **VERIFIED (P06)** |
+| **P06-B020** | CBTC | Train integrity verification | Confirmed intact vs Lost integrity | Lost integrity triggers conservative envelope expansion | Exact | **VERIFIED (P06)** |
+| **P06-B021** | Controlled B | Protected leader envelope formulation | $x_{\text{front}} = 2200\text{m}, L = 200\text{m}, \delta_{\text{loc}} = 20\text{m}, d_{\text{margin}} = 10\text{m}$ | $x_{\text{protected}} = 2000 - 20 - 10 = 1970.0\text{ m}$ | Exact ($\pm 10^{-9}\text{ m}$) | **VERIFIED (P06)** |
+| **P06-B022** | CBTC | Dynamic follower MA generation | Leader protected rear at $1970.0\text{ m}$ | Follower EoA placed at $1970.0\text{ m}$ | Exact | **VERIFIED (P06)** |
+| **P06-B023** | CBTC | Dynamic MA continuous extension | Leader advances from 2200m to 2300m | Follower EoA advances from 1970m to 2070m | Exact | **VERIFIED (P06)** |
+| **P06-B024** | CBTC | Follower braking protection | Follower at 1370m ($d=600\text{m}$ to EoA), $b=0.75$ | Permitted speed $v_{\text{perm}} = 30.0\text{ m/s}$ | Exact | **VERIFIED (P06)** |
+| **P06-B025** | CBTC | Fixed infrastructure restriction | Buffer stop / station dwell limit at 1200m | Follower EoA clamped to $1200.0\text{ m}$ | Exact | **VERIFIED (P06)** |
+| **P06-B026** | CBTC | Reverse moving-block operation | Reverse leader at 1000m, $L = 200\text{ m}$ | Protected rear in reverse $= 1200 + 30 = 1230.0\text{ m}$ | Exact | **VERIFIED (P06)** |
+| **P06-B027** | CBTC | Stale communication handling | Report gap $> 2.0\text{ s}$ | Raises `CommunicationTimeoutError` | Exact | **VERIFIED (P06)** |
+| **P06-B028** | Fidelity | Multi-fidelity comparison | `BASIC` vs `INTERMEDIATE` vs `DETAILED` | Zero vs fixed vs drift uncertainty verified | Exact | **VERIFIED (P06)** |
+| **P06-B029** | Independence| Technology coexistence | ETCS L2 and CBTC instances | Separate architectures, no cross-substitution | Exact | **VERIFIED (P06)** |
+| **P06-B030** | Safety | Moving-block safety invariant | Multi-train moving block traversal | Zero rear-end collisions, EoA strictly respected | 0 violations | **VERIFIED (P06)** |

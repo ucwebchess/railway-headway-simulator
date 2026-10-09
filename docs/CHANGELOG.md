@@ -7,7 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P03 (Current Milestone)
+## [0.1.0-dev] - Milestone P06 (Current Milestone)
+
+### Added
+- **Common Advanced Signalling Architecture (`headway.signalling.advanced_types`):**
+  - `SignallingModelFidelity` enum (`BASIC`, `INTERMEDIATE`, `DETAILED`) defining simulation fidelity levels.
+  - `TrainIntegrityStatus` enum (`CONFIRMED`, `UNCONFIRMED`, `LOST`) for on-board train integrity tracking.
+  - `RadioCommunicationConfig` model with decomposed latencies ($t_{\mathrm{uplink}}$, $t_{\mathrm{proc}}$, $t_{\mathrm{downlink}}$), total latency property, and timeout enforcement.
+  - `TrainPositionReport` model supporting periodic reports with speed, coordinates, localization uncertainty, and age calculation.
+  - `SupervisionProfile` and `SupervisionState` (`NORMAL`, `INDICATION`, `WARNING`, `INTERVENTION`) contracts.
+  - `ProtectedTrainEnvelope` model capturing conservative moving-block spatial envelopes.
+  - `AdvancedSignallingEngine` abstract base class standardizing train registration, position report ingestion, MA calculation, and braking supervision.
+  - Standardized advanced signalling exceptions: `AdvancedSignallingError`, `CommunicationTimeoutError`, `PositionReportError`, `SupervisionInterventionError`, `ProtectedEnvelopeError`.
+  - Standardized advanced signalling event types in `ResourceEventType`: `RADIO_MESSAGE_SENT`, `RADIO_MESSAGE_RECEIVED`, `POSITION_REPORT_RECEIVED`, `SUPERVISION_WARNING`, `SUPERVISION_INTERVENTION`, `COMMUNICATION_TIMEOUT`, `ENVELOPE_UPDATED`, `MA_EXTENDED`.
+- **ETCS Level 2 Engineering Model (`headway.signalling.etcs`):**
+  - `ETCSLevel2Config` with fidelity selection, radio communication configuration, and supervision margins.
+  - `RadioBlockCentre` (RBC) integrating fixed-block detection from P05 `ResourceController` and route locking from `InterlockingEngine`.
+  - Realistic communication latency model: Controlled Benchmark C verification ($t_{\mathrm{effective}} = 101.0\text{ s}$ from $t_{\mathrm{issue}} = 100.0\text{ s}$ and $t_{\mathrm{comm}} = 1.0\text{ s}$).
+  - Movement Authority (MA) issuance up to first occupied block / signal / EoA, with continuous extension upon block clearance.
+  - Multi-stage braking supervision curves (Indication, Permitted, Warning, Intervention/Emergency): Controlled Benchmark A verification ($d = 600.0\text{ m}$ for $v_0 = 30\text{ m/s}$ at $b = 0.75\text{ m/s}^2$).
+  - Overlap / Danger Point protection: Supervised Location ($SvL$) extending beyond EoA by $d_{\mathrm{overlap}}$.
+  - P04 `BrakingTarget` conversion and stopping feasibility validation.
+  - Communication timeout detection and automatic session loss handling.
+  - Bidirectional invariance across FORWARD and REVERSE railway routes.
+- **CBTC Moving-Block Engineering Model (`headway.signalling.cbtc`):**
+  - `CBTCConfig` supporting configurable update intervals, odometry drift rates, and safety buffers.
+  - `ProtectedTrainEnvelopeCalculator` calculating leader train conservative envelope ($x_{\mathrm{protected}}$) accounting for report age, localization uncertainty, train integrity status, and safety margins: Controlled Benchmark B verification ($x_{\mathrm{protected}} = 1970.0\text{ m}$).
+  - `CBTCMovingBlockEngine` managing moving-block train separation without wayside fixed blocks.
+  - Dynamic Movement Authority generation and continuous downstream extension tracking moving leaders.
+  - Dynamic follower braking protection using P04 braking models.
+  - Fixed infrastructure restrictions (`P06-CBTC-RES`): interlocking route boundaries, switch locking enforcement, and station dwell limits.
+  - Symmetric forward and reverse moving-block train separation.
+- **Master Signalling Coordinator (`headway.signalling.coordinator`):**
+  - Integration of `technology_type` supporting fixed-block, ETCS Level 2, and CBTC moving block in a unified coordinator.
+- **Verification Benchmarks & Tests (`tests/engineering/`, `tests/unit/`, `tests/integration/`):**
+  - 30 comprehensive engineering benchmarks (`P06-B001` through `P06-B030`) including Controlled Benchmarks A, B, and C.
+  - 18 negative tests rejecting invalid latencies, negative coordinates, timeouts, non-monotonic extensions, and infeasible braking.
+  - 3 end-to-end integration tests verifying multi-train flows on bidirectional corridors.
+
+---
+
+## [0.1.0-dev] - Milestone P05
+
+### Added
+- **Resource Management, Interlocking & Fixed-Block Signalling (`headway.signalling`):**
+  - Canonical resource categories and decoupled state model (`ManagedResource`, `ResourceController`).
+  - Switch throw delay, locking, and position tracking (`SwitchController`).
+  - Interlocking route formation, atomic locking, complete release, and sectional release (`InterlockingEngine`).
+  - 2-, 3-, and 4-aspect signal evaluations with sighting distance (`SignalAspectController`).
+  - Standardized Movement Authority (MA) contracts and lifecycle management (`MovementAuthorityController`).
+  - Braking protection envelope and P04 `BrakingTarget` conversion (`BrakingProtectionEngine`).
+  - Master 11-step deterministic same-time event coordinator (`SignallingCoordinator`).
+  - 30 engineering benchmarks (`P05-B001` through `P05-B030`).
+
+---
+
+## [0.1.0-dev] - Milestone P04
+
+### Added
+- **Rolling Stock Braking Models & Numerical Solver (`headway.rolling_stock.braking`, `headway.simulation`):**
+  - Constant deceleration and piecewise linear speed-dependent braking curves.
+  - Net effective deceleration vs brake-generated deceleration distinction.
+  - Numerical integration engine using 4th-order Runge-Kutta and adaptive stepping.
+  - Boundary crossing event localization and directional speed profile generation.
+  - 22 engineering benchmarks (`BENCH-P04-001` through `BENCH-P04-022`).
+
+---
+
+## [0.1.0-dev] - Milestone P03
 
 ### Added
 - **Rolling Stock Parameters & Mass Engine (`headway.rolling_stock.train`):**

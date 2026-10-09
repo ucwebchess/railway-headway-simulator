@@ -50,7 +50,17 @@ class ResourceEventType(str, Enum):
     SIGNAL_ASPECT_CHANGED = "SIGNAL_ASPECT_CHANGED"
     MA_ISSUED = "MA_ISSUED"
     MA_UPDATED = "MA_UPDATED"
+    MA_EXTENDED = "MA_EXTENDED"
     MA_EXPIRED = "MA_EXPIRED"
+    MA_REVOKED = "MA_REVOKED"
+
+    RADIO_MESSAGE_SENT = "RADIO_MESSAGE_SENT"
+    RADIO_MESSAGE_RECEIVED = "RADIO_MESSAGE_RECEIVED"
+    POSITION_REPORT_RECEIVED = "POSITION_REPORT_RECEIVED"
+    SUPERVISION_WARNING = "SUPERVISION_WARNING"
+    SUPERVISION_INTERVENTION = "SUPERVISION_INTERVENTION"
+    COMMUNICATION_TIMEOUT = "COMMUNICATION_TIMEOUT"
+    ENVELOPE_UPDATED = "ENVELOPE_UPDATED"
 
 
 class ReleasePolicy(str, Enum):
@@ -99,6 +109,36 @@ class BrakingFeasibilityError(SignallingError):
     """Raised when stopping distance to End of Authority is insufficient."""
 
     DEFAULT_ERROR_CODE = "ERR_BRAKING_INFEASIBLE"
+
+
+class AdvancedSignallingError(SignallingError):
+    """Base exception for advanced signalling (ETCS L2 & CBTC) failures."""
+
+    DEFAULT_ERROR_CODE = "ERR_ADVANCED_SIGNALLING"
+
+
+class CommunicationTimeoutError(AdvancedSignallingError):
+    """Raised when radio communication between wayside/RBC and train times out."""
+
+    DEFAULT_ERROR_CODE = "ERR_COMM_TIMEOUT"
+
+
+class PositionReportError(AdvancedSignallingError):
+    """Raised when a train position report is corrupt, non-monotonic, or invalid."""
+
+    DEFAULT_ERROR_CODE = "ERR_POSITION_REPORT"
+
+
+class SupervisionInterventionError(AdvancedSignallingError):
+    """Raised when train exceeds intervention curve requiring automatic emergency braking."""
+
+    DEFAULT_ERROR_CODE = "ERR_SUPERVISION_INTERVENTION"
+
+
+class ProtectedEnvelopeError(AdvancedSignallingError):
+    """Raised when moving-block protected train envelope calculation fails or is invalid."""
+
+    DEFAULT_ERROR_CODE = "ERR_PROTECTED_ENVELOPE"
 
 
 @dataclass(frozen=True)
