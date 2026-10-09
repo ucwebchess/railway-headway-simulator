@@ -2,9 +2,9 @@
 ## Railway Headway & Capacity Simulator
 
 **Document ID:** RHS-BM-001  
-**Version:** 1.1.0  
-**Status:** UPDATED (Milestone P01 Verified)  
-**Governing Prompt:** RHS-MASTER-001 § 28; RHS-P01-001  
+**Version:** 1.2.0  
+**Status:** UPDATED (Milestones P01 & P02 Verified)  
+**Governing Prompt:** RHS-MASTER-001 § 28; RHS-P01-001; RHS-P02-001 § 22  
 
 ---
 
@@ -17,7 +17,24 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 
 ---
 
-### 2. Engineering Verification Test Suite
+### 2. Physical Infrastructure Network Benchmarks (Milestone P02)
+
+| Benchmark ID | Subsystem | Description | Key Inputs | Expected Result | Tolerance | Verification Status |
+|---|---|---|---|---|---|---|
+| **BENCH-P02-001** | Infrastructure | Simple Forward Route Length | A $\rightarrow$ B: 1000m, B $\rightarrow$ C: 2000m | $L_{\text{route}} = 3000\text{ m}$ | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-002** | Infrastructure | Reverse Route Traversal | C $\rightarrow$ B $\rightarrow$ A over same physical links | $L_{\text{route}} = 3000\text{ m}$, identical physical links | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-003** | Infrastructure | Reverse Position Mapping | $L = 1000\text{ m}$, reverse local $s = 200\text{ m}$ | $x_{\text{physical}} = 800\text{ m}$ ($L - s$) | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-004** | Infrastructure | Reverse Gradient Sign Inversion | Physical forward gradient $+10$‰ | Effective reverse gradient $-10$‰ | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-005** | Infrastructure | Directional Speed Restriction | Forward-only vs BOTH restrictions | Forward-only ignored in reverse; BOTH applied | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-006** | Infrastructure | Reverse Chainage Mapping | Route chainage 0–10 km in reverse | $s = 0\text{ km} \rightarrow 10\text{ km}$; $s = 10\text{ km} \rightarrow 0\text{ km}$ | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-007** | Infrastructure | Train Length Across Links | $L_{\text{train}} = 200\text{ m}$, front 50m into 2nd link | 50m in 2nd link, 150m in preceding link | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-008** | Infrastructure | Reverse Train Length | Repeat BENCH-P02-007 in reverse | Total physical occupied length = 200m | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-009** | Infrastructure | TVS Reverse Entry Boundary | TVS physically 5–10 km | Forward entry 5km; Reverse entry 10km | Exact | **VERIFIED (P02)** |
+| **BENCH-P02-010** | Infrastructure | Track Direction Policy Enforcement | Track marked `NOMINAL` (FORWARD_ONLY) | Reverse traversal rejected with `DirectionPolicyError` | 0 violations | **VERIFIED (P02)** |
+
+---
+
+### 3. Comprehensive Subsystem Benchmark Register
 
 | Benchmark ID | Subsystem | Description | Key Inputs | Expected Result | Tolerance | Implementation Status | Verification Status |
 |---|---|---|---|---|---|---|---|
@@ -30,10 +47,3 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **BM-HDW-001** | Headway | Homogeneous 2-train technical minimum headway | Equal train trajectories, identical block layout | $H = t_{\text{leader-release}} - t_{\text{follower-start}}$ | $\pm 0.1\text{ s}$ | Reserved (P08) | Pending P08 |
 | **BM-CAP-001** | Capacity | Homogeneous theoretical line capacity calculation | $H = 120.0\text{ s}$ | $C = 30.0\text{ trains/hour}$ | Exact | Reserved (P10) | Pending P10 |
 | **BM-CAP-002** | Capacity | Planning operational capacity with margin $M = 30\text{ s}$ | $H = 120.0\text{ s}$, $M = 30.0\text{ s}$ | $C_{\text{planning}} = 24.0\text{ trains/hour}$ | Exact | Reserved (P10) | Pending P10 |
-
----
-
-### 3. P01 Verification Status
-
-- **BM-PHY-002 (Davis Normalization):** Verified in `tests/unit/test_units.py::test_davis_coefficient_normalization`. Evaluated at 100 km/h: exactly 19,000 N.
-- All other physical movement and simulation benchmarks remain reserved for execution in milestones P03 through P10 per RHS-P01-001 § 25.
