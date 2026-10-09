@@ -2,9 +2,9 @@
 ## Railway Headway & Capacity Simulator
 
 **Document ID:** RHS-ARCH-001  
-**Version:** 1.1.0  
-**Status:** UPDATED (Milestone P01 Baseline Established)  
-**Governing Prompt:** RHS-MASTER-001 § 4; RHS-P01-001  
+**Version:** 1.2.0  
+**Status:** UPDATED (Milestone P02 Infrastructure Engine Integrated)  
+**Governing Prompt:** RHS-MASTER-001 § 4; RHS-P01-001; RHS-P02-001  
 
 ---
 
@@ -13,10 +13,11 @@
 The Railway Headway & Capacity Simulator is organized as a layered, modular Python package (`headway`).
 
 Key design rules:
-1. **Decoupled User Interface:** The simulation engine, data models, and reporting subsystems are completely independent of Gradio.
-2. **Unidirectional Layered Flow:** Dependencies flow strictly downward from high-level orchestrators to low-level core services. Circular imports are strictly forbidden.
-3. **Data Pipeline Separation:** The data layer cleanly separates Excel reading (`importer.py`), validation (`validator.py`), normalization (`converter.py`), serialization (`serializer.py`), hashing (`hashing.py`), and project archive packaging (`package.py`).
-4. **Google Colab Launcher:** The Colab Jupyter Notebook (`colab/Railway_Headway_Simulator.ipynb`) serves purely as a launcher and bootstrap environment.
+1. **Decoupled User Interface:** The simulation engine, data models, infrastructure network, and reporting subsystems are completely independent of Gradio.
+2. **Permanent Forward and Reverse Support:** The infrastructure engine supports both FORWARD and REVERSE railway operations across all components from the beginning without duplicating physical link identities.
+3. **Unidirectional Layered Flow:** Dependencies flow strictly downward from high-level orchestrators to low-level core services. Circular imports are strictly forbidden.
+4. **Data Pipeline Separation:** The data layer cleanly separates Excel reading (`importer.py`), validation (`validator.py`), normalization (`converter.py`), serialization (`serializer.py`), hashing (`hashing.py`), and project archive packaging (`package.py`).
+5. **Google Colab Launcher:** The Colab Jupyter Notebook (`colab/Railway_Headway_Simulator.ipynb`) serves purely as a launcher and bootstrap environment.
 
 ---
 
@@ -48,6 +49,21 @@ src/headway/
 │   └── engine.py           # Baseline immutability and isolated parameter overrides
 │
 ├── infrastructure/     # 1D topological track graph, links, nodes, switches, TVS sections (P02)
+│   ├── adapters.py         # Visualization data adapters for UI and diagrams
+│   ├── alignment.py        # Route alignment profiles (gradients with sign reversal, curvature)
+│   ├── chainage.py         # Engineering chainage mapping (forward, reverse, equations)
+│   ├── direction.py        # RunningDirection enum (FORWARD, REVERSE) and DirectionPolicy
+│   ├── graph.py            # PhysicalNetworkGraph with NetworkX MultiDiGraph
+│   ├── preprocessor.py     # Direction-aware RouteProfile compiler with deterministic caching
+│   ├── resources.py        # Multi-link, continuous, disjoint, and branching resource geometry
+│   ├── route.py            # LinkTraversal, Route, RouteEngine, forward and reverse position lookups
+│   ├── speed.py            # RouteSpeedProfile with direction-filtered SpeedRestrictions
+│   ├── stations.py         # StationPlatformModel, stopping points, and platform coverage checks
+│   ├── switches.py         # Switch, SwitchMovement, and JunctionTopology models
+│   ├── train_geometry.py   # TrainFootprint, multi-link distribution, and boundary handling
+│   ├── tunnels.py          # TunnelTVSModel with invariant physical TVS and reversed entry/exit
+│   └── validator.py        # InfrastructureValidator integrated with ValidationReport
+│
 ├── rolling_stock/      # Train physical characteristics, Davis resistance, traction curves (P03)
 ├── signalling/         # Fixed-block, ETCS L2, CBTC models, interlocking routes (P05/P06)
 ├── simulation/         # 0.1s microscopic numerical motion solver (P04/P07/P09)
@@ -58,33 +74,36 @@ src/headway/
 
 ---
 
-### 3. Data Flow Architecture (P01)
+### 3. Infrastructure Subsystem Architecture (P02)
 
 ```text
-Excel Source Files (.xlsx)
-        │
-        ▼
-   ExcelImporter (openpyxl, data_only=True)
-   ├── Level 1: File format & METADATA validation
-   └── Level 2: Field parsing & type verification
-        │
-        ▼
-  RawWorkbookData (in-memory worksheet dictionaries)
-        │
-        ▼
-  DatasetValidator
-   ├── Level 3: Identifier uniqueness & foreign cross-references
-   ├── Level 4: Engineering geometry & configuration bounds
-   └── Level 5: Simulation readiness check
-        │
-        ▼
-  Raw-to-Canonical Converter
-   ├── Centralized unit normalization to SI
-   └── Instantiation of CanonicalProject (Pydantic v2)
-        │
-        ▼
-   Project Storage / Packaging / Serialization
-   ├── SHA-256 Hashes (File, Canonical, Scenario)
-   ├── Deterministic JSON (Draft 2020-12 Schema Validated)
-   └── Secure ZIP Package (Path traversal and bomb protected)
+       Canonical InfrastructureModel (P01)
+                     │
+                     ▼
+           PhysicalNetworkGraph
+         (NetworkX MultiDiGraph)
+      ├── Single Physical Link Identity
+      ├── Parallel Physical Link Support
+      └── Directed Traversal Views
+                     │
+                     ▼
+                 RouteEngine
+      ├── LinkTraversal (FORWARD / REVERSE)
+      ├── Node-to-Node Continuity Verification
+      ├── Cumulative Route Distance: s ∈ [0, L_route]
+      └── Reverse Route Derivation: create_reverse_route()
+                     │
+     ┌───────────────┼───────────────┐
+     ▼               ▼               ▼
+RouteAlignment  RouteSpeedProfile RouteStationTVS
+ ├── Gradient    ├── Direction     ├── Platforms & Stops
+ │   Inversion   │   Filtering     ├── TVS Entry/Exit
+ └── Curvature   └── Governing Min └── Resource Intersections
+     Invariance
+                     │
+                     ▼
+          InfrastructurePreprocessor
+       ├── Direction-Aware RouteProfile
+       ├── Deterministic Caching (Hash + Route + Dir)
+       └── Immutability of Physical Baseline
 ```

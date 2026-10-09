@@ -2,18 +2,18 @@
 ## Railway Headway & Capacity Simulator
 
 **Software Version:** `0.1.0-dev`  
-**Current Milestone:** `P01 — Canonical Data Architecture, Excel Input System & Project Data Management`  
+**Current Milestone:** `P02 — Railway Infrastructure & Network Topology Engine`  
 **Manifest Status:** ACTIVE  
-**Last Updated:** Current Turn  
-**Authority:** RHS-MASTER-001 § 35; RHS-P01-001 § 24 (Stage P01-O)  
+**Last Updated:** Milestone P02 Completion  
+**Authority:** RHS-MASTER-001 § 35; RHS-P02-001 § 24 (Stage P02-P)  
 
 ---
 
 ### 1. Project Milestone State
 
-- **Current Active Milestone:** P01 (Completed & Formally Verified)
-- **Preceding Milestone:** P00 (Completed)
-- **Next Authorized Milestone:** P02 — Railway Infrastructure & Network Topology Engine
+- **Current Active Milestone:** P02 (Completed & Formally Verified)
+- **Preceding Milestones:** P00 (Foundation), P01 (Data Architecture), RHS-CI-001 (GitHub Actions CI)
+- **Next Authorized Milestone:** P03 — Rolling Stock, Traction & Resistance Engine
 
 ---
 
@@ -42,7 +42,7 @@
 | Excel Workbook Templates | `templates/*.xlsx` | Complete | 6 standardized Excel templates |
 | Official Example Datasets | `examples/*/*.xlsx` | Complete | 4 validated example projects (Single, Double, Station, TVS) |
 | UI Shell & Theme | `src/headway/ui/` | Complete (P00) | 10 navigation tabs, engineering theme, Colab launcher |
-| Infrastructure Subsystem | `src/headway/infrastructure/` | Initialized | Graph algorithms & topology assigned to P02 |
+| Infrastructure Subsystem | `src/headway/infrastructure/` | Complete (P02) | Graph, forward/reverse route traversal, alignment, speed, switches, stations, TVS, train footprint, preprocessor, adapters |
 | Rolling Stock Physics | `src/headway/rolling_stock/` | Initialized | Dynamics equations assigned to P03 |
 | Signalling Subsystem | `src/headway/signalling/` | Initialized | Signalling logic assigned to P05/P06 |
 | Simulation Subsystem | `src/headway/simulation/` | Initialized | Numerical solver assigned to P04/P07/P09 |
@@ -53,15 +53,16 @@
 
 ### 3. Verification & Test Suite Status
 
-- **Automated Tests:** 64 automated tests (Unit, Integration, Negative, Regression) executing via pytest.
-- **Test Pass Rate:** 100% (64 passed, 0 failed, 0 warnings).
-- **Code Coverage:** 88% overall statement coverage across `headway`.
-- **Engineering Verification:** Benchmark `BM-PHY-002` (Davis coefficient normalization) verified.
-- **Example Projects:** All 4 official example datasets validated with zero errors.
+- **Automated Tests:** 94 automated tests (Unit, Integration, Engineering Benchmarks, Negative, Regression) executing via pytest.
+- **Test Pass Rate:** 100% (94 passed, 0 failed, 0 warnings).
+- **Engineering Verification:**
+  - `BM-PHY-002`: Davis coefficient normalization verified.
+  - `BENCH-P02-001` through `BENCH-P02-010`: All 10 P02 engineering benchmarks verified and passing.
+- **Example Projects:** All 4 official example datasets integrated and validated with zero errors.
 
 ---
 
 ### 4. Next Authorized Step
 
-**Milestone P02 — Railway Infrastructure & Network Topology Engine.**  
-Awaiting explicit task prompt before commencing P02 implementation.
+**Milestone P03 — Rolling Stock, Traction & Resistance Engine.**  
+Awaiting explicit task prompt before commencing P03 implementation.
