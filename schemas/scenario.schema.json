@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/scenario.schema.json",
+  "title": "Scenario",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "scenario_id",
+    "description"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "scenario_id": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "is_baseline": {
+      "type": "boolean",
+      "default": false
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "target_domain",
+          "target_object_id",
+          "parameter_name",
+          "override_value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "target_domain": {
+            "type": "string"
+          },
+          "target_object_id": {
+            "type": "string"
+          },
+          "parameter_name": {
+            "type": "string"
+          },
+          "override_value": {},
+          "justification": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

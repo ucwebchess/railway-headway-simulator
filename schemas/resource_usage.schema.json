@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/resource_usage.schema.json",
+  "title": "ResourceSevenComponentUsage",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "resource_id",
+    "train_id",
+    "t_setup_s",
+    "t_approach_s",
+    "t_running_s",
+    "t_dwell_s",
+    "t_clearance_s",
+    "t_residual_s",
+    "t_release_s",
+    "t_total_blocking_s"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "resource_id": {
+      "type": "string"
+    },
+    "train_id": {
+      "type": "string"
+    },
+    "t_setup_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "t_approach_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "t_running_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "t_dwell_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "t_clearance_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "t_residual_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "t_release_s": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "t_total_blocking_s": {
+      "type": "number",
+      "minimum": 0.0
+    }
+  }
+}

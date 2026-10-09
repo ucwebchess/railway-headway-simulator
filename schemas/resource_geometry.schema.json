@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/resource_geometry.schema.json",
+  "title": "ResourceGeometry",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "resource_id",
+    "intervals"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "resource_id": {
+      "type": "string"
+    },
+    "intervals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "link_id",
+          "start_offset_m",
+          "end_offset_m"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "link_id": {
+            "type": "string"
+          },
+          "start_offset_m": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "end_offset_m": {
+            "type": "number",
+            "minimum": 0.0
+          }
+        }
+      }
+    }
+  }
+}

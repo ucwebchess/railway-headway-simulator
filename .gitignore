@@ -1,0 +1,84 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing and coverage
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.pyo
+.pytest_cache/
+
+# Type checking & linting
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Environment variables & secrets
+.env.local
+.env.*.local
+*.secret
+*.pem
+*.key
+
+# Application runtime storage (P00-FS-001 / P00-GIT-001)
+storage/
+runtime/
+logs/
+reports/
+*.log
+
+# Railway datasets & simulation results
+data/raw/*
+data/processed/*
+simulation_outputs/*
+*.xlsx.cache
+
+# OS-specific artifacts
+.DS_Store
+Thumbs.db
+ehthumbs.db

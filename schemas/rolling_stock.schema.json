@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/rolling_stock.schema.json",
+  "title": "RollingStockModel",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "dataset_id",
+    "train_types"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "dataset_id": {
+      "type": "string"
+    },
+    "train_types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "train_type_id",
+          "description",
+          "length_m",
+          "mass_empty_kg",
+          "mass_loaded_kg",
+          "max_speed_ms",
+          "max_service_deceleration_ms2",
+          "emergency_deceleration_ms2",
+          "davis_a_n",
+          "davis_b_ns_m",
+          "davis_c_ns2_m2"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "train_type_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "length_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "mass_empty_kg": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "mass_loaded_kg": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "rotating_mass_factor": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 0.5,
+            "default": 0.1
+          },
+          "max_speed_ms": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "max_acceleration_ms2": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "default": 1.0
+          },
+          "max_service_deceleration_ms2": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "emergency_deceleration_ms2": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "traction_model_type": {
+            "type": "string",
+            "enum": [
+              "SIMPLIFIED_POWER_FORCE",
+              "DETAILED_CURVE"
+            ],
+            "default": "SIMPLIFIED_POWER_FORCE"
+          },
+          "power_w": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0.0
+          },
+          "max_tractive_effort_n": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0.0
+          },
+          "traction_curve": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "speed_ms",
+                "force_n"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "speed_ms": {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                "force_n": {
+                  "type": "number",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "braking_model_type": {
+            "type": "string",
+            "enum": [
+              "CONSTANT_DECELERATION",
+              "SPEED_DEPENDENT_CURVE"
+            ],
+            "default": "CONSTANT_DECELERATION"
+          },
+          "braking_semantics": {
+            "type": "string",
+            "enum": [
+              "NET_EFFECTIVE",
+              "BRAKE_GENERATED"
+            ],
+            "default": "NET_EFFECTIVE"
+          },
+          "braking_curve": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "speed_ms",
+                "deceleration_ms2"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "speed_ms": {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                "deceleration_ms2": {
+                  "type": "number",
+                  "exclusiveMinimum": 0.0
+                }
+              }
+            }
+          },
+          "davis_a_n": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "davis_b_ns_m": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "davis_c_ns2_m2": {
+            "type": "number",
+            "minimum": 0.0
+          }
+        }
+      }
+    }
+  }
+}

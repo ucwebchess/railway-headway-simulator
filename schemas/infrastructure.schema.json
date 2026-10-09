@@ -1,0 +1,338 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/infrastructure.schema.json",
+  "title": "InfrastructureModel",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "dataset_id",
+    "nodes",
+    "tracks",
+    "track_links"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "dataset_id": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "node_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "node_type": {
+            "type": "string",
+            "enum": [
+              "BUFFER_STOP",
+              "SWITCH",
+              "JUNCTION",
+              "ENDPOINT",
+              "STATION_BOUNDARY"
+            ]
+          }
+        }
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "track_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "track_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "directionality": {
+            "type": "string",
+            "enum": [
+              "BIDIRECTIONAL",
+              "NOMINAL",
+              "REVERSE"
+            ]
+          }
+        }
+      }
+    },
+    "track_links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "link_id",
+          "track_id",
+          "start_node_id",
+          "end_node_id",
+          "length_m",
+          "max_speed_ms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "link_id": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": "string"
+          },
+          "start_node_id": {
+            "type": "string"
+          },
+          "end_node_id": {
+            "type": "string"
+          },
+          "length_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "max_speed_ms": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          },
+          "gradient_decimal": {
+            "type": "number",
+            "default": 0.0
+          },
+          "curvature_radius_m": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0.0
+          }
+        }
+      }
+    },
+    "stations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "station_id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "station_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "chainage_km": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "platform_id",
+          "station_id",
+          "link_id",
+          "start_offset_m",
+          "end_offset_m",
+          "length_m"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "platform_id": {
+            "type": "string"
+          },
+          "station_id": {
+            "type": "string"
+          },
+          "link_id": {
+            "type": "string"
+          },
+          "start_offset_m": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "end_offset_m": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "length_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0
+          }
+        }
+      }
+    },
+    "stopping_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "stopping_point_id",
+          "platform_id",
+          "link_id",
+          "offset_m"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "stopping_point_id": {
+            "type": "string"
+          },
+          "platform_id": {
+            "type": "string"
+          },
+          "link_id": {
+            "type": "string"
+          },
+          "offset_m": {
+            "type": "number",
+            "minimum": 0.0
+          }
+        }
+      }
+    },
+    "tunnels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "tunnel_id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "tunnel_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "tvs_sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "tvs_id",
+          "tunnel_id",
+          "track_id",
+          "link_intervals"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "tvs_id": {
+            "type": "string"
+          },
+          "tunnel_id": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": "string"
+          },
+          "link_intervals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "link_id",
+                "start_offset_m",
+                "end_offset_m"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "link_id": {
+                  "type": "string"
+                },
+                "start_offset_m": {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                "end_offset_m": {
+                  "type": "number",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "max_train_occupancy": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "holding_signal_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_delay_s": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 0.0
+          }
+        }
+      }
+    },
+    "shared_resource_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "group_id",
+          "resource_ids"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

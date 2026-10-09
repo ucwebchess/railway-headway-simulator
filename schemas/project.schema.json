@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/project.schema.json",
+  "title": "CanonicalProject",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "project_id",
+    "name",
+    "schema_version",
+    "infrastructure",
+    "rolling_stock",
+    "signalling",
+    "operations",
+    "analysis"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "project_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "infrastructure": {
+      "$ref": "infrastructure.schema.json"
+    },
+    "rolling_stock": {
+      "$ref": "rolling_stock.schema.json"
+    },
+    "signalling": {
+      "$ref": "signalling.schema.json"
+    },
+    "operations": {
+      "$ref": "operations.schema.json"
+    },
+    "analysis": {
+      "$ref": "analysis.schema.json"
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "$ref": "scenario.schema.json"
+      }
+    },
+    "provenance": {
+      "type": "object"
+    }
+  }
+}

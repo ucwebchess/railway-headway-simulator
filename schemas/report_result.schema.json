@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/report_result.schema.json",
+  "title": "ReportResult",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "project_id",
+    "scenario_id",
+    "timestamp_utc",
+    "kpis"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "project_id": {
+      "type": "string"
+    },
+    "scenario_id": {
+      "type": "string"
+    },
+    "timestamp_utc": {
+      "type": "string"
+    },
+    "kpis": {
+      "type": "object"
+    },
+    "artifact_paths": {
+      "type": "object",
+      "properties": {
+        "pdf": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "html": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xlsx": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

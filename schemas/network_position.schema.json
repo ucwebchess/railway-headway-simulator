@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/network_position.schema.json",
+  "title": "NetworkPosition",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "link_id",
+    "offset_m"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "link_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9_\\-\\.:]*$"
+    },
+    "offset_m": {
+      "type": "number",
+      "minimum": 0.0
+    }
+  }
+}

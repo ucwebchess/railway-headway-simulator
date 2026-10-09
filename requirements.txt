@@ -1,0 +1,10 @@
+# Railway Headway & Capacity Simulator — Foundation & Data Dependencies (P00 & P01)
+# Target Python Version: >= 3.10
+
+gradio>=5.0.0,<7.0.0
+pytest>=8.0.0
+pydantic>=2.0.0
+packaging>=24.0
+openpyxl>=3.1.0
+jsonschema>=4.20.0
+pandas>=2.0.0

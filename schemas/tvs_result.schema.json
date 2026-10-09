@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railway-headway.org/schemas/tvs_result.schema.json",
+  "title": "TVSResult",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "tvs_id",
+    "tunnel_id",
+    "max_occupancy_observed",
+    "occupancy_limit",
+    "violations_count"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tvs_id": {
+      "type": "string"
+    },
+    "tunnel_id": {
+      "type": "string"
+    },
+    "max_occupancy_observed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occupancy_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "violations_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "waiting_delay_total_s": {
+      "type": "number",
+      "minimum": 0.0,
+      "default": 0.0
+    }
+  }
+}
