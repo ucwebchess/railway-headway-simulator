@@ -33,6 +33,9 @@ HOUR_TO_S = 3600.0
 PERMIL_TO_DECIMAL = 0.001
 DECIMAL_TO_PERMIL = 1000.0
 
+STANDARD_GRAVITY_MS2 = 9.81
+GRAVITY_ACCELERATION_MS2 = 9.81
+
 
 def normalize_distance(value: float, unit: str) -> float:
     """Normalize distance to meters (m)."""

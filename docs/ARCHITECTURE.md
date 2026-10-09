@@ -65,6 +65,13 @@ src/headway/
 │   └── validator.py        # InfrastructureValidator integrated with ValidationReport
 │
 ├── rolling_stock/      # Train physical characteristics, Davis resistance, traction curves (P03)
+│   ├── diagnostics.py      # Performance sweeps across speed ranges, balancing speed solver, tabular adapters
+│   ├── force_balance.py    # Longitudinal force balance (F_net = F_t - F_b - F_D - F_g - F_c), instantaneous acceleration
+│   ├── resistance.py       # Davis polynomial, gradient (direction-aware), Roeckl curvature, distributed integration
+│   ├── traction.py         # Simplified hyperbolic and piecewise linear traction curves, adhesion limits
+│   ├── train.py            # RollingStockParameters, MassCondition (EMPTY, NOMINAL, MAXIMUM), TrainFormation
+│   └── validator.py        # Semantic and kinematic parameter validator integrated with ValidationReport
+│
 ├── signalling/         # Fixed-block, ETCS L2, CBTC models, interlocking routes (P05/P06)
 ├── simulation/         # 0.1s microscopic numerical motion solver (P04/P07/P09)
 ├── analysis/           # 7-component blocking time, pairwise headway H(i,j), capacity engine (P08/P10/P11)
@@ -106,4 +113,42 @@ RouteAlignment  RouteSpeedProfile RouteStationTVS
        ├── Direction-Aware RouteProfile
        ├── Deterministic Caching (Hash + Route + Dir)
        └── Immutability of Physical Baseline
+```
+
+---
+
+### 4. Rolling Stock, Traction & Resistance Engine (P03)
+
+```text
+       Canonical TrainType (P01)
+                  │
+                  ▼
+       RollingStockParameters (P03)
+      ├── Mass Conditions: EMPTY, NOMINAL, MAXIMUM
+      ├── Equivalent Dynamic Mass: m_eq = m * (1 + λ)
+      └── Adhesion Parameters: μ, m_adh = α_adh * m
+                  │
+     ┌────────────┼────────────┐
+     ▼            ▼            ▼
+TractionModel  DavisModel   Alignment Integration (P02)
+ ├── Simplified   └── R(v)     ├── Distributed Gradient:
+ │   Hyperbolic       = A+Bv       ∑ (m_k * g * i_k)
+ ├── Piecewise          +Cv^2  └── Roeckl Curvature (R >= 300m):
+ │   Curve (v, F)                  ∑ (m_k * g * W_c,k / 1000)
+ ├── Adhesion Limit                (Preserved non-negative in reverse)
+ └── a_max Capping
+     │            │            │
+     └────────────┼────────────┘
+                  ▼
+         ForceBalanceEngine
+      ├── F_net = F_t - F_b - F_D - F_g - F_c
+      ├── Instantaneous a = F_net / m_eq
+      ├── Operational Motion States: ACCELERATING, CRUISING, COASTING, BRAKING, STANDSTILL
+      └── Target Deceleration to Braking Force Translation (F_b = m_eq * d - ∑ R)
+                  │
+                  ▼
+      RollingStockDiagnostics
+      ├── Speed Sweeps [0, v_max] (F_t, P, R_D, R_tot, a)
+      ├── Balancing Speed Solver: F_t(v_bal) == R_tot(v_bal)
+      └── Tabular Export Adapters for Future UI & Plotting (P13/P14)
 ```
