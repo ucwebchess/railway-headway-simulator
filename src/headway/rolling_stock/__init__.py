@@ -3,6 +3,14 @@
 Milestone P03 — Rolling Stock, Traction & Resistance Engine (RHS-P03-001).
 """
 
+from headway.rolling_stock.braking import (
+    BrakingCategory,
+    BrakingEvaluation,
+    BrakingModel,
+    ConstantDecelerationBrakingModel,
+    SpeedDependentBrakingModel,
+    create_braking_model,
+)
 from headway.rolling_stock.diagnostics import (
     PerformancePoint,
     RollingStockDiagnostics,
@@ -38,6 +46,12 @@ __all__ = [
     "MassCondition",
     "RollingStockParameters",
     "TrainFormation",
+    "BrakingCategory",
+    "BrakingEvaluation",
+    "BrakingModel",
+    "ConstantDecelerationBrakingModel",
+    "SpeedDependentBrakingModel",
+    "create_braking_model",
     "TractionModel",
     "SimplifiedTractionModel",
     "DetailedTractionCurveModel",
