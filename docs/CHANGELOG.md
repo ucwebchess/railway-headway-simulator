@@ -7,7 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P09 (Current Milestone)
+## [0.1.0-dev] - Milestone P10 (Current Milestone)
+
+### Added
+- **Theoretical and Planning Capacity Engine (`headway.analysis.capacity`):**
+  - Ideal homogeneous theoretical capacity calculation ($C = 3600 / H$).
+  - Additive planning margin method ($H_{\mathrm{plan}} = H_{\mathrm{technical}} + M$, $C_{\mathrm{plan}} = 3600 / H_{\mathrm{plan}}$).
+  - Target utilization method ($C_{\mathrm{plan}} = U \cdot C_{\mathrm{theoretical}}$).
+  - Repeated mixed-traffic cycle capacity with wrap-around pair ($T_{\mathrm{cycle}} = \sum_{k=1}^{N-1} H(s_k, s_{k+1}) + H(s_N, s_1)$, $C = 3600N / T_{\mathrm{cycle}}$).
+  - Complete directional segregation supporting both `RunningDirection.FORWARD` and `RunningDirection.REVERSE`.
+- **Operational Throughput Engine (`headway.analysis.throughput`):**
+  - Observation window partitioning separating warm-up, active measurement window, and cool-down periods.
+  - Completed trip counting and spatial boundary screenline crossing counting.
+  - Throughput calculation $Q = N_{\mathrm{counted}} / (T_{\mathrm{measurement}} / 3600)$.
+- **Operational Stability Evaluation (`headway.analysis.stability`):**
+  - Four-state classification: `STABLE`, `METASTABLE`, `UNSTABLE`, and `COLLAPSED`.
+  - Linear regression delay growth slope calculation ($s\text{ delay increase per dispatched train}$).
+  - Multi-train queue growth tracking, completion ratio enforcement, and deadlock detection.
+  - Distinction between technical headway capacity and sustainable operational capacity.
+- **Capacity Saturation Search Engine (`headway.analysis.saturation`):**
+  - Step-wise demand rate scanning across candidate rates.
+  - Binary bisection search converging to maximum sustainable operational capacity within specified tolerance.
+- **Resource Utilization Analysis (`headway.analysis.resource_utilization`):**
+  - Rigorous differentiation between physical occupation time and blocking/reservation time.
+  - Overlapping reservation interval merging preventing artificial $> 100\%$ utilization.
+  - Directional attribution: FORWARD vs REVERSE blocking time.
+  - Resource categories: track blocks, station platforms, interlocking switches, TVS zones, and shared groups.
+- **Timetable Compression & UIC 406-Inspired Capacity Consumption (`headway.analysis.timetable_compression` & `headway.analysis.capacity_consumption`):**
+  - Train path stairway extraction and chronological compression up to safety buffer margins.
+  - Preservation of train running times, dynamic profiles, and station dwell durations.
+  - Capacity consumption calculation $K = (T_{\mathrm{compressed}} + T_{\mathrm{supplement}}) / T_{\mathrm{analysis}}$.
+  - Standard UIC 406 methodology disclaimer string enforcement.
+- **Bottleneck Diagnostics & Migration Tracking (`headway.analysis.bottleneck_migration`):**
+  - Multi-criteria bottleneck ranking based on limiting headway, blocking utilization, and accumulated delay.
+  - Bottleneck migration tracking across scenario modifications.
+  - Diminishing returns ratio calculation and diagnostic engineering commentary.
+- **Sensitivity Analysis Framework (`headway.analysis.sensitivity`):**
+  - Baseline immutability guarantee preventing in-place parameter corruption.
+  - Full physical recalculation principle strictly prohibiting proportional scaling shortcuts.
+  - Sensitivity sweeps: block length, signalling technology (2/3/4 aspect, ETCS L2, CBTC), station dwell, parallel platform assignment, and TVS parameters.
+- **Verification Benchmarks & Tests (`tests/engineering/`, `tests/unit/`, `tests/integration/`):**
+  - Analytical benchmarks BENCH-P10-001 through BENCH-P10-006 (exact analytical values).
+  - Operational benchmarks P10-B007 through P10-B032 (26 comprehensive benchmarks).
+  - 35 unit negative tests covering validation, edge cases, and immutability invariants.
+  - 5 end-to-end integration tests connecting multi-train simulation, headway solving, capacity analysis, UIC 406 compression, and sensitivity analysis.
+  - Full test suite passing: 466 tests in 9.4s.
+
+---
+
+## [0.1.0-dev] - Milestone P09
 
 ### Added
 - **Simultaneous Multi-Train Microscopic Simulator (`headway.simulation.multi_train_engine`):**

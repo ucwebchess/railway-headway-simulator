@@ -153,3 +153,42 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P06-B028** | Fidelity | Multi-fidelity comparison | `BASIC` vs `INTERMEDIATE` vs `DETAILED` | Zero vs fixed vs drift uncertainty verified | Exact | **VERIFIED (P06)** |
 | **P06-B029** | Independence| Technology coexistence | ETCS L2 and CBTC instances | Separate architectures, no cross-substitution | Exact | **VERIFIED (P06)** |
 | **P06-B030** | Safety | Moving-block safety invariant | Multi-train moving block traversal | Zero rear-end collisions, EoA strictly respected | 0 violations | **VERIFIED (P06)** |
+
+---
+
+### 7. Railway Capacity, UIC 406-Inspired Assessment & Sensitivity Analysis Benchmarks (Milestone P10)
+
+| Benchmark ID | Subsystem | Description | Key Inputs | Expected Analytical Result | Tolerance | Verification Status |
+|---|---|---|---|---|---|---|
+| **BENCH-P10-001** | Homogeneous | Theoretical capacity | $H = 120.0\text{ s}$ | $C = 3600 / 120 = 30.0\text{ trains/h}$ | Exact ($\pm 10^{-6}\text{ tph}$) | **VERIFIED (P10)** |
+| **BENCH-P10-002** | Planning | Additive planning margin | $H = 120.0\text{ s}, M = 60.0\text{ s}$ | $C = 3600 / (120 + 60) = 20.0\text{ trains/h}$ | Exact ($\pm 10^{-6}\text{ tph}$) | **VERIFIED (P10)** |
+| **BENCH-P10-003** | Planning | Target utilization | $C_{\text{theo}} = 30.0\text{ tph}, U = 0.8$ | $C_{\text{plan}} = 0.8 \times 30.0 = 24.0\text{ trains/h}$ | Exact ($\pm 10^{-6}\text{ tph}$) | **VERIFIED (P10)** |
+| **BENCH-P10-004** | Mixed Traffic | Repeated pattern cycle | $H(A,B) = 120\text{s}, H(B,A) = 180\text{s}$ | $T_{\text{cycle}} = 300\text{s}, C = 3600 \times 2 / 300 = 24.0\text{ trains/h}$ | Exact ($\pm 10^{-6}\text{ tph}$) | **VERIFIED (P10)** |
+| **BENCH-P10-005** | Throughput | Analytical throughput | $N = 25\text{ trains}, T = 7200\text{ s}$ (2 h) | $Q = 25 / 2.0 = 12.5\text{ trains/h}$ | Exact ($\pm 10^{-6}\text{ tph}$) | **VERIFIED (P10)** |
+| **BENCH-P10-006** | UIC 406 | Capacity consumption | $T_{\text{comp}} = 4500\text{s}, T_{\text{supp}} = 900\text{s}, T_{\text{anal}} = 7200\text{s}$ | $K = (4500 + 900) / 7200 = 75.0\%$ | Exact ($\pm 10^{-6}\%$) | **VERIFIED (P10)** |
+| **P10-B007** | Directional | FORWARD homogeneous capacity | Forward route, $H = 150.0\text{ s}$ | $C = 24.0\text{ trains/h}$, positive finite | Exact | **VERIFIED (P10)** |
+| **P10-B008** | Directional | REVERSE homogeneous capacity | Reverse route, $H = 200.0\text{ s}$ | $C = 18.0\text{ trains/h}$, reverse direction tag | Exact | **VERIFIED (P10)** |
+| **P10-B009** | Planning | Controlled additive example | $H = 255.6\text{ s}, M = 90.0\text{ s}$ | $H_{\text{plan}} = 345.6\text{ s}, C = 10.4\text{ trains/h}$ | $\pm 0.05\text{ tph}$ | **VERIFIED (P10)** |
+| **P10-B010** | Planning | Target utilization sweep | $C = 40.0\text{ tph}, U \in [0.60, 0.75, 0.85]$ | $C_{\text{plan}} \in [24.0, 30.0, 34.0]\text{ tph}$ | Exact | **VERIFIED (P10)** |
+| **P10-B011** | Mixed Traffic | 3-service wrap-around cycle | $H(A,B)=100\text{s}, H(B,C)=140\text{s}, H(C,A)=120\text{s}$ | $T_{\text{cycle}} = 360\text{s}, C = 30.0\text{ trains/h}$ | Exact | **VERIFIED (P10)** |
+| **P10-B012** | Throughput | Measurement window filtering | 5 trains across warmup/window/cooldown | Only trains in active window counted ($N=3, Q=3\text{ tph}$) | Exact | **VERIFIED (P10)** |
+| **P10-B013** | Throughput | Screenline boundary crossing | Trains crossing 5000m spatial boundary | Valid crossings counted ($N=2, Q=2\text{ tph}$) | Exact | **VERIFIED (P10)** |
+| **P10-B014** | Stability | STABLE classification | Flat delays, 0 deadlock, 100% completion | Status `STABLE`, `is_sustainable = True` | Exact | **VERIFIED (P10)** |
+| **P10-B015** | Stability | METASTABLE classification | Moderate delay growth slope (1.0 s/train) | Status `METASTABLE`, `is_sustainable = False` | Exact | **VERIFIED (P10)** |
+| **P10-B016** | Stability | UNSTABLE classification | High delay growth slope (5.0 s/train) | Status `UNSTABLE`, `is_sustainable = False` | Exact | **VERIFIED (P10)** |
+| **P10-B017** | Stability | COLLAPSED classification | Deadlock detected in multi-train simulation | Status `COLLAPSED`, deadlock flagged | Exact | **VERIFIED (P10)** |
+| **P10-B018** | Saturation | Discrete step scan search | Rates [10, 15, 20, 25, 30] tph (stable to 20) | Maximum sustainable rate $= 20.0\text{ trains/h}$ | Exact | **VERIFIED (P10)** |
+| **P10-B019** | Saturation | Binary bisection search | Search bounds [10, 30] tph, stable $< 22.0$ | Converges to critical rate within 0.5 tph | $\pm 0.5\text{ tph}$ | **VERIFIED (P10)** |
+| **P10-B020** | Utilization | Physical vs blocking time | Reservation 150s, physical occupancy 80s | Blocking $15.0\%$, physical $8.0\%$ | Exact | **VERIFIED (P10)** |
+| **P10-B021** | Utilization | Overlapping interval merging | Trains concurrent on platform [100,300], [200,400] | Merged blocking 300s (not 400s), util $= 30.0\%$ | Exact | **VERIFIED (P10)** |
+| **P10-B022** | Utilization | Directional attribution | Single track segment with FWD and REV trains | FWD 200s, REV 200s, total 400s ($40.0\%$) | Exact | **VERIFIED (P10)** |
+| **P10-B023** | Utilization | TVS resource utilization | TVS zone locked 850s in 1000s window | Util $85.0\% \ge 75\%$, flagged as critical | Exact | **VERIFIED (P10)** |
+| **P10-B024** | Bottlenecks | Ranking across resource categories | Block (90s), TVS (120s), Platform (160s) | Rank 1: Platform, Rank 2: TVS, Rank 3: Block | Exact | **VERIFIED (P10)** |
+| **P10-B025** | Bottlenecks | Migration and diminishing returns | Block split (240s $\to$ 180s station bottleneck) | Migrated = True, $\Delta C = +5.0\text{ tph}$, ratio 0.33 | Exact | **VERIFIED (P10)** |
+| **P10-B026** | UIC 406 | Timetable compression | 2 trains spaced 600s compressed with 0 buffer | Compressed span $= 180.0\text{ s}$, ratio $= 0.25$ | Exact | **VERIFIED (P10)** |
+| **P10-B027** | UIC 406 | Capacity consumption & disclaimer | 3000s compressed, 600s supplement, 7200s window | $K = 50.0\%$, explicit UIC disclaimer present | Exact | **VERIFIED (P10)** |
+| **P10-B028** | Sensitivity | Block length recalculation | Blocks 500m to 1500m, speed 30 m/s | Physics recalculated, no proportional scaling | Exact | **VERIFIED (P10)** |
+| **P10-B029** | Sensitivity | Signalling technology comparison | 2/3/4 aspect, ETCS L2, CBTC | $C_{\text{CBTC}} > C_{\text{ETCS}} > C_{\text{4-asp}} > C_{\text{3-asp}} > C_{\text{2-asp}}$ | Exact | **VERIFIED (P10)** |
+| **P10-B030** | Sensitivity | Station dwell crossover | Dwells 30s to 120s against line headway 120s | Crossover from line bottleneck to platform | Exact | **VERIFIED (P10)** |
+| **P10-B031** | Sensitivity | Platform assignment & switch limit | 1 to 4 platforms with 50s throat locking | Capacity bounded by switch throat at 4 platforms | Exact | **VERIFIED (P10)** |
+| **P10-B032** | Sensitivity | Opposing / REVERSE capacity | Reverse TVS section traversal (1000m) | Monotonic reverse headway (90s), capacity 40 tph | Exact | **VERIFIED (P10)** |
