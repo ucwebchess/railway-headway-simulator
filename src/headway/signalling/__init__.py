@@ -37,13 +37,30 @@ from headway.signalling.interlocking import (
     InterlockingRouteDefinition,
     RouteLockState,
 )
+from headway.signalling.junction_controller import (
+    JunctionController,
+    JunctionType,
+    JunctionZone,
+)
+from headway.signalling.platform_controller import (
+    ActivePlatformOccupation,
+    PlatformAssignmentRecord,
+    PlatformController,
+    PlatformSelectionPolicy,
+)
 from headway.signalling.protection import BrakingProtectionEngine
+from headway.signalling.residual_occupation import (
+    ResidualOccupationDetector,
+    ResidualOccupationRecord,
+)
 from headway.signalling.resource_types import (
     AdvancedSignallingError,
     BrakingFeasibilityError,
     CommunicationTimeoutError,
     InterlockingRouteError,
+    JunctionConflictError,
     MovementAuthorityError,
+    PlatformCompatibilityError,
     PositionReportError,
     ProtectedEnvelopeError,
     ReleasePolicy,
@@ -53,11 +70,22 @@ from headway.signalling.resource_types import (
     ResourceUsageRecord,
     SignalAspect,
     SignallingEvent,
+    StationResourceError,
     SupervisionInterventionError,
     SwitchLockError,
+    TVSAuthorizationError,
+    TVSInvariantError,
 )
 from headway.signalling.resources import ManagedResource, ResourceController
 from headway.signalling.switches import SwitchController, SwitchState
+from headway.signalling.tvs_controller import (
+    TVSAuthorizationState,
+    TVSController,
+    TVSExclusivityScope,
+    TVSPhysicalOccupancyState,
+    TVSSectionConfig,
+    TVSTrainState,
+)
 
 __all__ = [
     # Resource categories & events
@@ -77,6 +105,11 @@ __all__ = [
     "PositionReportError",
     "SupervisionInterventionError",
     "ProtectedEnvelopeError",
+    "StationResourceError",
+    "PlatformCompatibilityError",
+    "JunctionConflictError",
+    "TVSAuthorizationError",
+    "TVSInvariantError",
     # Resources
     "ManagedResource",
     "ResourceController",
@@ -115,4 +148,20 @@ __all__ = [
     "CBTCConfig",
     "ProtectedTrainEnvelopeCalculator",
     "CBTCMovingBlockEngine",
+    # P07 Stations, Junctions & TVS
+    "PlatformSelectionPolicy",
+    "PlatformAssignmentRecord",
+    "ActivePlatformOccupation",
+    "PlatformController",
+    "ResidualOccupationDetector",
+    "ResidualOccupationRecord",
+    "JunctionType",
+    "JunctionZone",
+    "JunctionController",
+    "TVSExclusivityScope",
+    "TVSAuthorizationState",
+    "TVSPhysicalOccupancyState",
+    "TVSTrainState",
+    "TVSSectionConfig",
+    "TVSController",
 ]
