@@ -192,3 +192,53 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P10-B030** | Sensitivity | Station dwell crossover | Dwells 30s to 120s against line headway 120s | Crossover from line bottleneck to platform | Exact | **VERIFIED (P10)** |
 | **P10-B031** | Sensitivity | Platform assignment & switch limit | 1 to 4 platforms with 50s throat locking | Capacity bounded by switch throat at 4 platforms | Exact | **VERIFIED (P10)** |
 | **P10-B032** | Sensitivity | Opposing / REVERSE capacity | Reverse TVS section traversal (1000m) | Monotonic reverse headway (90s), capacity 40 tph | Exact | **VERIFIED (P10)** |
+
+---
+
+### 8. Stochastic Simulation, Monte Carlo & Railway Operational Reliability Benchmarks (Milestone P11)
+
+| Benchmark ID | Subsystem | Description | Key Inputs | Expected Analytical Result | Tolerance | Verification Status |
+|---|---|---|---|---|---|---|
+| **BENCH-P11-A** | Distribution | Uniform distribution analytical properties | $a = 10.0\text{ s}, b = 20.0\text{ s}$ | $\mu = 15.0\text{ s}, \sigma^2 = (20-10)^2/12 = 8.3333\text{ s}^2$ | Exact ($\pm 10^{-4}$) | **VERIFIED (P11)** |
+| **BENCH-P11-B** | Proportion | Punctuality binomial proportion & Wilson score | $k = 95\text{ punctual}, n = 100\text{ trains}$ | $p = 95.0\%$, Wilson CI contains true mean | Exact | **VERIFIED (P11)** |
+| **BENCH-P11-C** | Delay | Delay mean and sample standard deviation | Delays $[10, 20, 30, 40, 50]\text{ s}$ | $\mu = 30.0\text{ s}, s = 15.8114\text{ s}$ | Exact ($\pm 10^{-4}$) | **VERIFIED (P11)** |
+| **BENCH-P11-D** | TVS | TVS waiting time and queue probability | TVS waits $[0, 0, 20, 40, 60]\text{ s}$ | $\mu = 24.0\text{ s}, P(\text{wait} > 0) = 3/5 = 60.0\%$ | Exact | **VERIFIED (P11)** |
+| **P11-B001** | Variable Schema | Stochastic variable definition validation | Target, distribution type, sampling scope | Strictly validated schema, immutable fields | Exact | **VERIFIED (P11)** |
+| **P11-B002** | Distribution | Normal distribution sampling & moments | $\mu = 30.0, \sigma = 5.0$ | $\mu = 30.0, \sigma^2 = 25.0$, analytical CDF/PPF | Exact | **VERIFIED (P11)** |
+| **P11-B003** | Distribution | Truncated normal bounds enforcement | $\mu = 30.0, \sigma = 5.0, a = 25.0, b = 35.0$ | Samples strictly bounded in $[25.0, 35.0]$ | Exact | **VERIFIED (P11)** |
+| **P11-B004** | Distribution | Lognormal distribution transformation | $\mu = 20.0, \sigma = 4.0$ | Positive real samples, strictly positive support | Exact | **VERIFIED (P11)** |
+| **P11-B005** | Distribution | Uniform distribution properties | $[a, b] = [10.0, 20.0]$ | $\mu = 15.0, \sigma^2 = 8.3333$ | Exact | **VERIFIED (P11)** |
+| **P11-B006** | Distribution | Triangular distribution properties | $a = 10.0, c = 15.0, b = 30.0$ | Asymmetric support, bounded in $[a, b]$ | Exact | **VERIFIED (P11)** |
+| **P11-B007** | Distribution | Exponential memoryless distribution | $\lambda = 0.1\text{ s}^{-1}$ (mean 10.0s) | $\mu = 10.0, \sigma^2 = 100.0$ | Exact | **VERIFIED (P11)** |
+| **P11-B008** | Distribution | Empirical discrete distribution | Values $[10, 20, 30]$, probs $[0.2, 0.5, 0.3]$ | $\mu = 21.0, \sigma^2 = 49.0$ | Exact | **VERIFIED (P11)** |
+| **P11-B009** | Distribution | Empirical continuous distribution | Sample quantiles with linear interpolation | Monotonic CDF mapping, quantile recovery | Exact | **VERIFIED (P11)** |
+| **P11-B010** | RNG | Modern NumPy generator initialization | `np.random.default_rng` | Deterministic PCG64 stream from master seed | Exact | **VERIFIED (P11)** |
+| **P11-B011** | RNG | Master random seed determinism | Fixed master seed $S = 42$ | Identical sequence across repeated runs | Exact | **VERIFIED (P11)** |
+| **P11-B012** | RNG | Replication stream independence | Replications $i \neq j$ | Child streams statistically uncorrelated | Exact | **VERIFIED (P11)** |
+| **P11-B013** | Scopes | `PER_REPLICATION` scope caching | Variable sampled once per replication | Same value across all integration steps in run | Exact | **VERIFIED (P11)** |
+| **P11-B014** | Scopes | `PER_TRAIN` scope caching | Variable sampled once per train | Value constant throughout train trip | Exact | **VERIFIED (P11)** |
+| **P11-B015** | Scopes | `PER_STATION_STOP` scope caching | Variable sampled per station call | Distinct dwell per station call | Exact | **VERIFIED (P11)** |
+| **P11-B016** | Correlation | Positive semi-definite matrix validation | Cholesky factorization of correlation matrix | Rejects non-PSD or asymmetric matrices | Exact | **VERIFIED (P11)** |
+| **P11-B017** | Correlation | Gaussian copula marginal preservation | Correlated bivariate normal/uniform draws | Rank correlation preserved, marginals exact | Exact | **VERIFIED (P11)** |
+| **P11-B018** | Isolation | Complete replication state isolation | Independent coordinator and train instances | Zero state leakage between replications | Exact | **VERIFIED (P11)** |
+| **P11-B019** | Dwell | Stochastic dwell with physical floor | $\mu = 40.0\text{s}, \text{min} = 35.0\text{s}$ | Actual dwell $\ge 35.0\text{s}$, rear clearance preserved | Exact | **VERIFIED (P11)** |
+| **P11-B020** | Readiness | Departure readiness jitter | Jitter $\in [10.0, 30.0]\text{ s}$ | Effective departure delayed by sampled jitter | Exact | **VERIFIED (P11)** |
+| **P11-B021** | Traction | Traction utilization variation | Utilization factor $\in [0.85, 0.95]$ | $F_{\text{trac}}$ scaled, train physics intact | Exact | **VERIFIED (P11)** |
+| **P11-B022** | Braking | Braking utilization variation | Braking factor $\in [0.80, 1.00]$ | Service deceleration scaled within safety envelope | Exact | **VERIFIED (P11)** |
+| **P11-B023** | Signalling | Signalling processing latency jitter | Latency $\in [0.5, 2.0]\text{ s}$ | Route setup delayed, interlocking safe | Exact | **VERIFIED (P11)** |
+| **P11-B024** | TVS | TVS release delay variation | TVS release timer $\in [5.0, 15.0]\text{ s}$ | Release timer extended, single-train rule intact | Exact | **VERIFIED (P11)** |
+| **P11-B025** | TVS | Invariant single-train rule protection | TVS zone traversal under stochastic arrivals | Max simultaneous train count $\le 1$ | 0 violations | **VERIFIED (P11)** |
+| **P11-B026** | Disruptions | Temporary operational disruption | TSR / extended dwell injection | Downstream knock-on secondary delays tracked | Exact | **VERIFIED (P11)** |
+| **P11-B027** | Headway | Stochastic headway distribution | Multiple microscopic replications | Technical & operational headway distributions | Exact | **VERIFIED (P11)** |
+| **P11-B028** | Delays | Primary vs secondary delay breakdown | Initial primary delay at station | Propagation through follower trains captured | Exact | **VERIFIED (P11)** |
+| **P11-B029** | TVS | TVS waiting time and queue length | High-density stochastic arrival queue | Mean wait, P95 wait, max queue tracked | Exact | **VERIFIED (P11)** |
+| **P11-B030** | Statistics | Statistical summaries & quantiles | Linear percentile interpolation | P5, P50, P90, P95, P99, Student's t CI | Exact | **VERIFIED (P11)** |
+| **P11-B031** | Reliability | Multi-criteria operational evaluation | Punctuality $\ge 90\%$, delay $\le 30\text{s}$ | All criteria evaluated with Wilson score CI | Exact | **VERIFIED (P11)** |
+| **P11-B032** | Capacity | Reliability-based capacity sweep | Demand rate sweep under variability | Maximum sustainable rate satisfying criteria | Exact | **VERIFIED (P11)** |
+| **P11-B033** | Directional | FORWARD stochastic simulation | Forward corridor with station and TVS | Replications complete cleanly with statistics | Exact | **VERIFIED (P11)** |
+| **P11-B034** | Directional | REVERSE stochastic simulation | Reverse corridor with station and TVS | Reverse traversals and delays verified | Exact | **VERIFIED (P11)** |
+| **P11-B035** | Directional | Simultaneous opposing-direction simulation | Double-track corridor with bidirectional trains | Simultaneous trains simulated without interference | Exact | **VERIFIED (P11)** |
+| **P11-B036** | Resilience | Replication failure recording | Non-fatal replication failure handling | Failed run recorded, valid runs aggregated | Exact | **VERIFIED (P11)** |
+| **P11-B037** | Immutability | Deterministic baseline preservation | Parameter sampling on cloned templates | Baseline configurations completely unmodified | Exact | **VERIFIED (P11)** |
+| **P11-B038** | Reproducibility | Master seed sequence reproducibility | Seed $S = 777$ executed twice | Identical random parameter sequences generated | Exact | **VERIFIED (P11)** |
+

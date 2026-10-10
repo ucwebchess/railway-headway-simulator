@@ -1,8 +1,9 @@
-"""Headway calculation, blocking-time analysis, TVS constraints, capacity, and sensitivity subsystem.
+"""Headway calculation, blocking-time analysis, TVS constraints, capacity, and stochastic simulation subsystem.
 
 Milestone P08 — Blocking-Time Analysis & Technical Headway Solver.
 Milestone P09 — Multi-Train Dispatching & Operations.
-Milestone P10 — Railway Capacity, UIC 406-Inspired Assessment & Sensitivity Analysis (RHS-P10-001).
+Milestone P10 — Railway Capacity, UIC 406-Inspired Assessment & Sensitivity Analysis.
+Milestone P11 — Stochastic Simulation, Monte Carlo & Railway Operational Reliability (RHS-P11-001).
 """
 
 from headway.analysis.blocking_time import (
@@ -49,6 +50,18 @@ from headway.analysis.delays import (
     SecondaryPropagationNode,
     TrainDelaySummary,
 )
+from headway.analysis.distributions import (
+    EmpiricalContinuousDistribution,
+    EmpiricalDiscreteDistribution,
+    ExponentialDistribution,
+    LognormalDistribution,
+    NormalDistribution,
+    ProbabilityDistribution,
+    TriangularDistribution,
+    TruncatedNormalDistribution,
+    UniformDistribution,
+    create_distribution,
+)
 from headway.analysis.headway_results import (
     HeadwayResult,
     HeadwayValidationStatus,
@@ -67,6 +80,25 @@ from headway.analysis.journey_time import (
     OperationalKPIs,
 )
 from headway.analysis.mixed_traffic import MixedTrafficAnalyzer
+from headway.analysis.monte_carlo import (
+    MonteCarloExecutionResult,
+    MonteCarloSimulationManager,
+    ReplicationResult,
+)
+from headway.analysis.random_variables import (
+    DisruptionType,
+    DistributionType,
+    OperationalDisruption,
+    SamplingScope,
+    StochasticVariableDefinition,
+    TargetObjectType,
+)
+from headway.analysis.reliability import (
+    CriterionEvaluationResult,
+    ReliabilityCriterion,
+    ReliabilityEvaluationResult,
+    ReliabilityEvaluator,
+)
 from headway.analysis.resource_utilization import (
     ResourceUtilizationAnalyzer,
     merge_time_intervals,
@@ -75,6 +107,19 @@ from headway.analysis.resource_utilization import (
 from headway.analysis.saturation import CapacitySaturationSearch
 from headway.analysis.sensitivity import SensitivityAnalyzer
 from headway.analysis.stability import OperationalStabilityEvaluator
+from headway.analysis.statistics import (
+    StatisticalSummary,
+    compute_mean_confidence_interval,
+    compute_statistical_summary,
+    compute_wilson_score_interval,
+)
+from headway.analysis.stochastic import (
+    CommonRandomNumbersManager,
+    CorrelationGroup,
+    MasterSeedManager,
+    StochasticParameterSampler,
+)
+from headway.analysis.stochastic_capacity import ReliabilityBasedCapacityCalculator
 from headway.analysis.throughput import ThroughputCalculator
 from headway.analysis.timetable_compression import TimetableCompressor, TrainPathStairway
 
@@ -142,4 +187,37 @@ __all__ = [
     "CapacityConsumptionCalculator",
     "BottleneckAnalyzer",
     "SensitivityAnalyzer",
+    # P11 Stochastic & Monte Carlo
+    "TargetObjectType",
+    "SamplingScope",
+    "DistributionType",
+    "DisruptionType",
+    "StochasticVariableDefinition",
+    "OperationalDisruption",
+    "ProbabilityDistribution",
+    "NormalDistribution",
+    "TruncatedNormalDistribution",
+    "LognormalDistribution",
+    "UniformDistribution",
+    "TriangularDistribution",
+    "ExponentialDistribution",
+    "EmpiricalDiscreteDistribution",
+    "EmpiricalContinuousDistribution",
+    "create_distribution",
+    "MasterSeedManager",
+    "CorrelationGroup",
+    "CommonRandomNumbersManager",
+    "StochasticParameterSampler",
+    "StatisticalSummary",
+    "compute_statistical_summary",
+    "compute_mean_confidence_interval",
+    "compute_wilson_score_interval",
+    "ReliabilityCriterion",
+    "CriterionEvaluationResult",
+    "ReliabilityEvaluationResult",
+    "ReliabilityEvaluator",
+    "ReplicationResult",
+    "MonteCarloExecutionResult",
+    "MonteCarloSimulationManager",
+    "ReliabilityBasedCapacityCalculator",
 ]

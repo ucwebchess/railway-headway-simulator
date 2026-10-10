@@ -38,7 +38,7 @@ from headway.data.canonical import (
     SignallingTechnologyType,
 )
 from headway.infrastructure.direction import RunningDirection
-from headway.infrastructure.route import Route
+from headway.infrastructure.route import PositionMappingError, Route
 from headway.infrastructure.stations import RoutePlatformStop
 from headway.rolling_stock.train import RollingStockParameters
 from headway.signalling.platform_controller import PlatformSelectionPolicy
@@ -222,8 +222,11 @@ class MultiTrainSimulator:
             tvs_sec = cfg.tvs
             # Check if TVS intersects train route (handling both FORWARD and REVERSE entry points)
             for interval in tvs_sec.link_intervals:
-                tvs_p1 = train.route.physical_to_route_distance(interval.link_id, interval.start_offset_m)
-                tvs_p2 = train.route.physical_to_route_distance(interval.link_id, interval.end_offset_m)
+                try:
+                    tvs_p1 = train.route.physical_to_route_distance(interval.link_id, interval.start_offset_m)
+                    tvs_p2 = train.route.physical_to_route_distance(interval.link_id, interval.end_offset_m)
+                except PositionMappingError:
+                    continue
                 tvs_route_pos = None
                 if tvs_p1 is not None and tvs_p2 is not None:
                     tvs_route_pos = min(tvs_p1, tvs_p2)
@@ -532,8 +535,11 @@ class MultiTrainSimulator:
             # Check TVS sections for front entry and rear clearance (P07 & P09-TVS-003)
             for tvs_id, cfg in getattr(self.coordinator.tvs_controller, "configs", {}).items():
                 for interval in cfg.tvs.link_intervals:
-                    tvs_start = train.route.physical_to_route_distance(interval.link_id, interval.start_offset_m)
-                    tvs_end = train.route.physical_to_route_distance(interval.link_id, interval.end_offset_m)
+                    try:
+                        tvs_start = train.route.physical_to_route_distance(interval.link_id, interval.start_offset_m)
+                        tvs_end = train.route.physical_to_route_distance(interval.link_id, interval.end_offset_m)
+                    except PositionMappingError:
+                        continue
                     if tvs_start is not None and tvs_end is not None:
                         t_start = min(tvs_start, tvs_end)
                         t_end = max(tvs_start, tvs_end)
