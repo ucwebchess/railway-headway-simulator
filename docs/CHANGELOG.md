@@ -7,7 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P10 (Current Milestone)
+## [0.1.0-dev] - Milestone P11 (Current Milestone)
+
+### Added
+- **Stochastic Variable Definitions & Disruptions (`headway.analysis.random_variables`):**
+  - Standardized schema for configurable stochastic variables with target object types, parameter identifiers, units, bounds, and correlation groups.
+  - Granular sampling scopes: `PER_REPLICATION`, `PER_TRAIN`, `PER_STATION_STOP`, `PER_RESOURCE_EVENT`, `PER_COMMUNICATION_EVENT`, and `PER_TIME_WINDOW`.
+  - Operational disruptions: temporary speed restrictions (TSR), extended station dwell, delayed route setting, temporary platform unavailability, TVS delays, communication latency, and traction reduction.
+- **Probability Distribution Engine (`headway.analysis.distributions`):**
+  - Fully validated continuous and discrete distributions: Normal, Truncated Normal, Lognormal, Uniform, Triangular, Exponential, Empirical Discrete, and Empirical Continuous.
+  - Strict parameter validation (positive std/scale, monotonic bounds/CDF, unit probability sums).
+  - Exact analytical moments (mean, variance) and PPF quantile functions.
+- **RNG, Seed Management & Common Random Numbers (`headway.analysis.stochastic`):**
+  - Modern NumPy `default_rng` generator architecture utilizing PCG64 bit generators.
+  - `MasterSeedManager` generating deterministic child streams per replication via `SeedSequence.spawn()`.
+  - `CorrelationGroup` managing correlated random variables via Gaussian copula, positive semi-definite matrix validation, and Cholesky decomposition.
+  - `CommonRandomNumbersManager` providing synchronized random draws across scenario comparisons for variance reduction.
+  - `StochasticParameterSampler` enforcing scope caching and bounding.
+- **Statistical Summary & Confidence Intervals (`headway.analysis.statistics`):**
+  - Non-rounded statistical summaries: count, mean, median, sample std, min, max, P5, P50, P90, P95, P99 using linear quantile interpolation.
+  - Student's t-distribution confidence intervals for sample means.
+  - Wilson score confidence intervals for binomial proportions (punctuality).
+- **Operational Reliability Assessment (`headway.analysis.reliability`):**
+  - User-configurable `ReliabilityCriterion` thresholds (punctuality %, mean delay, P95 delay, TVS waiting, max queue).
+  - Multi-criteria replication evaluator with Wilson score CI and diagnostic summary generation.
+- **Monte Carlo Simulation Manager (`headway.analysis.monte_carlo`):**
+  - Isolated replication runner executing the microscopic multi-train engine (`MultiTrainSimulator`) without state leakage.
+  - Deepcopy cloning ensuring deterministic baseline parameter immutability.
+  - Stochastic parameter application across dwell, departure readiness, traction utilization, braking utilization, and TVS release timers.
+  - Progress callbacks, cancellation tokens, and non-fatal replication failure recording.
+  - Statistical aggregation across headways, journey times, delays, TVS queues, and throughputs.
+- **Reliability-Based Capacity Calculator (`headway.analysis.stochastic_capacity`):**
+  - Candidate demand rate sweep testing sustainable capacity under stochastic operational variability.
+  - Highest reliable rate identification satisfying all configured reliability criteria.
+- **Verification Benchmarks & Tests (`tests/engineering/`, `tests/unit/`, `tests/integration/`):**
+  - Numerical Benchmarks A (Uniform distribution mean 15.0s, var 8.3333 s^2), B (Binomial punctuality 95/100 = 0.95), C (Delay sample mean 30.0s, std 15.8114s), and D (TVS waiting mean 24.0s, wait prob 60.0%).
+  - Mandatory engineering benchmarks P11-B001 to P11-B038 covering schema validation, distributions, RNG reproducibility, TVS single-train occupancy invariants, and bidirectional operations.
+  - 23 negative unit tests verifying parameter boundaries and error handling.
+  - 7 end-to-end integration tests verifying FORWARD, REVERSE, opposing-direction simultaneous trains, TVS queueing, disruptions, CRN synchronization, and reliability-based capacity calculation.
+  - Zero regression across all prior milestones (538 total passing tests).
+
+---
+
+## [0.1.0-dev] - Milestone P10
 
 ### Added
 - **Theoretical and Planning Capacity Engine (`headway.analysis.capacity`):**
