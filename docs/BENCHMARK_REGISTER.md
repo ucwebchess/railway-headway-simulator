@@ -277,4 +277,47 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P12-B027** | Directionality | Forward vs Reverse scenario comparison | Compare identical corridor in opposite directions | Direction compatibility notes and differences captured | Exact | **VERIFIED (P12)** |
 | **P12-B028** | Reproducibility | Deterministic reproducibility across instances | Repeated independent scenario execution | Identical effective hashes and comparison reports | Exact | **VERIFIED (P12)** |
 
+---
+
+### 10. Engineering Visualization & Results Architecture Benchmarks (Milestone P13)
+
+| Benchmark ID | Subsystem | Description | Key Inputs | Expected Result | Tolerance | Verification Status |
+|---|---|---|---|---|---|---|
+| **P13-B001** | Trajectory | Speed profile rendering from actual simulation results | `TrainTrajectory` with cruising and braking | Renders speed vs distance with exact coordinates | Exact | **VERIFIED (P13)** |
+| **P13-B002** | Speed Envelope | Permissible civil and signalling speed limits | Track link speed limits and station stops | Renders stepped civil speed envelope trace | Exact | **VERIFIED (P13)** |
+| **P13-B003** | Alignment | Forward gradient profile rendering | Positive grade links in `FORWARD` direction | Gradient bar trace with correct positive sign | Exact | **VERIFIED (P13)** |
+| **P13-B004** | Alignment | Reverse gradient profile sign inversion | Positive grade links in `REVERSE` direction | Effective gradient sign inverted (-15.0‰) | Exact | **VERIFIED (P13)** |
+| **P13-B005** | Alignment | Curvature profile rendering | Track links with curvature radius | Reciprocal curvature ($1/R$) rendered accurately | Exact | **VERIFIED (P13)** |
+| **P13-B006** | Time-Distance | Forward time-distance operational trajectory | Trajectory in `FORWARD` direction | Time-distance curve with forward chainage | Exact | **VERIFIED (P13)** |
+| **P13-B007** | Time-Distance | Reverse time-distance operational trajectory | Trajectory in `REVERSE` direction | Time-distance curve with reverse chainage | Exact | **VERIFIED (P13)** |
+| **P13-B008** | Multi-Train | Multi-train operational trajectory diagram | Leader and follower train trajectories | Multiple trajectories rendered with distinct styling | Exact | **VERIFIED (P13)** |
+| **P13-B009** | Blocking | Blocking-time stairway diagram | Resource blocking intervals & conflict | Leader & shifted follower stairways with shift annotation | Exact | **VERIFIED (P13)** |
+| **P13-B010** | Blocking | Seven-component decomposition stacked chart | Decomposed blocking intervals | 7 stacked bar traces with standardized engineering colors | Exact | **VERIFIED (P13)** |
+| **P13-B011** | Blocking | Seven-component duration reconciliation | Decomposed blocking intervals | Component sum matches total duration ($t_1..t_7$) | $\le 1\text{ ms}$ | **VERIFIED (P13)** |
+| **P13-B012** | Tables | Pairwise conflict ranking table | Headway result with controlling conflict | Tabulates resource conflicts, required headway, slack | Exact | **VERIFIED (P13)** |
+| **P13-B013** | Tables | Longest occupation ranking table | Sequenced blocking intervals | Tabulates resources sorted descending by duration | Exact | **VERIFIED (P13)** |
+| **P13-B014** | Station | Platform occupation timeline chart | Platform occupation record with dwell | Renders platform reservation, dwell, clearance | Exact | **VERIFIED (P13)** |
+| **P13-B015** | Station | Residual rear occupation chart | Platform occupation with active residual rear | Highlights upstream block infringement duration | Exact | **VERIFIED (P13)** |
+| **P13-B016** | Headway | Mixed-traffic headway heatmap | Directional mixed-traffic headway matrix | 2D color-coded matrix with annotations and bottlenecks | Exact | **VERIFIED (P13)** |
+| **P13-B017** | Headway | Directional separation of headway heatmaps | Matrices in `FORWARD` and `REVERSE` | Separate figures with directional titles and banners | Exact | **VERIFIED (P13)** |
+| **P13-B018** | Tables | Detailed resource timing table | 7-component blocking breakdown | Tabulates all 7 components per resource interval | Exact | **VERIFIED (P13)** |
+| **P13-B019** | Tables | Resource provenance table | Blocking intervals with physical track links | Traces resource to underlying infrastructure model | Exact | **VERIFIED (P13)** |
+| **P13-B020** | Capacity | Two-panel block-length sensitivity chart | Sensitivity study varying block length | Panel 1: Headway vs Length, Panel 2: Capacity vs Length | Exact | **VERIFIED (P13)** |
+| **P13-B021** | Capacity | Signalling sensitivity comparison chart | Sensitivity study varying signalling technology | Compares Fixed Block vs CBTC Moving Block | Exact | **VERIFIED (P13)** |
+| **P13-B022** | TVS | TVS section occupancy timeline chart | TVS section occupation intervals | Renders TVS zones over time with single-occupancy | Exact | **VERIFIED (P13)** |
+| **P13-B023** | TVS | Signalling vs TVS headway comparison chart | Headway comparisons across resources | Highlights TVS constraint vs signalling constraint | Exact | **VERIFIED (P13)** |
+| **P13-B024** | Operations | Queue development timeline chart | Multi-train simulation delay records | Plots queued train count over simulation horizon | Exact | **VERIFIED (P13)** |
+| **P13-B025** | Operations | Delay propagation timeline chart | Secondary delay records over time | Plots delay development and recovery curve | Exact | **VERIFIED (P13)** |
+| **P13-B026** | Capacity | Capacity saturation & stability chart | Demand sweep with mean delay response | Plots delay curve, saturation knee, stability boundary | Exact | **VERIFIED (P13)** |
+| **P13-B027** | Stochastic | Frequency histogram with quantiles | Monte Carlo replication samples | Histogram with vertical mean, median, P95 lines | Exact | **VERIFIED (P13)** |
+| **P13-B028** | Stochastic | Point estimates with confidence intervals | Statistical summary with CI bounds | Plots point estimates with high-contrast error bars | Exact | **VERIFIED (P13)** |
+| **P13-B029** | Scenario | Scenario KPI comparison grouped bar chart | `ScenarioComparisonReport` | Grouped bar chart comparing baseline vs candidate scenarios | Exact | **VERIFIED (P13)** |
+| **P13-B030** | Scenario | Bottleneck migration diagram | Multi-scenario bottleneck shift report | Highlights migration of critical resource across scenarios | Exact | **VERIFIED (P13)** |
+| **P13-B031** | Interactive | Interactive Plotly figure generation | All visualization figure generators | Generates valid Plotly Figure with interactive tooltips | Exact | **VERIFIED (P13)** |
+| **P13-B032** | Static Export | Headless high-resolution image export | Plotly figure exported to PNG | Exports file to disk with fallback Matplotlib engine | Non-empty | **VERIFIED (P13)** |
+| **P13-B033** | Immutability | Simulation result package immutability | `SimulationResultPackage` dataclass | Attempted attribute mutation raises `FrozenInstanceError` | Exact | **VERIFIED (P13)** |
+| **P13-B034** | Governance | Zero engineering recalculation | Visualization adapters and builders | Reads results directly without recalculating dynamics | Exact | **VERIFIED (P13)** |
+| **P13-B035** | Diagnostic | Diagnostic reporting on missing data | Empty or corrupted trajectory | Validator produces structured diagnostic, preventing crash | Exact | **VERIFIED (P13)** |
+
+
 

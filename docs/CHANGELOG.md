@@ -7,7 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P12 (Current Milestone)
+## [0.1.0-dev] - Milestone P13 (Current Milestone)
+
+### Added
+- **Canonical Simulation Result Architecture (`headway.reporting.result_models`):**
+  - Authoritative result package container (`SimulationResultPackage`) consolidating microscopic train trajectories, speed envelopes, alignment profiles, blocking intervals, technical headway results, mixed-traffic matrices, platform occupations, TVS occupations, sensitivity studies, stochastic summaries, and scenario comparison reports.
+  - Frozen, immutable display and provenance record models (`PlatformOccupationRecord`, `StationStopRecord`, `ConflictRankingRecord`, `ResourceTimingRecord`, `ResourceProvenanceRecord`).
+  - Zero engineering recalculation guarantee: visualizers read directly from upstream simulation results without re-integrating train dynamics or recomputing blocking times.
+  - Explicit running direction field (`RunningDirection`) on all visualization models and records.
+- **Result Validation & Diagnostic Engine (`headway.reporting.result_validation`):**
+  - Comprehensive pre-chart validation engine (`ResultValidator`, `ResultValidationReport`, `ResultDiagnostic`).
+  - Structured diagnostic error codes (`MISSING_IDENTITY`, `INVALID_DIRECTION`, `EMPTY_TRAJECTORY`, `NON_MONOTONIC_TIME`, `NON_MONOTONIC_DISTANCE`, `NON_FINITE_VALUE`, `INVALID_INTERVAL`, `INVALID_HEADWAY`, `INVALID_MATRIX`, `DIRECTION_MISMATCH`, `EMPTY_RESOURCE_LIST`, `MISSING_DATASET`).
+  - Strict inspection of physical coordinates, temporal monotonicity, non-finite values (NaN/Inf), and negative speeds.
+- **Standardized Chart Themes & Engineering Styling (`headway.reporting.chart_theme`):**
+  - Professional railway engineering palette (`ChartColors`: navy, blue, teal, green, amber, red).
+  - Explicit physical units on all axes (m, km, km/h, m/s, s, ‰, 1/m).
+  - Prominent running direction banners (`Running Direction: FORWARD` / `REVERSE`).
+  - Distinct highlights for controlling resources, critical blocks, and bottleneck shifts.
+  - Dual theme support: interactive Plotly figures and publication-ready Matplotlib figures.
+- **Direction-Aware Visualization Data Adapters (`headway.reporting.visualization_adapters`):**
+  - Intelligent trajectory downsampling preserving mode changes, velocity extrema, and boundary events.
+  - Directional chainage alignment (route vs physical chainage).
+  - Gradient profile adaptation with sign inversion in `REVERSE` running direction (+15‰ uphill becomes -15‰ downhill).
+  - Curvature profile adaptation calculating reciprocal curvature ($1/R$).
+  - Extraction adapters for conflict ranking, longest occupation, and 7-component timing.
+- **Microscopic Speed, Gradient & Curvature Visualization (`headway.reporting.charts_speed`):**
+  - Detailed speed profile diagrams (`create_speed_distance_figure`).
+  - Stepped permissible civil and signalling speed envelopes.
+  - Station platform stop markers and dwell zones.
+  - Track alignment profiles (`create_gradient_profile_figure`, `create_curvature_profile_figure`).
+  - Stacked 3-panel track alignment composite figure (`create_track_alignment_combined_figure`).
+- **Blocking-Time Stairway & Seven-Component Stacked Charts (`headway.reporting.charts_blocking`):**
+  - Microscopic blocking-time stairway diagrams (`create_blocking_stairway_figure`) rendering leader and follower blocking intervals with technical minimum headway shift $H$.
+  - Seven-component decomposition stacked bar charts (`create_seven_component_figure`) tabulating setup $t_1$, approach $t_2$, running $t_3$, dwell $t_4$, geometric clearance $t_5$, residual rear $t_6$, and release $t_7$.
+  - Sub-millisecond mathematical duration reconciliation verification.
+- **Operational Time-Distance Diagrams & Mixed-Traffic Heatmaps (`headway.reporting.charts_headway`):**
+  - Multi-train time-distance operational trajectories (`create_time_distance_figure`) with station locations and dwell intervals.
+  - Bidirectional and opposing-direction train trajectory rendering.
+  - Mixed-traffic minimum headway matrix heatmaps (`create_mixed_traffic_heatmap`) with values, color coding, and controlling bottleneck labels.
+- **Station Platform Track Occupation & TVS Diagrams (`headway.reporting.charts_station`, `headway.reporting.charts_tvs`):**
+  - Platform track occupation timeline diagrams (`create_platform_occupation_figure`) showing train arrival, dwell, departure, and clearance.
+  - Platform residual rear occupation visualization highlighting upstream block fouling.
+  - TVS section occupancy timeline diagrams (`create_tvs_occupation_figure`) verifying single-train occupancy rule.
+  - Signalling vs TVS minimum headway comparison diagrams (`create_tvs_comparison_figure`).
+- **Multi-Train Capacity & Stochastic Distribution Charts (`headway.reporting.charts_capacity`, `headway.reporting.charts_stochastic`):**
+  - Two-panel block length sensitivity figures (`create_block_sensitivity_figure`).
+  - Capacity saturation curves with queue development and stability boundaries (`create_capacity_saturation_figure`).
+  - Monte Carlo frequency histograms with mean and percentile reference lines (`create_stochastic_histogram_figure`).
+  - Point estimates with confidence interval error bars (`create_confidence_interval_figure`).
+- **Scenario Comparison & Bottleneck Migration Diagrams (`headway.reporting.charts_scenario`):**
+  - Scenario KPI grouped bar charts (`create_scenario_kpi_comparison_figure`) with absolute values and percentage deltas.
+  - Bottleneck migration plots (`create_bottleneck_migration_figure`) tracing governing resource movement.
+- **Standardized Engineering Tables & Multi-Format Exporters (`headway.reporting.tables`, `headway.reporting.export_static`):**
+  - Tabulation utilities for conflict ranking, longest occupation, station stopping, 7-component timing, infrastructure provenance, mixed-traffic matrices, and scenario comparisons.
+  - Export capabilities for CSV, Excel OOXML (`.xlsx`), JSON, and HTML.
+  - Headless static figure export (`StaticFigureExporter`, `export_figure_headless`, `export_matplotlib_figure`) supporting PNG, SVG, PDF, and high-DPI rendering with automatic headless fallback.
+- **Verification & Benchmark Coverage:**
+  - 35 mandatory benchmarks (`P13-B001` through `P13-B035`) verified in `tests/engineering/test_visualization_benchmarks.py`.
+  - 17 negative tests in `tests/unit/test_visualization_negative.py`.
+  - 4 end-to-end integration workflows in `tests/integration/test_visualization_integration.py`.
+  - Full suite expanded to 646 passing tests (100% pass rate).
+
+---
+
+## [0.1.0-dev] - Milestone P12
 
 ### Added
 - **Scenario Identity & Metadata (`headway.scenarios.scenario_models`):**
