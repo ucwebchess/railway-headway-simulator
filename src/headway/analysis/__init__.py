@@ -34,6 +34,18 @@ from headway.analysis.headway_search import (
     SearchResult,
 )
 from headway.analysis.headway_solver import TechnicalHeadwaySolver
+from headway.analysis.delays import (
+    DelayCause,
+    DelayIncident,
+    DelayPropagationTracker,
+    SecondaryPropagationNode,
+    TrainDelaySummary,
+)
+from headway.analysis.journey_time import (
+    JourneyTimeAnalyzer,
+    JourneyTimeDecomposition,
+    OperationalKPIs,
+)
 from headway.analysis.mixed_traffic import MixedTrafficAnalyzer
 
 __all__ = [
@@ -64,4 +76,13 @@ __all__ = [
     "SearchIterationStep",
     "SearchResult",
     "MixedTrafficAnalyzer",
+    # P09 Delays & Journey Time
+    "DelayCause",
+    "DelayIncident",
+    "SecondaryPropagationNode",
+    "TrainDelaySummary",
+    "DelayPropagationTracker",
+    "JourneyTimeDecomposition",
+    "OperationalKPIs",
+    "JourneyTimeAnalyzer",
 ]

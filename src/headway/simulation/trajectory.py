@@ -60,6 +60,11 @@ class TrainTrajectory:
         return self.samples[-1].time_s - self.samples[0].time_s
 
     @property
+    def journey_time_s(self) -> float:
+        """P04-JT-004: Total journey time along route."""
+        return self.total_time_s
+
+    @property
     def total_distance_m(self) -> float:
         if not self.samples:
             return 0.0

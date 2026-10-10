@@ -20,6 +20,9 @@
 | **RHS-P04-001** | P04 | Braking Models & Numerical Solver | Completed | Milestone P04 | Constant deceleration, speed-dependent piecewise linear curves, net effective vs brake generated deceleration, Runge-Kutta numerical solver, boundary localization, directional speed profiles. All 22 benchmarks verified. 178 total tests passing. |
 | **RHS-P05-001** | P05 | Resource Management Engine & Fixed-Block Signalling | Completed | Milestone P05 | Common resource architecture, decoupled state tracking, atomic reservations, conflict groups, switch locking, interlocking routes, sectional release, 2/3/4-aspect signals, Movement Authority, braking protection. All 30 benchmarks verified. 208 total tests passing. |
 | **RHS-P06-001** | P06 | Advanced Signalling (ETCS Level 2 & CBTC) | Completed | Milestone P06 | ETCS Level 2 with RBC, radio communication latency, multi-stage supervision curves, SvL/overlap; CBTC moving block with train localization, odometry uncertainty, protected envelope $x_{\mathrm{protected}}$, dynamic MA updates, fixed infrastructure restrictions; forward/reverse support. All 30 benchmarks verified (including Controlled Benchmarks A, B, C). 259 total tests passing. |
+| **RHS-P07-001** | P07 | Stations, Junctions & TVS Control Engine | Completed | Milestone P07 | Station/Platform controllers, multi-platform allocation, residual rear occupation, junction zone interlocking locking/release, TVS single-train rule ($N_{\max}=1$), TVS MA clamping, TVS queue tracker, whole-tunnel single-train rule. All 35 benchmarks verified. 294 total tests passing. |
+| **RHS-P08-001** | P08 | Seven-Component Blocking Time & Headway Analysis | Completed | Milestone P08 | Standardized half-open blocking intervals $B = [t_{\mathrm{start}}, t_{\mathrm{end}})$, 7-component additive decomposition, conflict detector, analytical shift, slack margins, controlling bottlenecks, technical minimum headway solver, microscopic joint verification, $N \times N$ directional mixed-traffic headway matrices. All benchmarks verified. 342 total tests passing. |
+| **RHS-P09-001** | P09 | Multi-Train Operational Simulation Engine | Completed | Milestone P09 | Simultaneous microscopic multi-train operational simulation under single shared clock, continuous train-front and train-rear tracking ($s_{\mathrm{rear}} = s_{\mathrm{front}} - L_{\mathrm{train}}$), dispatching policies (FCFS, Timetable, Priority, Fixed sequence), origin queues, station stops, multi-platform allocation, junction interlocking sequencing, TVS queues and holding points, wait-for dependency graph cycle analysis, deadlock diagnosis, additive journey-time decomposition, delay attribution, and time-distance datasets. All 39 benchmarks (P09-B001 to P09-B035 + Numerical Benchmarks A-D) verified. 394 total tests passing. |
 
 ---
 
@@ -27,10 +30,7 @@
 
 | Prompt ID | Milestone | Title | Status | Prerequisite |
 |---|---|---|---|---|
-| **RHS-P07-001** | P07 | Stations, Junctions & TVS Control Engine | Authorized Next | RHS-P06-001 |
-| **RHS-P08-001** | P08 | Seven-Component Blocking Time & Headway Analysis | Reserved | RHS-P07-001 |
-| **RHS-P09-001** | P09 | Multi-Train Operational Simulation Engine | Reserved | RHS-P08-001 |
-| **RHS-P10-001** | P10 | Line Capacity & UIC 406-Inspired Analysis | Reserved | RHS-P09-001 |
+| **RHS-P10-001** | P10 | Line Capacity & UIC 406-Inspired Analysis | Authorized Next | RHS-P09-001 |
 | **RHS-P11-001** | P11 | Stochastic Simulation & Operational Reliability | Reserved | RHS-P10-001 |
 | **RHS-P12-001** | P12 | Scenario Management & Sensitivity Engine | Reserved | RHS-P11-001 |
 | **RHS-P13-001** | P13 | Interactive Engineering Visualizations | Reserved | RHS-P12-001 |

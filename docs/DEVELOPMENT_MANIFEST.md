@@ -47,14 +47,15 @@
 | Signalling Subsystem | `src/headway/signalling/` | Complete (P05/P06/P07) | Common resource architecture, decoupled state tracking, atomic reservations, conflict groups, switch locking, interlocking routes, sectional release, 2/3/4-aspect signals, Movement Authority, braking protection, ETCS Level 2, CBTC Moving-Block, Station & Platform controllers, multi-platform allocation, residual rear occupation, TVS single-train rule ($N_{\max}=1$), TVS MA clamping, forward/reverse support |
 | Simulation Subsystem | `src/headway/simulation/` | Complete (P04) | Microscopic numerical integrator, train dynamic state, boundary event localization, directional speed profiles, journey time reconciliation |
 | Analysis Subsystem | `src/headway/analysis/` | Complete (P08) | Resource blocking intervals $B = [t_{\mathrm{start}}, t_{\mathrm{end}})$, seven-component decomposition, conflict detection, analytical temporal shift, slack margins, controlling bottlenecks, homogeneous/heterogeneous headways, directional mixed-traffic matrices ($N \times N$), station/junction/TVS integration, joint microscopic verification, iterative search |
+| Multi-Train Operations Subsystem | `src/headway/simulation/` | Complete (P09) | Genuine simultaneous microscopic multi-train operational simulation under single shared clock, continuous train-front and train-rear tracking ($s_{\mathrm{rear}} = s_{\mathrm{front}} - L_{\mathrm{train}}$), dispatching policies (FCFS, Timetable, Priority, Fixed sequence), origin queues, station stops, multi-platform allocation, junction interlocking sequencing, TVS queues and holding points, wait-for dependency graph cycle analysis, deadlock diagnosis, additive journey-time decomposition, delay attribution, and time-distance datasets |
 | Reporting Subsystem | `src/headway/reporting/` | Initialized | Engineering reports assigned to P14 |
 
 ---
 
 ### 3. Verification & Test Suite Status
 
-- **Automated Tests:** 342 automated tests (Unit, Integration, Engineering Benchmarks, Negative, Regression) executing via pytest.
-- **Test Pass Rate:** 100% (342 passed, 0 failed, 0 warnings).
+- **Automated Tests:** 394 automated tests (Unit, Integration, Engineering Benchmarks, Negative, Regression) executing via pytest.
+- **Test Pass Rate:** 100% (394 passed, 0 failed, 0 warnings).
 - **Engineering Verification:**
   - `BM-PHY-002`: Davis coefficient normalization verified.
   - `BENCH-P02-001` through `BENCH-P02-010`: All 10 P02 engineering benchmarks verified.
@@ -64,11 +65,12 @@
   - `P06-B001` through `P06-B030`: All 30 P06 advanced signalling engineering benchmarks verified (including Controlled Benchmarks A $d=600$m, B $x_{\mathrm{protected}}=1970$m, and C $t_{\mathrm{effective}}=101.0$s).
   - `P07-B001` through `P07-B035`: All 35 P07 station, platform, junction, residual rear, and TVS engineering benchmarks verified (including Benchmarks A $50$m/$180$s, B $200$s/$208$s/$213$s, C dual occupancy $200$s–$208$s, and D shared TVS exclusivity).
   - `P08-B001` through `P08-B005` + extended suite: All P08 blocking-time analysis, seven-component decomposition, directional mixed-traffic, and technical headway benchmarks verified.
+  - `P09-B001` through `P09-B035` + Numerical Benchmarks A–D: All 39 P09 multi-train operations, dispatching, journey time, and delay propagation benchmarks verified.
 - **Example Projects:** All 4 official example datasets integrated and verified with bidirectional calculations.
 
 ---
 
 ### 4. Next Authorized Step
 
-**Milestone P09 — Multi-Train Operations, Dispatching & Journey Time.**  
-Awaiting explicit task prompt before commencing P09 implementation.
+**Milestone P10 — Line Capacity & UIC 406-Inspired Analysis.**  
+Awaiting explicit task prompt before commencing P10 implementation.

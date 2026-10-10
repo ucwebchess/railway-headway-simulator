@@ -1,8 +1,20 @@
-"""Microscopic train movement dynamics and numerical simulation subsystem.
+"""Operational simulation and dispatching package.
 
-Milestone P04 — Braking, Speed Profiles & Microscopic Train Dynamics (RHS-P04-001).
+Milestone P09 — Multi-Train Operations, Dispatching & Journey Time (RHS-P09-001).
 """
 
+from headway.analysis.delays import (
+    DelayCause,
+    DelayIncident,
+    DelayPropagationTracker,
+    SecondaryPropagationNode,
+    TrainDelaySummary,
+)
+from headway.analysis.journey_time import (
+    JourneyTimeAnalyzer,
+    JourneyTimeDecomposition,
+    OperationalKPIs,
+)
 from headway.simulation.deadlock import (
     DeadlockDetector,
     DeadlockReport,
@@ -14,12 +26,6 @@ from headway.simulation.dispatching import (
     DispatchPolicy,
     OriginDepartureQueue,
 )
-from headway.simulation.events import (
-    BoundaryEvent,
-    BoundaryEventDetector,
-    CrossingEventType,
-)
-from headway.simulation.integrator import MicroscopicSimulator
 from headway.simulation.multi_train_engine import (
     MultiTrainSimulationResult,
     MultiTrainSimulator,
@@ -32,27 +38,9 @@ from headway.simulation.service_instance import (
     TrainGenerator,
     TrainServiceInstance,
 )
-from headway.simulation.speed_profile import (
-    SpeedProfileEngine,
-    SpeedProfilePoint,
-)
-from headway.simulation.state import (
-    DynamicMode,
-    OperationalState,
-    TrainDynamicState,
-)
-from headway.simulation.targets import (
-    BrakingTarget,
-    BrakingTargetResolver,
-    BrakingTargetType,
-)
 from headway.simulation.time_distance import (
     MultiTrainTimeDistanceDataset,
     TimeDistancePoint,
-)
-from headway.simulation.trajectory import (
-    TrajectorySample,
-    TrainTrajectory,
 )
 from headway.simulation.tvs_queue import (
     TVSQueueSnapshot,
@@ -61,21 +49,6 @@ from headway.simulation.tvs_queue import (
 )
 
 __all__ = [
-    "DynamicMode",
-    "OperationalState",
-    "TrainDynamicState",
-    "BrakingTargetType",
-    "BrakingTarget",
-    "BrakingTargetResolver",
-    "CrossingEventType",
-    "BoundaryEvent",
-    "BoundaryEventDetector",
-    "SpeedProfilePoint",
-    "SpeedProfileEngine",
-    "TrajectorySample",
-    "TrainTrajectory",
-    "MicroscopicSimulator",
-    # P09 Multi-Train Operations
     "TrainGenerationMode",
     "ServiceType",
     "TimetableEntry",
@@ -96,4 +69,12 @@ __all__ = [
     "MultiTrainTimeDistanceDataset",
     "MultiTrainSimulator",
     "MultiTrainSimulationResult",
+    "DelayCause",
+    "DelayIncident",
+    "SecondaryPropagationNode",
+    "TrainDelaySummary",
+    "DelayPropagationTracker",
+    "JourneyTimeDecomposition",
+    "OperationalKPIs",
+    "JourneyTimeAnalyzer",
 ]

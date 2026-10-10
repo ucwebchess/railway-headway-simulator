@@ -101,6 +101,18 @@ class SimulationError(HeadwayError):
     DEFAULT_ERROR_CODE = "ERR_SIMULATION"
 
 
+class DeadlockError(SimulationError):
+    """Raised when an unresolvable operational deadlock is detected."""
+
+    DEFAULT_ERROR_CODE = "ERR_SIM_DEADLOCK"
+
+
+class OperationalSimulationError(SimulationError):
+    """Raised when operational constraints or invalid service configurations occur."""
+
+    DEFAULT_ERROR_CODE = "ERR_SIM_OPERATIONAL"
+
+
 class HeadwayCalculationError(HeadwayError):
     """Raised during headway conflict analysis or technical headway resolution failures."""
 
