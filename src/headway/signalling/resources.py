@@ -146,6 +146,18 @@ class ResourceController:
         """Retrieve managed resource by identifier."""
         return self.resources.get(resource_id)
 
+    def is_resource_available(
+        self,
+        resource_id: str,
+        train_id: Optional[str] = None,
+        current_time_s: float = 0.0,
+    ) -> bool:
+        """P05-STATE-006: Check if resource is available for train_id at current_time_s."""
+        res = self.resources.get(resource_id)
+        if not res:
+            return True
+        return res.is_available(for_train_id=train_id, current_time_s=current_time_s)
+
     def register_signalling_block(self, block: SignallingBlock) -> ManagedResource:
         """Register a SignallingBlock as a TRACK_BLOCK managed resource."""
         res = ManagedResource(

@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P08 (Current Milestone)
+## [0.1.0-dev] - Milestone P09 (Current Milestone)
+
+### Added
+- **Simultaneous Multi-Train Microscopic Simulator (`headway.simulation.multi_train_engine`):**
+  - Shared multi-train simulation clock and discrete-time event stepper advancing all active trains simultaneously under unified signalling/resource state.
+  - Continuous train-front and train-rear tracking ($s_{\mathrm{rear}} = s_{\mathrm{front}} - L_{\mathrm{train}}$) across physical links without independent trajectory shifting.
+  - Force balance and distributed resistance integration based on P04 physics (`ForceBalanceEngine` & `DistributedResistanceEngine`).
+  - Speed enforcement against line limits, dynamic service braking deceleration profiles, and movement authorities.
+  - Complete support for `RunningDirection.FORWARD` and `RunningDirection.REVERSE` railway operations.
+- **Train Service Instances & Generation (`headway.simulation.service_instance`):**
+  - `ServiceType` definition linking rolling stock, route, stops, priority, and directionality.
+  - `TrainServiceInstance` tracking microscopic dynamics, operational state machines, cumulative and primary delays, and boundary events.
+  - `TrainGenerator` supporting single, pairwise, fixed-interval ($t_n = t_0 + nH$), repeated homogeneous, repeated mixed-traffic, and timetable generation.
+- **Origin Queue & Dispatching Engine (`headway.simulation.dispatching`):**
+  - `OriginDepartureQueue` managing pending departures at route origin links.
+  - Four dispatching policies: `FIRST_COME_FIRST_SERVED`, `TIMETABLE_ORDER`, `PRIORITY_BASED`, and `FIXED_SEQUENCE`.
+  - Deterministic tie-breaking on identical timestamps and safety priority gating against occupied entry blocks.
+  - Starvation warning emission when train waiting times exceed configured thresholds.
+  - Departure delay calculation: $D_{\mathrm{departure}} = t_{\mathrm{actual}} - t_{\mathrm{requested}}$.
+- **Operational Signalling, Station & TVS Integrations:**
+  - Common movement authority interface across Fixed-Block (P05), ETCS Level 2 (P06), and CBTC Moving-Block (P06).
+  - Station stops with deterministic dwell times, platform entry locking, and rear-clearance-based release delay timers.
+  - Multi-platform allocation with fallback alternatives (`PREFERRED_WITH_ALTERNATIVES`, `EARLIEST_FEASIBLE`).
+  - Junction interlocking route sequencing, route locking, and release.
+  - TVS entry authorization, protection holding points, complete rear clearance, shared group exclusivity, and queue tracking (`TVSQueueTracker`).
+- **Deadlock Detection & Graph Analysis (`headway.simulation.deadlock`):**
+  - Directed wait-for dependency graph construction (`build_wait_graph`).
+  - Cycle detection using Tarjan's algorithm / DFS finding circular resource waits.
+  - Single-track opposing head-on deadlock detection (`detect_opposing_head_on_deadlock`).
+  - Structured deadlock reporting (`DeadlockReport`) and optional simulation termination (`DeadlockError`).
+- **Journey-Time & Delay Analysis (`headway.analysis.journey_time` & `headway.analysis.delays`):**
+  - Additive journey-time decomposition ($T_{\mathrm{operational}} = T_{\mathrm{unconstrained}} + \sum D_k$): moving time, planned dwell, dwell extension, TVS waiting, junction waiting, platform waiting, signalling waiting, and braking/reacceleration losses.
+  - Schedule delay attribution ($D = t_{\mathrm{actual}} - t_{\mathrm{scheduled}}$) with primary and secondary delay separation.
+  - Operational KPIs calculation (`OperationalKPIs`): requested, dispatched, and completed trains, punctuality percentage, delay statistics, and departure sequences.
+- **Time-Distance Dataset Export (`headway.simulation.time_distance`):**
+  - `MultiTrainTimeDistanceDataset` storing high-resolution time-distance points for all active trains.
+  - Preserved route identity, chainage, speed, acceleration, and operational state for downstream visualization (P13).
+  - DataFrame export utility (`to_dataframe`).
+- **Verification Benchmarks & Tests (`tests/engineering/`, `tests/unit/`, `tests/integration/`):**
+  - 35 mandatory benchmarks (P09-B001 through P09-B035) plus Numerical Benchmarks A–D (39 engineering tests in `test_multi_train_benchmarks.py`).
+  - 10 unit negative tests for error handling, parameter validation, and deadlocks (`test_multi_train_negative.py`).
+  - 3 integration tests covering end-to-end multi-train multi-station corridors, dispatching policies, and bidirectional traversals (`test_multi_train_integration.py`).
+
+---
+
+## [0.1.0-dev] - Milestone P08
 
 ### Added
 - **Blocking-Time Analysis & Seven-Component Decomposition (`headway.analysis.blocking_time`):**

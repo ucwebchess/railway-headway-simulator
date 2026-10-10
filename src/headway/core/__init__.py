@@ -16,6 +16,8 @@ from headway.core.exceptions import (
     RollingStockError,
     SignallingError,
     SimulationError,
+    DeadlockError,
+    OperationalSimulationError,
 )
 from headway.core.identifiers import (
     IdentifierRegistry,
@@ -54,6 +56,8 @@ __all__ = [
     "RollingStockError",
     "SignallingError",
     "SimulationError",
+    "DeadlockError",
+    "OperationalSimulationError",
     "HeadwayCalculationError",
     "ReportingError",
     "setup_logging",
