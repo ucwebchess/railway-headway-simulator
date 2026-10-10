@@ -25,6 +25,7 @@ class ResourceCategory(str, Enum):
     OVERLAP = "OVERLAP"
     PLATFORM = "PLATFORM"
     TVS = "TVS"
+    TVS_SECTION = "TVS"
     SHARED_RESOURCE_GROUP = "SHARED_RESOURCE_GROUP"
 
 
@@ -61,6 +62,41 @@ class ResourceEventType(str, Enum):
     SUPERVISION_INTERVENTION = "SUPERVISION_INTERVENTION"
     COMMUNICATION_TIMEOUT = "COMMUNICATION_TIMEOUT"
     ENVELOPE_UPDATED = "ENVELOPE_UPDATED"
+
+    # P07 Station & Platform Events
+    PLATFORM_REQUESTED = "PLATFORM_REQUESTED"
+    PLATFORM_RESERVED = "PLATFORM_RESERVED"
+    PLATFORM_ENTERED = "PLATFORM_ENTERED"
+    STATION_ARRIVAL = "STATION_ARRIVAL"
+    DWELL_STARTED = "DWELL_STARTED"
+    DWELL_COMPLETED = "DWELL_COMPLETED"
+    STATION_DEPARTURE = "STATION_DEPARTURE"
+    PLATFORM_REAR_CLEARED = "PLATFORM_REAR_CLEARED"
+    PLATFORM_RELEASED = "PLATFORM_RELEASED"
+
+    # P07 Junction Events
+    JUNCTION_ROUTE_REQUESTED = "JUNCTION_ROUTE_REQUESTED"
+    JUNCTION_ROUTE_GRANTED = "JUNCTION_ROUTE_GRANTED"
+    JUNCTION_ROUTE_LOCKED = "JUNCTION_ROUTE_LOCKED"
+    JUNCTION_CONFLICT_DETECTED = "JUNCTION_CONFLICT_DETECTED"
+    JUNCTION_ENTERED = "JUNCTION_ENTERED"
+    JUNCTION_ZONE_ENTERED = "JUNCTION_ZONE_ENTERED"
+    JUNCTION_ZONE_CLEARED = "JUNCTION_ZONE_CLEARED"
+    JUNCTION_REAR_CLEARED = "JUNCTION_REAR_CLEARED"
+    JUNCTION_ROUTE_RELEASED = "JUNCTION_ROUTE_RELEASED"
+
+    # P07 TVS Events
+    TVS_ENTRY_REQUESTED = "TVS_ENTRY_REQUESTED"
+    TVS_ENTRY_AUTHORIZED = "TVS_ENTRY_AUTHORIZED"
+    TVS_ENTRY_REJECTED = "TVS_ENTRY_REJECTED"
+    TVS_ENTERED = "TVS_ENTERED"
+    TVS_FRONT_ENTERED = "TVS_FRONT_ENTERED"
+    TVS_FRONT_EXITED = "TVS_FRONT_EXITED"
+    TVS_REAR_CLEARED = "TVS_REAR_CLEARED"
+    TVS_RELEASE_TIMER_STARTED = "TVS_RELEASE_TIMER_STARTED"
+    TVS_RELEASED = "TVS_RELEASED"
+    TVS_HOLDING_ENFORCED = "TVS_HOLDING_ENFORCED"
+    TVS_INVARIANT_VIOLATION = "TVS_INVARIANT_VIOLATION"
 
 
 class ReleasePolicy(str, Enum):
@@ -139,6 +175,36 @@ class ProtectedEnvelopeError(AdvancedSignallingError):
     """Raised when moving-block protected train envelope calculation fails or is invalid."""
 
     DEFAULT_ERROR_CODE = "ERR_PROTECTED_ENVELOPE"
+
+
+class StationResourceError(SignallingError):
+    """Raised when station or platform resource operations fail."""
+
+    DEFAULT_ERROR_CODE = "ERR_STATION_RESOURCE"
+
+
+class PlatformCompatibilityError(StationResourceError):
+    """Raised when train length, direction, or state is incompatible with platform."""
+
+    DEFAULT_ERROR_CODE = "ERR_PLATFORM_INCOMPATIBLE"
+
+
+class JunctionConflictError(SignallingError):
+    """Raised when conflicting movements through merges, diverges, or crossovers cannot be resolved."""
+
+    DEFAULT_ERROR_CODE = "ERR_JUNCTION_CONFLICT"
+
+
+class TVSAuthorizationError(SignallingError):
+    """Raised when Tunnel Ventilation Section authorization or holding constraints are violated."""
+
+    DEFAULT_ERROR_CODE = "ERR_TVS_AUTHORIZATION"
+
+
+class TVSInvariantError(SignallingError):
+    """Raised when TVS capacity or single-train invariant is breached."""
+
+    DEFAULT_ERROR_CODE = "ERR_TVS_INVARIANT"
 
 
 @dataclass(frozen=True)

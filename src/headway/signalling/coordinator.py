@@ -9,7 +9,7 @@ Strictly satisfies RHS-P05-001 & RHS-P06-001:
 
 from typing import Dict, List, Optional, Set, Tuple
 
-from headway.data.canonical import AspectModelType, SignallingModel, SignallingTechnologyType
+from headway.data.canonical import AspectModelType, InfrastructureModel, SignallingModel, SignallingTechnologyType
 from headway.infrastructure.direction import RunningDirection
 from headway.infrastructure.route import Route
 from headway.signalling.advanced_types import SignallingModelFidelity
@@ -18,6 +18,8 @@ from headway.signalling.authority import MovementAuthority, MovementAuthorityCon
 from headway.signalling.cbtc import CBTCConfig, CBTCMovingBlockEngine
 from headway.signalling.etcs import ETCSLevel2Config, ETCSLevel2Engine
 from headway.signalling.interlocking import InterlockingEngine
+from headway.signalling.junction_controller import JunctionController
+from headway.signalling.platform_controller import PlatformController
 from headway.signalling.protection import BrakingProtectionEngine
 from headway.signalling.resource_types import (
     ReleasePolicy,
@@ -27,6 +29,7 @@ from headway.signalling.resource_types import (
 )
 from headway.signalling.resources import ManagedResource, ResourceController
 from headway.signalling.switches import SwitchController
+from headway.signalling.tvs_controller import TVSController
 
 
 class SignallingCoordinator:
@@ -55,6 +58,15 @@ class SignallingCoordinator:
         )
         self.authority_controller = MovementAuthorityController()
         self.protection_engine = BrakingProtectionEngine()
+
+        # P07 controllers
+        self.platform_controller = PlatformController(resource_controller=self.resource_controller)
+        self.junction_controller = JunctionController(
+            interlocking_engine=self.interlocking_engine,
+            switch_controller=self.switch_controller,
+            resource_controller=self.resource_controller,
+        )
+        self.tvs_controller = TVSController(resource_controller=self.resource_controller)
 
         # Advanced signalling sub-engines
         self.etcs_engine: Optional[ETCSLevel2Engine] = None
@@ -123,6 +135,44 @@ class SignallingCoordinator:
                 switch_controller=self.switch_controller,
             )
 
+    def load_from_infrastructure(self, infra: InfrastructureModel) -> None:
+        """P07-ARCH-002: Load stations, platforms, TVS sections, and shared groups from InfrastructureModel."""
+        self.platform_controller.load_from_infrastructure(infra)
+        self.tvs_controller.load_from_infrastructure(infra)
+
+    def clamp_ma_for_tvs(
+        self,
+        train_id: str,
+        tvs_id: str,
+        ma: MovementAuthority,
+        current_time_s: float,
+        holding_point_distance_m: float,
+    ) -> MovementAuthority:
+        """P07-TVS-043: Common MA clamping gate for unauthorized TVS sections."""
+        clamped_eoa, is_clamped = self.tvs_controller.clamp_movement_authority(
+            train_id=train_id,
+            tvs_id=tvs_id,
+            unconstrained_ma_limit_m=ma.end_of_authority,
+            current_time_s=current_time_s,
+            holding_point_distance_m=holding_point_distance_m,
+            running_direction=ma.running_direction,
+        )
+        if is_clamped:
+            return MovementAuthority(
+                ma_id=f"{ma.ma_id}_TVS_CLAMPED",
+                train_id=ma.train_id,
+                route_id=ma.route_id,
+                start_reference=ma.start_reference,
+                end_of_authority=clamped_eoa,
+                target_speed_ms=0.0,
+                issue_time_s=current_time_s,
+                effective_time_s=current_time_s,
+                validity_status=ma.validity_status,
+                running_direction=ma.running_direction,
+                description=f"TVS clamped at holding point {holding_point_distance_m:.1f}m",
+            )
+        return ma
+
     def process_timestep_events(
         self,
         current_time_s: float,
@@ -170,6 +220,12 @@ class SignallingCoordinator:
         rel_events = self.resource_controller.process_pending_releases(current_time_s)
         emitted_events.extend(rel_events)
 
+        plat_rel_events = self.platform_controller.process_platform_releases(current_time_s)
+        emitted_events.extend(plat_rel_events)
+
+        tvs_rel_events = self.tvs_controller.process_release_timers(current_time_s)
+        emitted_events.extend(tvs_rel_events)
+
         # 8: Evaluate pending route/resource requests
         if pending_route_requests:
             for tid, route_id in pending_route_requests:
@@ -186,6 +242,9 @@ class SignallingCoordinator:
         events.extend(self.interlocking_engine.event_log)
         events.extend(self.signal_controller.event_log)
         events.extend(self.authority_controller.event_log)
+        events.extend(self.platform_controller.event_log)
+        events.extend(self.junction_controller.event_log)
+        events.extend(self.tvs_controller.event_log)
         if self.etcs_engine:
             events.extend(self.etcs_engine.get_event_log())
         if self.cbtc_engine:
