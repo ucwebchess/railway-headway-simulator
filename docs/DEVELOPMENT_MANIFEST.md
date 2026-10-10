@@ -44,17 +44,17 @@
 | UI Shell & Theme | `src/headway/ui/` | Complete (P00) | 10 navigation tabs, engineering theme, Colab launcher |
 | Infrastructure Subsystem | `src/headway/infrastructure/` | Complete (P02) | Graph, forward/reverse route traversal, alignment, speed, switches, stations, TVS, train footprint, preprocessor, adapters |
 | Rolling Stock Physics | `src/headway/rolling_stock/` | Complete (P03/P04) | Parameters, mass conditions, equivalent mass, traction models, resistance, braking models (`NET_EFFECTIVE` & `BRAKE_GENERATED`), stopping distance/time kinematics |
-| Signalling Subsystem | `src/headway/signalling/` | Complete (P05/P06) | Common resource architecture, decoupled state tracking, atomic reservations, conflict groups, switch locking, interlocking routes, sectional release, 2/3/4-aspect signals, Movement Authority, braking protection, ETCS Level 2 (RBC, radio latency, supervision curves, SvL/overlap), CBTC Moving-Block (localization, odometry uncertainty, protected envelope $x_{\mathrm{protected}}$, dynamic MA, fixed infrastructure restrictions), forward/reverse support |
+| Signalling Subsystem | `src/headway/signalling/` | Complete (P05/P06/P07) | Common resource architecture, decoupled state tracking, atomic reservations, conflict groups, switch locking, interlocking routes, sectional release, 2/3/4-aspect signals, Movement Authority, braking protection, ETCS Level 2, CBTC Moving-Block, Station & Platform controllers, multi-platform allocation, residual rear occupation, TVS single-train rule ($N_{\max}=1$), TVS MA clamping, forward/reverse support |
 | Simulation Subsystem | `src/headway/simulation/` | Complete (P04) | Microscopic numerical integrator, train dynamic state, boundary event localization, directional speed profiles, journey time reconciliation |
-| Analysis Subsystem | `src/headway/analysis/` | Initialized | Headway and capacity assigned to P08/P10/P11 |
+| Analysis Subsystem | `src/headway/analysis/` | Complete (P08) | Resource blocking intervals $B = [t_{\mathrm{start}}, t_{\mathrm{end}})$, seven-component decomposition, conflict detection, analytical temporal shift, slack margins, controlling bottlenecks, homogeneous/heterogeneous headways, directional mixed-traffic matrices ($N \times N$), station/junction/TVS integration, joint microscopic verification, iterative search |
 | Reporting Subsystem | `src/headway/reporting/` | Initialized | Engineering reports assigned to P14 |
 
 ---
 
 ### 3. Verification & Test Suite Status
 
-- **Automated Tests:** 259 automated tests (Unit, Integration, Engineering Benchmarks, Negative, Regression) executing via pytest.
-- **Test Pass Rate:** 100% (259 passed, 0 failed, 0 warnings).
+- **Automated Tests:** 342 automated tests (Unit, Integration, Engineering Benchmarks, Negative, Regression) executing via pytest.
+- **Test Pass Rate:** 100% (342 passed, 0 failed, 0 warnings).
 - **Engineering Verification:**
   - `BM-PHY-002`: Davis coefficient normalization verified.
   - `BENCH-P02-001` through `BENCH-P02-010`: All 10 P02 engineering benchmarks verified.
@@ -62,11 +62,13 @@
   - `BENCH-P04-001` through `BENCH-P04-022`: All 22 P04 microscopic dynamics engineering benchmarks verified.
   - `P05-B001` through `P05-B030`: All 30 P05 resource management and signalling engineering benchmarks verified.
   - `P06-B001` through `P06-B030`: All 30 P06 advanced signalling engineering benchmarks verified (including Controlled Benchmarks A $d=600$m, B $x_{\mathrm{protected}}=1970$m, and C $t_{\mathrm{effective}}=101.0$s).
+  - `P07-B001` through `P07-B035`: All 35 P07 station, platform, junction, residual rear, and TVS engineering benchmarks verified (including Benchmarks A $50$m/$180$s, B $200$s/$208$s/$213$s, C dual occupancy $200$s–$208$s, and D shared TVS exclusivity).
+  - `P08-B001` through `P08-B005` + extended suite: All P08 blocking-time analysis, seven-component decomposition, directional mixed-traffic, and technical headway benchmarks verified.
 - **Example Projects:** All 4 official example datasets integrated and verified with bidirectional calculations.
 
 ---
 
 ### 4. Next Authorized Step
 
-**Milestone P07 — Stations, Junctions & TVS Control Engine.**  
-Awaiting explicit task prompt before commencing P07 implementation.
+**Milestone P09 — Multi-Train Operations, Dispatching & Journey Time.**  
+Awaiting explicit task prompt before commencing P09 implementation.

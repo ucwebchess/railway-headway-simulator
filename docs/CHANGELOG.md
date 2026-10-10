@@ -7,10 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P06 (Current Milestone)
+## [0.1.0-dev] - Milestone P08 (Current Milestone)
 
 ### Added
-- **Common Advanced Signalling Architecture (`headway.signalling.advanced_types`):**
+- **Blocking-Time Analysis & Seven-Component Decomposition (`headway.analysis.blocking_time`):**
+  - Standardized half-open resource blocking interval model $B = [t_{\mathrm{start}}, t_{\mathrm{end}})$.
+  - Seven non-overlapping additive components: Setup ($t_1$), Approach ($t_2$), Running ($t_3$), Dwell ($t_4$), Geometric Clearance ($t_5$), Residual Rear ($t_6$), and Release ($t_7$).
+  - Additive reconciliation ($T_{\mathrm{blocking}} = \sum_{k=1}^7 t_k$) with discrepancy and gap reporting.
+  - Event-derived and usage-record-derived timeline builders (`BlockingTimeline`).
+- **Resource Conflict Detection (`headway.analysis.conflict_detection`):**
+  - `ConflictDetector` evaluating ordered leader–follower incompatible resource pairs.
+  - Conflict classifications: `IDENTICAL_RESOURCE`, `SHARED_CONFLICT_GROUP`, `INTERLOCKING_CONFLICT`, `STATION_PLATFORM_CONFLICT`, `RESIDUAL_REAR_CONFLICT`, `WHOLE_TUNNEL_CONFLICT`.
+  - Analytical temporal shift calculation: $H_{u,v} = t_{\mathrm{leader-release}, u} - t_{\mathrm{follower-start}, v} + \text{margin}$.
+- **Bottlenecks & Slack Margins (`headway.analysis.bottlenecks`):**
+  - Slack calculation ($S_k = H_{\min} - H_k$) and controlling bottleneck detection ($S_k \le \text{tolerance}$).
+  - Bottleneck categorization: `OPEN_LINE_BLOCK`, `STATION_APPROACH`, `PLATFORM`, `RESIDUAL_REAR_OCCUPATION`, `JUNCTION_MERGE`, `JUNCTION_CROSSOVER`, `INTERLOCKING_ROUTE`, `TVS_SECTION`, `SHARED_TVS_GROUP`, `WHOLE_TUNNEL`.
+  - Conflict ranking (descending order of required headway).
+  - Standalone longest resource occupation ranking ($T_{\mathrm{blocking}} = t_{\mathrm{release}} - t_{\mathrm{start}}$).
+- **Technical Minimum Headway Solvers (`headway.analysis.headway_solver` & `headway_search`):**
+  - `TechnicalHeadwaySolver` calculating $H_{\min} = \max(H_{\mathrm{dispatch}}, \max H_{u,v})$.
+  - Minimum dispatch separation clamping ($H \ge H_{\mathrm{dispatch-min}}$).
+  - Microscopic joint simulation verification of calculated headways (`verify_with_joint_simulation`).
+  - Iterative numerical bisection search (`IterativeHeadwaySearch`) converging to $\le 0.1\text{ s}$ tolerance.
+- **Directional Mixed-Traffic Headway Matrices (`headway.analysis.mixed_traffic`):**
+  - $N \times N$ matrix evaluation across ordered service pairs preserving asymmetry ($H(i, j) \ne H(j, i)$).
+  - Separate matrices for `RunningDirection.FORWARD` and `RunningDirection.REVERSE`.
+  - Export to pandas DataFrame with leader rows and follower columns.
+- **Verification Benchmarks & Tests (`tests/engineering/`, `tests/unit/`, `tests/integration/`):**
+  - Analytical Benchmarks P08-B001 (pairwise 115s), P08-B002 (blocking duration 84s), P08-B003 (7-component 84s), P08-B004 (matrix asymmetry 150s/110s), P08-B005 (TVS 213s).
+  - Heterogeneous train pairs, station dwell, residual rear occupation, junction merge, and TVS constraint benchmarks.
+  - Unit negative tests and end-to-end integration tests.
+
+---
+
+## [0.1.0-dev] - Milestone P07
+
+### Added
+- **Stations, Platforms & Multi-Platform Allocation (`headway.signalling.platform_controller`):**
+  - Canonical station and platform resource lifecycle under `ResourceCategory.PLATFORM`.
+  - Usable platform length compatibility check ($L_{\mathrm{train}} \le L_{\mathrm{platform}}$).
+  - Exclusive platform reservations, front entry, stationary dwell start/end lifecycle, and rear-clearance-based release delay timers.
+  - Strict release invariant: platforms are strictly prohibited from releasing upon dwell completion or front exit.
+  - Deterministic multi-platform allocation engine (`FIXED_ASSIGNMENT`, `PREFERRED_WITH_ALTERNATIVES`, `EARLIEST_FEASIBLE`).
+- **Residual Stationary Rear Occupation (`headway.signalling.residual_occupation`):**
+  - Geometric detection of rear infringement into upstream resources ($d_{\mathrm{infringement}} = \max(0, x_{\mathrm{boundary}} - x_{\mathrm{rear}})$).
+  - Stationary dwell duration ($180.0\text{ s}$) keeping upstream resource physically occupied throughout dwell.
+  - Post-departure moving clearance time calculation ($t = \sqrt{2 \cdot d / a} \approx 14.142\text{ s}$).
+  - Full support for both FORWARD and REVERSE railway movements.
+- **Junction & Crossover Control (`headway.signalling.junction_controller`):**
+  - Merge, diverge, crossover, and diamond crossing conflict prevention.
+  - Dynamic switch alignment and route locking through `SwitchController` and `InterlockingEngine`.
+  - Sectional release of junction zones and switches upon train-rear clearance.
+- **Tunnel Ventilation Section (TVS) Control Engine (`headway.signalling.tvs_controller`):**
+  - Canonical TVS resource model with independent chainage boundaries from signalling blocks.
+  - Single-train rule ($N_{\max} = 1$) with configurable exclusivity scopes: `PER_TRACK`, `CROSS_TRACK_SHARED_TVS`, and `WHOLE_TUNNEL`.
+  - TVS entry request authorization gate with processing delay $t_{\mathrm{auth\_delay}}$.
+  - TVS entry holding point and MA clamping when unauthorized; automatic unclamping once authorized.
+  - Consecutive TVS multi-section dual occupancy.
+  - Post-clearance release delay timers and safety invariant enforcement.
+- **Verification Benchmarks & Tests (`tests/engineering/`, `tests/unit/`, `tests/integration/`):**
+  - 35 engineering benchmarks (`P07-B001` through `P07-B035`) including numerical benchmarks A, B, C, D.
+  - 14 negative unit tests and 4 corridor integration tests.
+
+---
+
+## [0.1.0-dev] - Milestone P06
   - `SignallingModelFidelity` enum (`BASIC`, `INTERMEDIATE`, `DETAILED`) defining simulation fidelity levels.
   - `TrainIntegrityStatus` enum (`CONFIRMED`, `UNCONFIRMED`, `LOST`) for on-board train integrity tracking.
   - `RadioCommunicationConfig` model with decomposed latencies ($t_{\mathrm{uplink}}$, $t_{\mathrm{proc}}$, $t_{\mathrm{downlink}}$), total latency property, and timeout enforcement.
