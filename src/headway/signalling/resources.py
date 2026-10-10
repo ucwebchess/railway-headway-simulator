@@ -72,6 +72,13 @@ class ManagedResource:
         """P05-STATE-004: True if locked by an active interlocking route or protection."""
         return len(self.locks) > 0
 
+    @property
+    def length_m(self) -> float:
+        """Total physical length in meters across all intervals."""
+        if not self.intervals:
+            return 0.0
+        return sum(abs(inv.end_offset_m - inv.start_offset_m) for inv in self.intervals)
+
     def is_release_pending(self, current_time_s: float) -> bool:
         """P05-STATE-005: True if release conditions are pending expiration."""
         if self.release_pending_until is None:
@@ -134,6 +141,10 @@ class ResourceController:
     def register_resource(self, resource: ManagedResource) -> None:
         """P05-RES-002: Register canonical resource."""
         self.resources[resource.resource_id] = resource
+
+    def get_resource(self, resource_id: str) -> Optional[ManagedResource]:
+        """Retrieve managed resource by identifier."""
+        return self.resources.get(resource_id)
 
     def register_signalling_block(self, block: SignallingBlock) -> ManagedResource:
         """Register a SignallingBlock as a TRACK_BLOCK managed resource."""
