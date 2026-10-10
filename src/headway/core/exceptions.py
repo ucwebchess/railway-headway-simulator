@@ -123,3 +123,27 @@ class ReportingError(HeadwayError):
     """Raised when generating engineering reports, charts, or export deliverables fails."""
 
     DEFAULT_ERROR_CODE = "ERR_REPORTING"
+
+
+class ScenarioError(HeadwayError):
+    """Base exception for scenario management and override operations."""
+
+    DEFAULT_ERROR_CODE = "ERR_SCN"
+
+
+class CircularInheritanceError(ScenarioError):
+    """Raised when a circular parent-child dependency is detected in scenario inheritance."""
+
+    DEFAULT_ERROR_CODE = "ERR_SCN_CIRCULAR_INHERITANCE"
+
+
+class ConflictingOverrideError(ScenarioError):
+    """Raised when conflicting overrides targeting the same parameter exist at the same level."""
+
+    DEFAULT_ERROR_CODE = "ERR_SCN_CONFLICTING_OVERRIDE"
+
+
+class ScenarioNotFoundError(ScenarioError):
+    """Raised when a requested scenario ID does not exist."""
+
+    DEFAULT_ERROR_CODE = "ERR_SCN_NOT_FOUND"
