@@ -66,11 +66,12 @@
   - `P07-B001` through `P07-B035`: All 35 P07 station, platform, junction, residual rear, and TVS engineering benchmarks verified (including Benchmarks A $50$m/$180$s, B $200$s/$208$s/$213$s, C dual occupancy $200$s–$208$s, and D shared TVS exclusivity).
   - `P08-B001` through `P08-B005` + extended suite: All P08 blocking-time analysis, seven-component decomposition, directional mixed-traffic, and technical headway benchmarks verified.
   - `P09-B001` through `P09-B035` + Numerical Benchmarks A–D: All 39 P09 multi-train operations, dispatching, journey time, and delay propagation benchmarks verified.
+  - `BENCH-P10-001` through `BENCH-P10-006` + `P10-B007` through `P10-B032`: All 32 P10 capacity, UIC 406 timetable compression, resource utilization, and sensitivity benchmarks verified.
 - **Example Projects:** All 4 official example datasets integrated and verified with bidirectional calculations.
 
 ---
 
 ### 4. Next Authorized Step
 
-**Milestone P10 — Line Capacity & UIC 406-Inspired Analysis.**  
-Awaiting explicit task prompt before commencing P10 implementation.
+**Milestone P11 — Stochastic Simulation & Operational Reliability.**  
+Awaiting explicit task prompt before commencing P11 implementation.

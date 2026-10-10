@@ -23,6 +23,7 @@
 | **RHS-P07-001** | P07 | Stations, Junctions & TVS Control Engine | Completed | Milestone P07 | Station/Platform controllers, multi-platform allocation, residual rear occupation, junction zone interlocking locking/release, TVS single-train rule ($N_{\max}=1$), TVS MA clamping, TVS queue tracker, whole-tunnel single-train rule. All 35 benchmarks verified. 294 total tests passing. |
 | **RHS-P08-001** | P08 | Seven-Component Blocking Time & Headway Analysis | Completed | Milestone P08 | Standardized half-open blocking intervals $B = [t_{\mathrm{start}}, t_{\mathrm{end}})$, 7-component additive decomposition, conflict detector, analytical shift, slack margins, controlling bottlenecks, technical minimum headway solver, microscopic joint verification, $N \times N$ directional mixed-traffic headway matrices. All benchmarks verified. 342 total tests passing. |
 | **RHS-P09-001** | P09 | Multi-Train Operational Simulation Engine | Completed | Milestone P09 | Simultaneous microscopic multi-train operational simulation under single shared clock, continuous train-front and train-rear tracking ($s_{\mathrm{rear}} = s_{\mathrm{front}} - L_{\mathrm{train}}$), dispatching policies (FCFS, Timetable, Priority, Fixed sequence), origin queues, station stops, multi-platform allocation, junction interlocking sequencing, TVS queues and holding points, wait-for dependency graph cycle analysis, deadlock diagnosis, additive journey-time decomposition, delay attribution, and time-distance datasets. All 39 benchmarks (P09-B001 to P09-B035 + Numerical Benchmarks A-D) verified. 394 total tests passing. |
+| **RHS-P10-001** | P10 | Line Capacity, UIC 406 & Sensitivity Analysis | Completed | Milestone P10 | Theoretical homogeneous capacity ($C = 3600 / H$), additive planning margin, target utilization, mixed-pattern cycle capacity with wrap-around pair, operational throughput with warmup/cooldown windowing, 4-state operational stability evaluator (STABLE, METASTABLE, UNSTABLE, COLLAPSED), capacity saturation search (step scan & bisection), physical occupation vs blocking time analysis with interval merging, directional resource attribution, UIC 406 timetable compression and capacity consumption index with buffer supplement and UIC disclaimer, bottleneck migration tracking with diminishing returns, and sensitivity analysis framework with full physical recalculation (no proportional scaling shortcut) and baseline immutability. All 32 benchmarks (BENCH-P10-001 to 006, P10-B007 to B032) verified. 466 total tests passing. |
 
 ---
 
@@ -30,8 +31,7 @@
 
 | Prompt ID | Milestone | Title | Status | Prerequisite |
 |---|---|---|---|---|
-| **RHS-P10-001** | P10 | Line Capacity & UIC 406-Inspired Analysis | Authorized Next | RHS-P09-001 |
-| **RHS-P11-001** | P11 | Stochastic Simulation & Operational Reliability | Reserved | RHS-P10-001 |
+| **RHS-P11-001** | P11 | Stochastic Simulation & Operational Reliability | Authorized Next | RHS-P10-001 |
 | **RHS-P12-001** | P12 | Scenario Management & Sensitivity Engine | Reserved | RHS-P11-001 |
 | **RHS-P13-001** | P13 | Interactive Engineering Visualizations | Reserved | RHS-P12-001 |
 | **RHS-P14-001** | P14 | Professional Engineering Reporting System | Reserved | RHS-P13-001 |

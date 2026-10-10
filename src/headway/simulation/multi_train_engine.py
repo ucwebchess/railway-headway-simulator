@@ -42,7 +42,8 @@ from headway.infrastructure.route import Route
 from headway.infrastructure.stations import RoutePlatformStop
 from headway.rolling_stock.train import RollingStockParameters
 from headway.signalling.platform_controller import PlatformSelectionPolicy
-from headway.signalling.resource_types import ResourceCategory, SignallingEvent
+from headway.signalling.resource_types import ResourceCategory, ResourceUsageRecord, SignallingEvent
+from headway.signalling.tvs_controller import TVSAuthorizationState
 from headway.simulation.deadlock import DeadlockDetector, DeadlockReport
 from headway.simulation.dispatching import DispatchPolicy, OriginDepartureQueue
 from headway.simulation.events import BoundaryEvent, CrossingEventType
@@ -78,6 +79,7 @@ class MultiTrainSimulationResult:
     starvation_warnings: List[Dict[str, any]] = field(default_factory=list)
     completed_trains: List[TrainServiceInstance] = field(default_factory=list)
     dispatched_trains: List[TrainServiceInstance] = field(default_factory=list)
+    resource_usage_records: List[ResourceUsageRecord] = field(default_factory=list)
 
 
 class MultiTrainSimulator:
@@ -218,17 +220,34 @@ class MultiTrainSimulator:
         tvs_configs = getattr(self.coordinator.tvs_controller, "configs", {})
         for tvs_id, cfg in tvs_configs.items():
             tvs_sec = cfg.tvs
-            # Check if TVS intersects train route
+            # Check if TVS intersects train route (handling both FORWARD and REVERSE entry points)
             for interval in tvs_sec.link_intervals:
-                tvs_route_pos = train.route.physical_to_route_distance(interval.link_id, interval.start_offset_m)
+                tvs_p1 = train.route.physical_to_route_distance(interval.link_id, interval.start_offset_m)
+                tvs_p2 = train.route.physical_to_route_distance(interval.link_id, interval.end_offset_m)
+                tvs_route_pos = None
+                if tvs_p1 is not None and tvs_p2 is not None:
+                    tvs_route_pos = min(tvs_p1, tvs_p2)
+                elif tvs_p1 is not None:
+                    tvs_route_pos = tvs_p1
+                elif tvs_p2 is not None:
+                    tvs_route_pos = tvs_p2
+
                 if tvs_route_pos is not None and tvs_route_pos > curr_pos:
                     # TVS entry holding point is 20m before boundary
                     holding_pt = max(0.0, tvs_route_pos - 20.0)
                     if tvs_route_pos - curr_pos < 500.0:
-                        # Near TVS: request entry authorization once
+                        # Near TVS: request entry authorization when available
                         t_st = self.coordinator.tvs_controller.train_states.get((train.train_id, tvs_id))
-                        if not t_st:
-                            self.coordinator.tvs_controller.request_tvs_entry(train.train_id, tvs_id, self.current_time_s)
+                        needs_request = t_st is None or t_st.auth_state in (
+                            TVSAuthorizationState.REJECTED,
+                            TVSAuthorizationState.UNAUTHORIZED,
+                        )
+                        if needs_request:
+                            is_avail, _ = self.coordinator.tvs_controller.is_tvs_available(tvs_id, train.train_id, self.current_time_s)
+                            if is_avail:
+                                self.coordinator.tvs_controller.request_tvs_entry(
+                                    train.train_id, tvs_id, self.current_time_s, running_direction=train.running_direction
+                                )
                         if not self.coordinator.tvs_controller.is_train_authorized(train.train_id, tvs_id, self.current_time_s):
                             if holding_pt < min_eoa:
                                 min_eoa = holding_pt
@@ -520,7 +539,9 @@ class MultiTrainSimulator:
                         t_end = max(tvs_start, tvs_end)
                         tvs_key = f"TVS_{tvs_id}"
                         if tvs_key not in entered and curr_front >= t_start and curr_rear < t_end:
-                            self.coordinator.tvs_controller.front_enter_tvs(train.train_id, tvs_id, current_time_s)
+                            self.coordinator.tvs_controller.front_enter_tvs(
+                                train.train_id, tvs_id, current_time_s, running_direction=train.running_direction
+                            )
                             entered.add(tvs_key)
                             held_res.add(tvs_key)
                         if tvs_key in held_res and curr_rear >= t_end:
@@ -727,4 +748,5 @@ class MultiTrainSimulator:
             starvation_warnings=self.origin_queue.starvation_warnings,
             completed_trains=list(self.completed_trains),
             dispatched_trains=list(self.dispatched_trains),
+            resource_usage_records=self.coordinator.get_resource_usage_records(),
         )
