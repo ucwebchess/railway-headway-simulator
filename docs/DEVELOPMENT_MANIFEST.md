@@ -50,14 +50,15 @@
 | Multi-Train Operations Subsystem | `src/headway/simulation/` | Complete (P09) | Genuine simultaneous microscopic multi-train operational simulation under single shared clock, continuous train-front and train-rear tracking ($s_{\mathrm{rear}} = s_{\mathrm{front}} - L_{\mathrm{train}}$), dispatching policies (FCFS, Timetable, Priority, Fixed sequence), origin queues, station stops, multi-platform allocation, junction interlocking sequencing, TVS queues and holding points, wait-for dependency graph cycle analysis, deadlock diagnosis, additive journey-time decomposition, delay attribution, and time-distance datasets |
 | Capacity & Sensitivity Subsystem | `src/headway/analysis/` | Complete (P10) | Homogeneous & mixed-traffic capacity, planning margin methods, measurement windows, operational stability evaluation, discrete & bisection saturation search, physical vs blocking resource utilization, bottleneck ranking & migration, UIC 406 timetable compression & consumption ratio, parameter sensitivity sweeps |
 | Stochastic & Monte Carlo Subsystem | `src/headway/analysis/` | Complete (P11) | Stochastic variable definitions, standard probability distributions (Normal, Truncated Normal, Lognormal, Uniform, Triangular, Exponential, Empirical Discrete & Continuous), MasterSeedManager reproducible PCG64 streams, correlation groups via Gaussian copula & Cholesky validation, Common Random Numbers (CRN), microscopic operational variability (dwell, departure readiness, traction, braking, signalling, TVS release), Monte Carlo simulation manager with replication isolation, statistical summaries & confidence intervals (Student's t, Wilson score), operational reliability evaluation, and reliability-based capacity calculation |
+| Scenario Management & Engineering Comparisons | `src/headway/scenarios/` | Complete (P12) | Immutable baseline protection, scenario definitions with full metadata, pre-configured engineering templates (signalling comparison, block sensitivity, station optimization, TVS policies, stochastic, disruption), multi-level parent-child inheritance chains (>= 3 levels), override conflict detection & cycle rejection, dot-notation parameter navigation & replacement, effective configuration generation with isolated copying, deterministic SHA-256 hashing & caching, pre-execution & network integrity validation, multi-scenario comparative analytics (parameter diffs, absolute/percentage metric deltas, directional checks, bottleneck migration), result association with RUN_ID and config hash, and automatic STALE invalidation on configuration modification |
 | Reporting Subsystem | `src/headway/reporting/` | Initialized | Engineering reports assigned to P14 |
 
 ---
 
 ### 3. Verification & Test Suite Status
 
-- **Automated Tests:** 538 automated tests (Unit, Integration, Engineering Benchmarks, Negative, Regression) executing via pytest.
-- **Test Pass Rate:** 100% (538 passed, 0 failed, 0 warnings).
+- **Automated Tests:** 590 automated tests (Unit, Integration, Engineering Benchmarks, Negative, Regression) executing via pytest.
+- **Test Pass Rate:** 100% (590 passed, 0 failed, 0 warnings).
 - **Engineering Verification:**
   - `BM-PHY-002`: Davis coefficient normalization verified.
   - `BENCH-P02-001` through `BENCH-P02-010`: All 10 P02 engineering benchmarks verified.
@@ -70,11 +71,12 @@
   - `P09-B001` through `P09-B035` + Numerical Benchmarks A–D: All 39 P09 multi-train operations, dispatching, journey time, and delay propagation benchmarks verified.
   - `BENCH-P10-001` through `BENCH-P10-006` + `P10-B007` through `P10-B032`: All 32 P10 capacity, UIC 406 timetable compression, resource utilization, and sensitivity benchmarks verified.
   - `BENCH-P11-A` through `BENCH-P11-D` + `P11-B001` through `P11-B038`: All 42 P11 stochastic simulation, probability distribution, RNG reproducibility, TVS single-train rule invariants, statistical summary, operational reliability, and reliability-based capacity benchmarks verified.
+  - `P12-B001` through `P12-B028`: All 28 P12 scenario management, multi-level inheritance, override conflict detection, circular cycle rejection, deterministic hashing, engineering comparison, bottleneck migration, result association, and STALE invalidation benchmarks verified.
 - **Example Projects:** All 4 official example datasets integrated and verified with bidirectional calculations.
 
 ---
 
 ### 4. Next Authorized Step
 
-**Milestone P12 — Operational Perturbation, Conflict Detection & Dispatching Automation.**  
-Awaiting explicit task prompt before commencing P12 implementation.
+**Milestone P13 — Interactive Visualization & Engineering Dashboards.**  
+Awaiting explicit task prompt before commencing P13 implementation.

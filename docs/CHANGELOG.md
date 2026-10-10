@@ -7,7 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P11 (Current Milestone)
+## [0.1.0-dev] - Milestone P12 (Current Milestone)
+
+### Added
+- **Scenario Identity & Metadata (`headway.scenarios.scenario_models`):**
+  - Standardized scenario lifecycle metadata: `SCENARIO_ID`, `SCENARIO_NAME`, `DESCRIPTION`, `BASE_SCENARIO_ID`, `STATUS` (`DRAFT`, `ACTIVE`, `ARCHIVED`), `CREATION_DATE`, `LAST_MODIFIED_DATE`, tags, and user metadata.
+  - Immutable baseline scenario (`BASELINE`) guaranteed to be read-only and never modified or deleted.
+  - Complete scenario isolation: scenarios are represented as isolated deltas from baseline or parent, preventing state contamination across variants.
+  - Explicit override schema (`ExplicitOverride`) supporting target dataset domains (`infrastructure`, `signalling`, `rolling_stock`, `operations`, `analysis`, `stochastic`), target object IDs, dot-notation parameter paths, override actions (`REPLACE`, `ADD`, `REMOVE`), typing, units, and engineering rationales.
+- **Override Navigation & In-Place Application (`headway.scenarios.overrides`):**
+  - Recursive nested dictionary/list path traversal with dot-notation navigation (`OverrideNavigator`).
+  - Strict type casting and validation (`cast_override_value`) preventing type drift.
+  - Multi-collection entity ID lookup across nodes, track links, stations, platforms, TVS sections, train types, and routes.
+  - Support for `GLOBAL`, `PROJECT`, and `ROOT` object targets for global project parameters and stochastic configurations.
+- **Effective Configuration Generation & Caching (`headway.scenarios.effective_config`):**
+  - Multi-level scenario inheritance resolution supporting parent-child chains of arbitrary depth ($\ge 3$ levels).
+  - Precedence ordering: `Baseline` $\rightarrow$ `Parent` $\rightarrow$ `Child` $\rightarrow$ `Grandchild`.
+  - Same-level conflict detection raising `ConflictingOverrideError` on conflicting parameter assignments.
+  - Circular inheritance cycle detection raising `CircularInheritanceError` on direct, multi-level, or self-referential cycles.
+  - Deep-copy isolated configuration generation ensuring no shared mutable state.
+  - Deterministic SHA-256 hash calculation (`calculate_effective_hash`) invariant under dictionary key ordering.
+  - Config generator caching keyed by effective scenario hash with automated invalidation.
+- **Scenario & Configuration Validation Engine (`headway.scenarios.scenario_validation`):**
+  - Pre-execution scenario validation checking domain existence, target object existence, parameter path validity, and physical engineering bounds.
+  - Effective configuration network consistency checks: positive link lengths, undefined node reference detection, platform offset host link bounds, route node continuity, and TVS single-occupancy invariant enforcement.
+  - Clear severity separation (`CRITICAL`, `ERROR`, `WARNING`, `INFO`), blocking simulation execution upon presence of critical findings.
+- **Pre-Configured Engineering Scenario Templates (`headway.scenarios.templates`):**
+  - Standardized factory methods for railway engineering studies:
+    - Baseline reference scenario (`create_baseline_scenario`)
+    - Signalling comparison scenario (`create_signalling_comparison_scenario`)
+    - Block length sensitivity scenario (`create_block_sensitivity_scenario`)
+    - Station dwell and platform optimization scenario (`create_station_optimization_scenario`)
+    - TVS ventilation operational policy scenarios (`create_tvs_policy_scenario`: `TVS_PER_TRACK`, `TVS_SHARED`, `WHOLE_TUNNEL`)
+    - Stochastic Monte Carlo simulation scenario (`create_stochastic_scenario`)
+    - Operational disruption and incident scenario (`create_disruption_scenario`)
+- **Simulation Result Association & Invalidation (`headway.scenarios.result_association`):**
+  - Execution run registry (`ScenarioResultRegistry`) storing runs with unique `RUN_ID`, scenario ID, effective configuration hash, timestamps, parameters, metrics, and artifact references.
+  - Automated staleness detection: modifying any override or running direction updates the scenario effective hash and automatically marks prior simulation runs as `STALE`.
+  - Multi-run history preservation preventing silent overwrite of engineering results.
+- **Scenario Comparison Engine (`headway.scenarios.scenario_comparison`):**
+  - Multi-scenario comparative analytics (`ScenarioComparisonEngine`, `ScenarioComparisonReport`).
+  - Automated parameter diffing tabulating baseline values alongside scenario values.
+  - Metric delta calculations: absolute changes, percentage changes, and directional improvement flags (`is_improvement`).
+  - Running direction compatibility checks flagging directional mismatches (e.g. comparing FORWARD vs REVERSE).
+  - Bottleneck migration analysis identifying shifts in critical infrastructure constraints between scenarios.
+- **Scenario Manager Facade (`headway.scenarios.scenario_manager`):**
+  - Unified central coordinator (`ScenarioManager`) managing the complete scenario lifecycle: creation, duplication, renaming, deletion, archiving, override editing, direction setting, validation, simulation registration, comparison, and JSON export.
+- **Verification Benchmarks & Tests (`tests/engineering/`, `tests/unit/`, `tests/integration/`):**
+  - Mandatory engineering benchmarks P12-B001 to P12-B028 covering baseline immutability, inheritance precedence, cycle rejection, hash stability, validation, templates, comparison analytics, bottleneck shifts, result invalidation, and deterministic reproducibility.
+  - 19 negative unit tests verifying baseline protections, circular inheritance, conflicting overrides, out-of-bounds values, invalid paths, and TVS occupancy invariants.
+  - 5 end-to-end integration tests verifying multi-level inheritance ($\ge 3$ levels), signalling upgrade studies, block sensitivity matrices, directional analysis, and result invalidation.
+  - Complete regression test suite passing with 0 failures (590 total passing tests).
+
+---
+
+## [0.1.0-dev] - Milestone P11
 
 ### Added
 - **Stochastic Variable Definitions & Disruptions (`headway.analysis.random_variables`):**

@@ -2,9 +2,9 @@
 ## Railway Headway & Capacity Simulator
 
 **Document ID:** RHS-BM-001  
-**Version:** 1.3.0  
-**Status:** UPDATED (Milestones P01, P02 & P03 Formally Verified)  
-**Governing Prompt:** RHS-MASTER-001 § 28; RHS-P01-001; RHS-P02-001 § 22; RHS-P03-001 § 16  
+**Version:** 1.4.0  
+**Status:** UPDATED (Milestones P01 through P12 Formally Verified)  
+**Governing Prompt:** RHS-MASTER-001 § 28; RHS-P01-001; RHS-P02-001 § 22; RHS-P03-001 § 16; RHS-P10-001; RHS-P11-001; RHS-P12-001 § 14  
 
 ---
 
@@ -241,4 +241,40 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P11-B036** | Resilience | Replication failure recording | Non-fatal replication failure handling | Failed run recorded, valid runs aggregated | Exact | **VERIFIED (P11)** |
 | **P11-B037** | Immutability | Deterministic baseline preservation | Parameter sampling on cloned templates | Baseline configurations completely unmodified | Exact | **VERIFIED (P11)** |
 | **P11-B038** | Reproducibility | Master seed sequence reproducibility | Seed $S = 777$ executed twice | Identical random parameter sequences generated | Exact | **VERIFIED (P11)** |
+
+---
+
+### 9. Scenario Management & Engineering Comparisons Benchmarks (Milestone P12)
+
+| Benchmark ID | Subsystem | Description | Key Inputs | Expected Result | Tolerance | Verification Status |
+|---|---|---|---|---|---|---|
+| **P12-B001** | Baseline Protection | Baseline immutability under scenario modifications | Add overrides to child scenario | Baseline `CanonicalProject` remains completely unmodified | Exact | **VERIFIED (P12)** |
+| **P12-B002** | Lifecycle | Scenario creation from baseline | New scenario inheriting from `BASELINE` | Scenario registered with status `ACTIVE`, correct inheritance | Exact | **VERIFIED (P12)** |
+| **P12-B003** | Lifecycle | Scenario duplication | Duplicate scenario with overrides | Independent clone with deep-copied overrides | Exact | **VERIFIED (P12)** |
+| **P12-B004** | Inheritance | Parent-child multi-level inheritance | Parent overrides link 1; child overrides link 2 | Child effective config has both overrides cleanly merged | Exact | **VERIFIED (P12)** |
+| **P12-B005** | Precedence | Override precedence resolution | Child and parent override same parameter | Child override value takes precedence over parent | Exact | **VERIFIED (P12)** |
+| **P12-B006** | Conflict Check | Conflicting override rejection at same level | Two conflicting overrides for same parameter | Raises `ConflictingOverrideError` with details | Exact | **VERIFIED (P12)** |
+| **P12-B007** | Cycle Detection | Circular scenario inheritance rejection | Cyclic parent chain (A $\rightarrow$ B $\rightarrow$ C $\rightarrow$ A) | Raises `CircularInheritanceError` detecting cycle | Exact | **VERIFIED (P12)** |
+| **P12-B008** | Effective Config | Effective configuration generation | Resolve inheritance and apply overrides | Isolated dictionary copy with verified applied count | Exact | **VERIFIED (P12)** |
+| **P12-B009** | Hashing | Effective configuration hash stability | Repeated generation from same inputs | Deterministic, invariant SHA-256 hash | Exact | **VERIFIED (P12)** |
+| **P12-B010** | Hashing | Hash modification on override update | Add or alter override | New distinct SHA-256 hash generated | Exact | **VERIFIED (P12)** |
+| **P12-B011** | Validation | Scenario validation – non-existent target | Override targeting unknown object ID | Flags critical validation finding, blocks simulation | Exact | **VERIFIED (P12)** |
+| **P12-B012** | Validation | Scenario validation – out-of-bounds value | Override speed to 9999 m/s or NaN | Flags critical validation finding | Exact | **VERIFIED (P12)** |
+| **P12-B013** | Validation | Geometry consistency validation | Platform offsets exceeding link length | Flags critical geometry validation finding | Exact | **VERIFIED (P12)** |
+| **P12-B014** | Templates | Signalling comparison scenario | Signalling comparison template | Technology switched to CBTC moving block | Exact | **VERIFIED (P12)** |
+| **P12-B015** | Templates | Block length sensitivity scenario | Block sensitivity template | Block link lengths modified cleanly | Exact | **VERIFIED (P12)** |
+| **P12-B016** | Templates | TVS per-track scenario | TVS per-track template | Release delay updated, single-occupancy intact | Exact | **VERIFIED (P12)** |
+| **P12-B017** | Templates | TVS shared scenario | TVS shared template | Shared section configuration applied cleanly | Exact | **VERIFIED (P12)** |
+| **P12-B018** | Templates | Whole-tunnel scenario | Whole tunnel occupancy template | Single-train whole-tunnel policy applied | Exact | **VERIFIED (P12)** |
+| **P12-B019** | Templates | Stochastic operation scenario | Stochastic template with seed | Master seed and replications configured | Exact | **VERIFIED (P12)** |
+| **P12-B020** | Directionality | Running direction override | Configure `REVERSE` running direction | Reverse direction applied in effective config and hash | Exact | **VERIFIED (P12)** |
+| **P12-B021** | Comparison | Parameter differences tabulation | Compare baseline vs modified scenario | Exact parameter diff matrix with values | Exact | **VERIFIED (P12)** |
+| **P12-B022** | Comparison | Metric differences calculation | Compare simulation runs | Absolute and percentage differences calculated | Exact | **VERIFIED (P12)** |
+| **P12-B023** | Comparison | Bottleneck shift detection | Compare scenarios with different bottlenecks | Migrated bottleneck resource ID correctly reported | Exact | **VERIFIED (P12)** |
+| **P12-B024** | Result Registry | Result association with effective hash | Register simulation run | Run associated with scenario ID and config hash | Exact | **VERIFIED (P12)** |
+| **P12-B025** | Result Registry | Result invalidation on override change | Modify scenario overrides after run | Prior run marked `STALE` | Exact | **VERIFIED (P12)** |
+| **P12-B026** | Isolation | No cross-scenario state leakage | Modify Scenario B | Scenario A effective config and hash unchanged | Exact | **VERIFIED (P12)** |
+| **P12-B027** | Directionality | Forward vs Reverse scenario comparison | Compare identical corridor in opposite directions | Direction compatibility notes and differences captured | Exact | **VERIFIED (P12)** |
+| **P12-B028** | Reproducibility | Deterministic reproducibility across instances | Repeated independent scenario execution | Identical effective hashes and comparison reports | Exact | **VERIFIED (P12)** |
+
 
