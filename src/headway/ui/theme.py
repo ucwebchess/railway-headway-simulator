@@ -166,3 +166,8 @@ def get_engineering_theme() -> gr.Theme:
         button_primary_text_color="#ffffff",
     )
     return theme
+
+
+APP_CSS = ENGINEERING_CUSTOM_CSS
+ENGINEERING_THEME = get_engineering_theme()
+
