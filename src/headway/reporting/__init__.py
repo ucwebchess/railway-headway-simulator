@@ -91,6 +91,38 @@ from headway.reporting.tables import (
     export_table,
 )
 from headway.reporting.visualization_adapters import VisualizationAdapter
+from headway.reporting.report_models import (
+    BottleneckDiagnosis,
+    ExecutiveKpis,
+    InfrastructureSummary,
+    Recommendation,
+    RecommendationCategory,
+    ReportDocument,
+    ReportMetadata,
+    ReportSection,
+    ReportSectionId,
+    ReportType,
+    RollingStockSummary,
+)
+from headway.reporting.report_config import (
+    PageOrientation,
+    PaperSize,
+    ReportConfig,
+)
+from headway.reporting.recommendations import RecommendationEngine
+from headway.reporting.report_assembly import ReportAssembler
+from headway.reporting.report_validation import (
+    ReportDiagnostic,
+    ReportDiagnosticCode,
+    ReportValidationAudit,
+    ReportValidator,
+)
+from headway.reporting.html_renderer import HtmlReportRenderer
+from headway.reporting.pdf_renderer import PdfReportRenderer
+from headway.reporting.excel_export import ExcelReportExporter
+from headway.reporting.csv_export import CsvReportExporter
+from headway.reporting.json_export import JsonReportExporter
+from headway.reporting.report_package import ReportPackageExporter
 
 __all__ = [
     # Result Models & Validation
@@ -147,4 +179,31 @@ __all__ = [
     "StaticFigureExporter",
     "export_figure_headless",
     "export_matplotlib_figure",
+    # P14 Report Generation Models & Subsystems
+    "ReportType",
+    "ReportSectionId",
+    "RecommendationCategory",
+    "Recommendation",
+    "ExecutiveKpis",
+    "RollingStockSummary",
+    "InfrastructureSummary",
+    "BottleneckDiagnosis",
+    "ReportMetadata",
+    "ReportSection",
+    "ReportDocument",
+    "ReportConfig",
+    "PaperSize",
+    "PageOrientation",
+    "RecommendationEngine",
+    "ReportAssembler",
+    "ReportDiagnosticCode",
+    "ReportDiagnostic",
+    "ReportValidationAudit",
+    "ReportValidator",
+    "HtmlReportRenderer",
+    "PdfReportRenderer",
+    "ExcelReportExporter",
+    "CsvReportExporter",
+    "JsonReportExporter",
+    "ReportPackageExporter",
 ]

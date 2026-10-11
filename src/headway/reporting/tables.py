@@ -104,7 +104,7 @@ class EngineeringTable:
 
         header_html = "".join(f"<th style='background-color:#1B365D; color:#FFFFFF; padding:8px; text-align:left;'>{col}</th>" for col in df.columns)
         rows_html = []
-        for i, row in df.iterrows():
+        for i, (_, row) in enumerate(df.iterrows()):
             bg = "#FFFFFF" if i % 2 == 0 else "#F8F9FA"
             cells = "".join(f"<td style='padding:6px; border-bottom:1px solid #E2E8F0; text-align:right;'>{val}</td>" for val in row)
             rows_html.append(f"<tr style='background-color:{bg};'>{cells}</tr>")
