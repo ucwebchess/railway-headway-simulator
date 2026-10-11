@@ -25,7 +25,13 @@ class FileManager:
         """Discover available official example datasets."""
         examples_dir = Path("examples")
         if not examples_dir.exists():
-            return {}
+            alt_dir = Path(__file__).resolve().parent.parent.parent.parent / "examples"
+            if alt_dir.exists():
+                examples_dir = alt_dir
+            elif Path("/content/railway-headway-simulator/examples").exists():
+                examples_dir = Path("/content/railway-headway-simulator/examples")
+            else:
+                return {}
 
         found = {}
         for sub in sorted(examples_dir.iterdir()):
