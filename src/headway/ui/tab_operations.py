@@ -64,16 +64,19 @@ def create_operations_tab() -> Dict[str, Any]:
             return gr.update(choices=[]), "<div style='color: #64748B;'>No services defined.</div>", fig_route, [], []
 
         svc_list = list(proj.operations.service_patterns)
-        svc_names = [s.service_id for s in svc_list]
-        cur_svc = next((s for s in svc_list if s.service_id == selected_svc_id), svc_list[0])
+        svc_names = [getattr(s, "service_pattern_id", getattr(s, "service_id", "")) for s in svc_list]
+        cur_svc = next((s for s in svc_list if getattr(s, "service_pattern_id", getattr(s, "service_id", "")) == selected_svc_id), svc_list[0])
+        cur_id = getattr(cur_svc, "service_pattern_id", getattr(cur_svc, "service_id", "SVC_01"))
 
         stops_data: List[List[Any]] = []
         for stp in cur_svc.stops:
+            dwell_s = getattr(stp, "dwell_time_s", 30.0)
+            min_dwell_s = getattr(stp, "min_dwell_s", getattr(stp, "min_dwell_time_s", dwell_s))
             stops_data.append([
                 stp.station_id,
                 stp.platform_id or "Auto",
-                f"{stp.dwell_time_s:.1f}",
-                f"{getattr(stp, 'min_dwell_time_s', stp.dwell_time_s):.1f}",
+                f"{dwell_s:.1f}",
+                f"{min_dwell_s:.1f}",
                 "15.0 s",
             ])
 
@@ -81,8 +84,8 @@ def create_operations_tab() -> Dict[str, Any]:
         # Generate nominal trips
         for i in range(1, 5):
             timetable_data.append([
-                f"TRIP_{cur_svc.service_id}_{i:02d}",
-                cur_svc.service_id,
+                f"TRIP_{cur_id}_{i:02d}",
+                cur_id,
                 cur_svc.train_type_id,
                 f"{(i - 1) * 120.0:.0f} s",
                 str(getattr(cur_svc, "priority", 1)),
@@ -91,17 +94,19 @@ def create_operations_tab() -> Dict[str, Any]:
         # Service Card
         dir_val = getattr(cur_svc, "running_direction", RunningDirection.FORWARD)
         dir_str = dir_val.value if isinstance(dir_val, RunningDirection) else str(dir_val)
+        target_hw = getattr(cur_svc, "planned_headway_s", getattr(cur_svc, "target_headway_s", 90.0))
+        svc_desc = getattr(cur_svc, "name", None) or getattr(cur_svc, "description", None) or cur_id
 
         card_html = f"""
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             <div style="font-weight: 700; color: #1B365D; font-size: 16px; margin-bottom: 8px;">
-                🚆 Service Pattern: {cur_svc.name or cur_svc.service_id}
+                🚆 Service Pattern: {svc_desc}
             </div>
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 13px;">
                 <div><span style="color: #64748B;">Assigned Train Type:</span> <strong>{cur_svc.train_type_id}</strong></div>
                 <div><span style="color: #64748B;">Directionality:</span> <strong>{dir_str}</strong></div>
                 <div><span style="color: #64748B;">Station Stops:</span> <strong>{len(cur_svc.stops)}</strong></div>
-                <div><span style="color: #64748B;">Target Headway:</span> <strong>{getattr(cur_svc, 'target_headway_s', 90.0):.1f} s</strong></div>
+                <div><span style="color: #64748B;">Target Headway:</span> <strong>{target_hw:.1f} s</strong></div>
             </div>
         </div>
         """
@@ -134,7 +139,7 @@ def create_operations_tab() -> Dict[str, Any]:
                     break
 
         fig_route.update_layout(
-            title=f"Service Route & Platform Dwell Points [{cur_svc.service_id}]",
+            title=f"Service Route & Platform Dwell Points [{cur_id}]",
             xaxis_title="Route Chainage (m)",
             yaxis_visible=False,
             height=250,
@@ -143,7 +148,7 @@ def create_operations_tab() -> Dict[str, Any]:
         )
         apply_plotly_theme(fig_route)
 
-        return gr.update(choices=svc_names, value=cur_svc.service_id), card_html, fig_route, stops_data, timetable_data
+        return gr.update(choices=svc_names, value=cur_id), card_html, fig_route, stops_data, timetable_data
 
     components["btn_refresh_ops"].click(
         fn=update_operations_view,

@@ -30,6 +30,14 @@ class ChartColors:
     WARNING_AMBER = "#F57C00"
     CRITICAL_RED = "#C62828"
 
+    # Convenience aliases
+    NAVY = PRIMARY_NAVY
+    BLUE = SECONDARY_BLUE
+    TEAL = ACCENT_TEAL
+    AMBER = WARNING_AMBER
+    RED = CRITICAL_RED
+    GREEN = SUCCESS_GREEN
+
     # Train Roles
     LEADER_TRAIN = "#1565C0"     # Deep Blue
     FOLLOWER_TRAIN = "#D32F2F"   # Vivid Red

@@ -161,6 +161,57 @@ def create_scenarios_tab() -> Dict[str, Any]:
         outputs=[components["scenario_selector"], components["scenario_feedback_box"], components["tbl_scenario_diffs"]],
     )
 
+    def handle_duplicate_scenario(active_scn: str) -> Tuple[Any, str, List[List[str]]]:
+        mgr = session_state.scenario_manager
+        if not mgr:
+            return gr.update(), create_error_html({"category": "Error", "message": "No project loaded."}), []
+
+        target_scn = active_scn or session_state.active_scenario_id or "BASELINE"
+        new_id = f"{target_scn}_COPY"
+        existing_ids = [s.scenario_id for s in mgr.list_scenarios(include_archived=True)]
+        count = 1
+        while new_id in existing_ids:
+            new_id = f"{target_scn}_COPY_{count}"
+            count += 1
+
+        try:
+            mgr.duplicate_scenario(source_scenario_id=target_scn, new_scenario_id=new_id)
+            session_state.active_scenario_id = new_id
+            scns, _, diffs = refresh_scenarios_list()
+            msg = create_success_html("Scenario Duplicated", f"Duplicated '{target_scn}' as '{new_id}'.")
+            return scns, msg, diffs
+        except Exception as e:
+            return gr.update(), create_error_html({"category": "Duplication Failed", "message": str(e)}), []
+
+    components["btn_duplicate_scenario"].click(
+        fn=handle_duplicate_scenario,
+        inputs=[components["scenario_selector"]],
+        outputs=[components["scenario_selector"], components["scenario_feedback_box"], components["tbl_scenario_diffs"]],
+    )
+
+    def handle_archive_scenario(active_scn: str) -> Tuple[Any, str, List[List[str]]]:
+        mgr = session_state.scenario_manager
+        if not mgr:
+            return gr.update(), create_error_html({"category": "Error", "message": "No project loaded."}), []
+
+        if active_scn == "BASELINE":
+            return gr.update(), create_error_html({"category": "Protection Error", "message": "Cannot archive BASELINE scenario (protected baseline)."}), []
+
+        try:
+            mgr.archive_scenario(active_scn)
+            session_state.active_scenario_id = "BASELINE"
+            scns, _, diffs = refresh_scenarios_list()
+            msg = create_success_html("Scenario Archived", f"Scenario '{active_scn}' was archived.")
+            return scns, msg, diffs
+        except Exception as e:
+            return gr.update(), create_error_html({"category": "Archive Failed", "message": str(e)}), []
+
+    components["btn_archive_scenario"].click(
+        fn=handle_archive_scenario,
+        inputs=[components["scenario_selector"]],
+        outputs=[components["scenario_selector"], components["scenario_feedback_box"], components["tbl_scenario_diffs"]],
+    )
+
     def handle_delete_scenario(active_scn: str) -> Tuple[Any, str, List[List[str]]]:
         mgr = session_state.scenario_manager
         if not mgr:

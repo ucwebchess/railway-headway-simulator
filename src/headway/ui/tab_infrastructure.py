@@ -85,6 +85,7 @@ def create_infrastructure_tab() -> Dict[str, Any]:
             return fig_net, fig_prof, links_data, blocks_data, stations_data, tvs_data
 
         infra = proj.infrastructure
+        track_map = {t.track_id: getattr(t.directionality, "value", str(t.directionality)) for t in infra.tracks}
         ordered_links = list(infra.track_links)
         if is_rev:
             ordered_links.reverse()
@@ -96,6 +97,7 @@ def create_infrastructure_tab() -> Dict[str, Any]:
         grad_y = []
 
         for lnk in ordered_links:
+            track_dir = track_map.get(lnk.track_id, "BIDIRECTIONAL")
             links_data.append([
                 lnk.link_id,
                 lnk.track_id,
@@ -103,7 +105,7 @@ def create_infrastructure_tab() -> Dict[str, Any]:
                 lnk.end_node_id,
                 lnk.length_m,
                 lnk.max_speed_ms * 3.6,
-                lnk.directionality.value,
+                str(track_dir),
             ])
             start_d = cum_dist
             end_d = cum_dist + lnk.length_m
@@ -112,7 +114,8 @@ def create_infrastructure_tab() -> Dict[str, Any]:
             x_coords.extend([start_d, end_d])
             y_coords.extend([0.0, 0.0])
 
-            effective_grade = -lnk.gradient_permille if is_rev else lnk.gradient_permille
+            grad_permille = (lnk.gradient_decimal * 1000.0) if hasattr(lnk, "gradient_decimal") else getattr(lnk, "gradient_permille", 0.0)
+            effective_grade = -grad_permille if is_rev else grad_permille
             grad_x.extend([start_d, end_d])
             grad_y.extend([effective_grade, effective_grade])
 
@@ -157,13 +160,20 @@ def create_infrastructure_tab() -> Dict[str, Any]:
 
         # Blocks
         for blk in proj.signalling.blocks:
+            first_iv = blk.link_intervals[0] if blk.link_intervals else None
+            last_iv = blk.link_intervals[-1] if blk.link_intervals else None
+            l_id = ", ".join(iv.link_id for iv in blk.link_intervals) if blk.link_intervals else "-"
+            s_off = first_iv.start_offset_m if first_iv else 0.0
+            e_off = last_iv.end_offset_m if last_iv else 0.0
+            blk_len = sum(iv.end_offset_m - iv.start_offset_m for iv in blk.link_intervals)
+            sig_id = blk.entry_signal_id or blk.exit_signal_id or "-"
             blocks_data.append([
                 blk.block_id,
-                blk.link_id,
-                blk.start_offset_m,
-                blk.end_offset_m,
-                blk.length_m,
-                blk.associated_signal_id or "-",
+                l_id,
+                s_off,
+                e_off,
+                blk_len,
+                sig_id,
             ])
 
         # TVS

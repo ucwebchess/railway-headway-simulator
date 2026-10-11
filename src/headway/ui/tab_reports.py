@@ -4,6 +4,7 @@ Milestone P15 — Multi-Format Generation & Deliverable Packaging (P15-TAB-010, 
 Consumes P14 reporting subsystem directly without modifying core engineering data.
 """
 
+import html
 from pathlib import Path
 import shutil
 import tempfile
@@ -18,6 +19,7 @@ from headway.reporting.json_export import JsonReportExporter
 from headway.reporting.pdf_renderer import PdfReportRenderer
 from headway.reporting.report_assembly import ReportAssembler, ReportSectionId, ReportType
 from headway.reporting.report_config import ReportConfig
+from headway.reporting.report_models import ReportDocument
 from headway.reporting.report_package import ReportPackageExporter
 from headway.ui.error_handling import create_error_html, create_success_html, format_exception_for_ui
 from headway.ui.state import session_state
@@ -77,15 +79,16 @@ def create_reports_tab() -> Dict[str, Any]:
             with gr.Column(scale=1):
                 gr.Markdown("#### Download Deliverables")
                 with gr.Row():
-                    components["btn_download_pkg"] = gr.Button("📦 Complete Assessment ZIP Package", variant="primary")
+                    components["btn_download_pkg"] = gr.Button("📦 Complete Assessment ZIP Package", variant="primary", scale=2)
+                    components["btn_download_pdf"] = gr.Button("📄 Formal PDF Report", variant="secondary", scale=1)
                 with gr.Row():
-                    components["btn_download_pdf"] = gr.Button("📄 Formal PDF Report", variant="secondary")
-                    components["btn_download_xlsx"] = gr.Button("📊 Excel Assessment (.xlsx)", variant="secondary")
+                    components["btn_download_html"] = gr.Button("🌐 Interactive HTML Report", variant="secondary", scale=1)
+                    components["btn_download_xlsx"] = gr.Button("📊 Excel Assessment (.xlsx)", variant="secondary", scale=1)
                 with gr.Row():
-                    components["btn_download_csv"] = gr.Button("📁 CSV Tables (.zip)", variant="secondary")
-                    components["btn_download_json"] = gr.Button("📑 JSON Report (.json)", variant="secondary")
+                    components["btn_download_csv"] = gr.Button("📁 CSV Tables (.zip)", variant="secondary", scale=1)
+                    components["btn_download_json"] = gr.Button("📑 JSON Report (.json)", variant="secondary", scale=1)
 
-                components["download_file_output"] = gr.File(label="Generated Deliverable File", visible=False)
+                components["download_file_output"] = gr.File(label="Generated Deliverable File", visible=True)
                 components["rep_status_msg"] = gr.HTML()
 
                 gr.Markdown("---")
@@ -108,6 +111,13 @@ def create_reports_tab() -> Dict[str, Any]:
         )
 
     # Event Handlers
+    def _ensure_report_doc() -> Optional[ReportDocument]:
+        doc = session_state.latest_report_doc
+        if not doc and session_state.latest_result_package:
+            doc = ReportAssembler.assemble_report(package=session_state.latest_result_package)
+            session_state.latest_report_doc = doc
+        return doc
+
     def assemble_and_preview(
         report_type_str: str,
         title: str,
@@ -137,11 +147,13 @@ def create_reports_tab() -> Dict[str, Any]:
             session_state.latest_report_doc = doc
 
             html_content = HtmlReportRenderer.render(doc, embed_interactive_plotly=True)
-            # Wrap in scrollable container for Gradio preview
+            # Render inside isolated iframe with srcdoc so Plotly scripts execute properly
+            escaped_srcdoc = html.escape(html_content, quote=True)
             preview_html = f"""
-                <div style="max-height: 800px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; background: #ffffff;">
-                    {html_content}
-                </div>
+                <iframe srcdoc="{escaped_srcdoc}"
+                        style="width: 100%; height: 850px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff;"
+                        sandbox="allow-scripts allow-same-origin">
+                </iframe>
             """
             success_msg = create_success_html(
                 "Report Assembled Successfully",
@@ -164,14 +176,15 @@ def create_reports_tab() -> Dict[str, Any]:
     )
 
     def download_complete_package() -> Tuple[Any, str]:
-        doc = session_state.latest_report_doc
+        doc = _ensure_report_doc()
         if not doc:
             return gr.update(visible=False), create_error_html(
-                "No Report Document", "Assemble or preview a report first."
+                "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="headway_pkg_"))
-            pkg_path = tmp_dir / f"Assessment_Package_{doc.metadata.report_id}.zip"
+            out_dir = Path(session_state.reports_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            pkg_path = out_dir / f"Assessment_Package_{doc.metadata.report_id}.zip"
             ReportPackageExporter.export_package(
                 document=doc,
                 output_zip_path=pkg_path,
@@ -196,14 +209,15 @@ def create_reports_tab() -> Dict[str, Any]:
     )
 
     def download_pdf() -> Tuple[Any, str]:
-        doc = session_state.latest_report_doc
+        doc = _ensure_report_doc()
         if not doc:
             return gr.update(visible=False), create_error_html(
-                "No Report Document", "Assemble or preview a report first."
+                "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="headway_pdf_"))
-            pdf_path = tmp_dir / f"Report_{doc.metadata.report_id}.pdf"
+            out_dir = Path(session_state.reports_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            pdf_path = out_dir / f"Report_{doc.metadata.report_id}.pdf"
             PdfReportRenderer.render(doc, output_path=pdf_path)
             return gr.update(value=str(pdf_path), visible=True), create_success_html(
                 "PDF Rendered", f"Exported formal PDF: {pdf_path.name}"
@@ -218,15 +232,40 @@ def create_reports_tab() -> Dict[str, Any]:
         outputs=[components["download_file_output"], components["rep_status_msg"]],
     )
 
-    def download_xlsx() -> Tuple[Any, str]:
-        doc = session_state.latest_report_doc
+    def download_html() -> Tuple[Any, str]:
+        doc = _ensure_report_doc()
         if not doc:
             return gr.update(visible=False), create_error_html(
-                "No Report Document", "Assemble or preview a report first."
+                "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="headway_xlsx_"))
-            xlsx_path = tmp_dir / f"Report_{doc.metadata.report_id}.xlsx"
+            out_dir = Path(session_state.reports_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            html_path = out_dir / f"Report_{doc.metadata.report_id}.html"
+            HtmlReportRenderer.render(doc, output_path=html_path, embed_interactive_plotly=True)
+            return gr.update(value=str(html_path), visible=True), create_success_html(
+                "HTML Report Exported", f"Exported standalone HTML: {html_path.name}"
+            )
+        except Exception as exc:
+            err = format_exception_for_ui(exc, context="HTML Export")
+            return gr.update(visible=False), err.to_html()
+
+    components["btn_download_html"].click(
+        fn=download_html,
+        inputs=[],
+        outputs=[components["download_file_output"], components["rep_status_msg"]],
+    )
+
+    def download_xlsx() -> Tuple[Any, str]:
+        doc = _ensure_report_doc()
+        if not doc:
+            return gr.update(visible=False), create_error_html(
+                "No Report Document", "Run a simulation or assemble a report first."
+            )
+        try:
+            out_dir = Path(session_state.reports_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            xlsx_path = out_dir / f"Report_{doc.metadata.report_id}.xlsx"
             ExcelReportExporter.export(doc, output_path=xlsx_path)
             return gr.update(value=str(xlsx_path), visible=True), create_success_html(
                 "Excel Exported", f"Exported engineering workbook: {xlsx_path.name}"
@@ -242,19 +281,19 @@ def create_reports_tab() -> Dict[str, Any]:
     )
 
     def download_csv_zip() -> Tuple[Any, str]:
-        doc = session_state.latest_report_doc
+        doc = _ensure_report_doc()
         if not doc:
             return gr.update(visible=False), create_error_html(
-                "No Report Document", "Assemble or preview a report first."
+                "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="headway_csv_"))
-            csv_dir = tmp_dir / "csvs"
-            csv_dir.mkdir(parents=True, exist_ok=True)
-            CsvReportExporter.export(doc, output_dir=csv_dir)
-            zip_path = tmp_dir / f"CSV_Tables_{doc.metadata.report_id}.zip"
+            out_dir = Path(session_state.reports_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            tmp_csv_dir = Path(tempfile.mkdtemp(prefix="headway_csv_"))
+            CsvReportExporter.export(doc, output_dir=tmp_csv_dir)
+            zip_path = out_dir / f"CSV_Tables_{doc.metadata.report_id}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                for f in csv_dir.glob("*.csv"):
+                for f in tmp_csv_dir.glob("*.csv"):
                     zf.write(f, arcname=f.name)
             return gr.update(value=str(zip_path), visible=True), create_success_html(
                 "CSV Archive Created", f"Packaged CSV tables into {zip_path.name}"
@@ -270,14 +309,15 @@ def create_reports_tab() -> Dict[str, Any]:
     )
 
     def download_json() -> Tuple[Any, str]:
-        doc = session_state.latest_report_doc
+        doc = _ensure_report_doc()
         if not doc:
             return gr.update(visible=False), create_error_html(
-                "No Report Document", "Assemble or preview a report first."
+                "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="headway_json_"))
-            json_path = tmp_dir / f"Report_{doc.metadata.report_id}.json"
+            out_dir = Path(session_state.reports_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            json_path = out_dir / f"Report_{doc.metadata.report_id}.json"
             JsonReportExporter.export(doc, output_path=json_path)
             return gr.update(value=str(json_path), visible=True), create_success_html(
                 "JSON Generated", f"Exported structured JSON: {json_path.name}"

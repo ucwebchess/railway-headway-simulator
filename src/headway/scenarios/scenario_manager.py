@@ -88,6 +88,10 @@ class ScenarioManager:
             if include_archived or s.status != ScenarioStatus.ARCHIVED
         ]
 
+    def get_all_scenarios(self, include_archived: bool = True) -> List[ScenarioDefinition]:
+        """Return all registered scenarios. Alias for list_scenarios(include_archived=include_archived)."""
+        return self.list_scenarios(include_archived=include_archived)
+
     def create_scenario(
         self,
         scenario_id: str,

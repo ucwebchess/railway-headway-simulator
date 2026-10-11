@@ -43,6 +43,7 @@ def create_dashboard_tab(
                 interactive=False,
                 scale=1,
             )
+            components["btn_refresh_dashboard_top"] = gr.Button("🔄 Refresh Dashboard", variant="secondary", scale=1)
 
         # Row 2: Headline KPIs (Microscopic Simulation)
         gr.Markdown("#### Key Performance Indicators (Microscopic Simulation)")
@@ -171,6 +172,22 @@ def create_dashboard_tab(
         return p_name, p_id, v_status, h_hw, h_theo, h_plan, h_bot, stats_rows, ds_rows
 
     components["btn_refresh_dashboard"].click(
+        fn=refresh_dashboard,
+        inputs=[],
+        outputs=[
+            components["project_name_text"],
+            components["project_id_text"],
+            components["validation_status_text"],
+            components["kpi_headway"],
+            components["kpi_theo_cap"],
+            components["kpi_plan_cap"],
+            components["kpi_bottleneck"],
+            components["stats_dataframe"],
+            components["dataset_dataframe"],
+        ],
+    )
+
+    components["btn_refresh_dashboard_top"].click(
         fn=refresh_dashboard,
         inputs=[],
         outputs=[

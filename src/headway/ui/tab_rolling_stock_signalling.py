@@ -172,9 +172,11 @@ def create_rolling_stock_signalling_tab() -> Dict[str, Any]:
         """
 
         sig = proj.signalling
-        sig_sys = sig.signalling_systems[0] if sig.signalling_systems else None
-        tech_name = sig_sys.technology_type.value if sig_sys else "FIXED_BLOCK_3ASPECT"
-        aspect_model = sig_sys.aspect_model.value if sig_sys else "THREE_ASPECT"
+        sig_sys = getattr(sig, "system", None)
+        if sig_sys is None and hasattr(sig, "signalling_systems") and sig.signalling_systems:
+            sig_sys = sig.signalling_systems[0]
+        tech_name = sig_sys.technology_type.value if (sig_sys and hasattr(sig_sys.technology_type, "value")) else "FIXED_BLOCK_3ASPECT"
+        aspect_model = sig_sys.aspect_model.value if (sig_sys and hasattr(sig_sys.aspect_model, "value")) else "THREE_ASPECT"
 
         sig_card = f"""
         <div class="kpi-card" style="border-left: 5px solid #1B365D;">
@@ -186,13 +188,16 @@ def create_rolling_stock_signalling_tab() -> Dict[str, Any]:
 
         signals_data = []
         for s in sig.signals:
+            sig_pos = getattr(s, "offset_m", getattr(s, "position_m", 0.0))
+            lock_time = getattr(s, "approach_locking_time_s", getattr(s, "sighting_distance_m", 0.0))
+            sig_type = s.signal_type.value if hasattr(s.signal_type, "value") else str(s.signal_type)
             signals_data.append([
                 s.signal_id,
                 s.link_id,
-                f"{s.position_m:.1f}",
-                s.signal_type.value,
+                f"{sig_pos:.1f}",
+                sig_type,
                 aspect_model,
-                f"{s.approach_locking_time_s:.1f} s",
+                f"{lock_time:.1f} s",
             ])
 
         return gr.update(choices=tt_names, value=cur_tt.train_type_id), spec_card, fig_tr, fig_dv, sig_card, signals_data

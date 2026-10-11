@@ -45,6 +45,8 @@ class HtmlReportRenderer:
         html_parts.append("<meta charset='UTF-8'>")
         html_parts.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>")
         html_parts.append(f"<title>{html.escape(meta.title)} — {html.escape(meta.scenario_id)} [{direction_val}]</title>")
+        if embed_interactive_plotly:
+            html_parts.append("<script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>")
         html_parts.append("<style>")
         html_parts.append(cls._get_css_styles())
         html_parts.append("</style>")
@@ -180,6 +182,12 @@ class HtmlReportRenderer:
                     html_parts.append("<div class='figure-wrapper'>")
                     if hasattr(fig_obj, "to_html") and embed_interactive_plotly:
                         html_parts.append(fig_obj.to_html(full_html=False, include_plotlyjs="cdn"))
+                    elif isinstance(fig_obj, (str, Path)) and Path(str(fig_obj)).exists():
+                        import base64
+                        p = Path(str(fig_obj))
+                        b64_data = base64.b64encode(p.read_bytes()).decode("utf-8")
+                        mime = "image/png" if p.suffix.lower() == ".png" else "image/svg+xml"
+                        html_parts.append(f"<img src='data:{mime};base64,{b64_data}' alt='{html.escape(f_key)}' style='max-width: 100%; height: auto;' />")
                     else:
                         html_parts.append(f"<div class='figure-placeholder'>Figure: {html.escape(f_key)}</div>")
                     html_parts.append("</div>")
