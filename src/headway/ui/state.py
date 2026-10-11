@@ -6,6 +6,7 @@ Preserves project, scenario, and simulation results throughout the active Gradio
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,6 +39,7 @@ class AppState:
     simulation_packages: Dict[str, SimulationResultPackage] = field(default_factory=dict)
     latest_result_package: Optional[SimulationResultPackage] = None
     latest_report_doc: Optional[ReportDocument] = None
+    reports_dir: Path = field(default_factory=lambda: Path(os.environ.get("HEADWAY_STORAGE_DIR", Path.cwd() / "storage")) / "reports")
 
     # Logging and Diagnostics
     session_logs: List[str] = field(default_factory=list)
@@ -233,13 +235,14 @@ class AppState:
         has_errors = bool(self.validation_report and self.validation_report.has_errors)
         val_status = "Errors Detected" if has_errors else ("Simulation Ready" if ready else "Validated with Warnings")
 
+        scn_count = len(self.scenario_manager.get_all_scenarios()) if self.scenario_manager else (len(self.current_project.scenarios) if self.current_project else 1)
         return {
             "Infrastructure": f"Loaded ({len(self.current_project.infrastructure.track_links)} links)",
             "Signalling": f"Loaded ({len(self.current_project.signalling.blocks)} blocks)",
             "Rolling Stock": f"Loaded ({len(self.current_project.rolling_stock.train_types)} trains)",
             "Operations": f"Loaded ({len(self.current_project.operations.service_patterns)} services)",
             "Headway Analysis": "Configured",
-            "Scenarios": f"Configured ({len(self.scenario_manager.get_all_scenarios()) if self.scenario_manager else 1})",
+            "Scenarios": f"Configured ({scn_count})",
             "Validation Status": val_status,
             "Simulation Ready": "Yes" if ready else "No",
         }

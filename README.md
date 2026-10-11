@@ -1,8 +1,8 @@
 # Railway Headway & Capacity Simulator
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](docs/CHANGELOG.md)
-[![Phase](https://img.shields.io/badge/phase-v1.0.0%20Released-success.svg)](docs/DEVELOPMENT_MANIFEST.md)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](docs/CHANGELOG.md)
+[![Phase](https://img.shields.io/badge/phase-v1.0.1%20Released-success.svg)](docs/DEVELOPMENT_MANIFEST.md)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 [![UI: Gradio](https://img.shields.io/badge/UI-Gradio%20Blocks-blueviolet.svg)](src/headway/ui/app.py)
 
@@ -10,9 +10,9 @@ A modular, microscopic railway simulation software system designed to calculate 
 
 ---
 
-### ⚠️ IMPORTANT ENGINEERING NOTICE (RELEASE 1.0.0)
+### ⚠️ IMPORTANT ENGINEERING NOTICE (RELEASE 1.0.1)
 
-**The current software version (`1.0.0`) is the formal release of the Railway Headway & Capacity Simulator, incorporating all development milestones P00 through P15.**
+**The current software version (`1.0.1`) is the formal release of the Railway Headway & Capacity Simulator, incorporating all development milestones P00 through P15 and post-release fixes.**
 
 - Microscopic railway engineering calculations (train dynamics, Davis resistance, signalling aspect evaluation, seven-component blocking times, technical headway, capacity estimation, stochastic reliability, and TVS controls) are fully implemented and verified against 748 automated tests.
 - All 10 user interface tabs and calculation engines are fully functional with explicit FORWARD and REVERSE running direction support.

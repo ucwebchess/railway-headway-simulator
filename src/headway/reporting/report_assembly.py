@@ -102,7 +102,7 @@ class ReportAssembler:
             simulation_run_id=package.run_id,
             report_type=cfg.report_type,
             running_direction=direction,
-            software_version="0.1.0-dev",
+            software_version="1.0.1",
             input_configuration_hash=package.effective_config_hash,
             validation_status="VALID",
             title=cfg.title or "Railway Headway & Line Capacity Assessment",
@@ -672,7 +672,7 @@ class ReportAssembler:
                 "and verification status to ensure total calculation auditability.",
             ],
             kpis={
-                "Software Version": "0.1.0-dev",
+                "Software Version": "1.0.1",
                 "Config Hash": package.effective_config_hash,
                 "Model Fidelity": infra.model_fidelity,
                 "Signalling Tech": infra.signalling_technology,

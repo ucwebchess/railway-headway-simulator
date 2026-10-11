@@ -200,7 +200,7 @@ class SimulationRunner:
             tracker.update(current_step=60, stage="Mixed-Traffic & Multi-Train Operations", status_message="Evaluating directional mixed-traffic and dispatching...")
 
         # 4. Mixed-Traffic Matrix
-        service_ids = [getattr(svc, "service_pattern_id", getattr(svc, "service_id", "METRO")) for svc in ops.service_patterns] if ops.service_patterns else ["METRO_COMMUTER", "METRO_EXPRESS"]
+        service_ids = [svc.service_pattern_id for svc in ops.service_patterns] if ops.service_patterns else ["METRO_COMMUTER", "METRO_EXPRESS"]
         if len(service_ids) < 2:
             service_ids = ["METRO_COMMUTER", "METRO_EXPRESS"]
 

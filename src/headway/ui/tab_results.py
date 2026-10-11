@@ -282,10 +282,14 @@ def create_results_tab() -> Dict[str, Any]:
 
     def export_excel_results() -> Any:
         doc = session_state.latest_report_doc
+        if not doc and session_state.latest_result_package:
+            doc = ReportAssembler.assemble_report(package=session_state.latest_result_package)
+            session_state.latest_report_doc = doc
         if not doc:
             return gr.update(visible=False)
-        tmp_dir = Path(tempfile.mkdtemp(prefix="headway_results_xlsx_"))
-        out_path = tmp_dir / f"Simulation_Results_{doc.metadata.report_id}.xlsx"
+        out_dir = Path(session_state.reports_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"Simulation_Results_{doc.metadata.report_id}.xlsx"
         ExcelReportExporter.export(doc, output_path=out_path)
         return gr.update(value=str(out_path), visible=True)
 
@@ -297,10 +301,14 @@ def create_results_tab() -> Dict[str, Any]:
 
     def export_json_results() -> Any:
         doc = session_state.latest_report_doc
+        if not doc and session_state.latest_result_package:
+            doc = ReportAssembler.assemble_report(package=session_state.latest_result_package)
+            session_state.latest_report_doc = doc
         if not doc:
             return gr.update(visible=False)
-        tmp_dir = Path(tempfile.mkdtemp(prefix="headway_results_json_"))
-        out_path = tmp_dir / f"Simulation_Results_{doc.metadata.report_id}.json"
+        out_dir = Path(session_state.reports_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"Simulation_Results_{doc.metadata.report_id}.json"
         JsonReportExporter.export(doc, output_path=out_path)
         return gr.update(value=str(out_path), visible=True)
 

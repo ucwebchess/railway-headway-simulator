@@ -97,7 +97,7 @@ def create_data_import_tab() -> Dict[str, Any]:
             ["Signalling", f"examples/{ex_name}/02_Signalling.xlsx", f"{len(proj.signalling.blocks)} blocks", "Loaded (Verified)"],
             ["Rolling Stock", f"examples/{ex_name}/03_RollingStock.xlsx", f"{len(proj.rolling_stock.train_types)} train types", "Loaded (Verified)"],
             ["Operations", f"examples/{ex_name}/04_Operations.xlsx", f"{len(proj.operations.service_patterns)} services", "Loaded (Verified)"],
-            ["Headway Analysis", f"examples/{ex_name}/05_HeadwayAnalysis.xlsx", f"{len(proj.analysis.configs)} configs", "Loaded (Verified)"],
+            ["Headway Analysis", f"examples/{ex_name}/05_HeadwayAnalysis.xlsx", f"{len(proj.analysis.analyses)} configs", "Loaded (Verified)"],
             ["Scenarios", f"examples/{ex_name}/06_Scenarios.xlsx", f"{len(proj.scenarios)} scenarios", "Loaded (Verified)"],
         ]
 
