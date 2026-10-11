@@ -1,0 +1,66 @@
+name: Python Tests
+
+'on':
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run Automated Test Suite (Python 3.11)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Upgrade pip and install package dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Discover and verify test categories
+        run: |
+          python -m pytest --collect-only -q
+
+      - name: Run automated test suite
+        run: |
+          python -m pytest -q
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Automated Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Job Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version:** 3.11" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger Event:** \`${{ github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit Ref:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Categories Discovered & Executed:**" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`tests/unit/\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`tests/integration/\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`tests/engineering/\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`tests/regression/\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`tests/end_to_end/\`" >> $GITHUB_STEP_SUMMARY
