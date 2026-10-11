@@ -67,7 +67,7 @@ class DirectionSelector:
 
         # If a specific route is requested, check links in route
         if route_id:
-            route_links = [lnk for lnk in infra.track_links if lnk.route_id == route_id]
+            route_links = [lnk for lnk in infra.track_links if lnk.track_id == route_id]
         else:
             route_links = infra.track_links
 

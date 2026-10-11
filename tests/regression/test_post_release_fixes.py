@@ -248,3 +248,192 @@ def test_audit_03_and_04_cross_tab_and_direction_propagation():
     json_res = fns["export_json_results"]()
     json_path = Path(json_res["value"] if isinstance(json_res, dict) else json_res.value)
     assert json_path.exists() and json_path.stat().st_size > 0
+
+
+@pytest.mark.regression
+def test_canonical_models_static_field_verification():
+    """Verify that canonical Pydantic models contain the exact field names expected by UI callbacks."""
+    from headway.data.canonical import AnalysisModel, TVSSection, TrackLink
+
+    # Verify AnalysisModel.analyses exists and configs does not
+    assert "analyses" in AnalysisModel.model_fields
+    assert "configs" not in AnalysisModel.model_fields
+
+    # Verify TVSSection.max_train_occupancy exists and max_occupancy does not
+    assert "max_train_occupancy" in TVSSection.model_fields
+    assert "max_occupancy" not in TVSSection.model_fields
+
+    # Verify TrackLink.track_id exists and route_id does not
+    assert "track_id" in TrackLink.model_fields
+    assert "route_id" not in TrackLink.model_fields
+
+
+@pytest.mark.regression
+def test_static_ast_audit_zero_mismatches_in_ui_callbacks():
+    """Statically verify every canonical attribute access across all src/headway/ui/ files."""
+    import ast
+    import inspect
+    import headway.data.canonical as cm
+
+    canonical_classes = {}
+    for name, obj in inspect.getmembers(cm, inspect.isclass):
+        if hasattr(obj, "model_fields"):
+            canonical_classes[name] = set(obj.model_fields.keys()) | set(a for a in dir(obj) if not a.startswith("_"))
+
+    ui_dir = Path("src/headway/ui")
+    mismatches = []
+
+    class ScopeVisitor(ast.NodeVisitor):
+        def __init__(self, filename: str):
+            self.filename = filename
+            self.type_env = {
+                "current_project": "CanonicalProject",
+                "project": "CanonicalProject",
+                "proj": "CanonicalProject",
+                "infra": "InfrastructureModel",
+                "infrastructure": "InfrastructureModel",
+                "rs": "RollingStockModel",
+                "rolling_stock": "RollingStockModel",
+                "sig": "SignallingModel",
+                "signalling": "SignallingModel",
+                "sig_sys": "SignallingSystem",
+                "ops": "OperationsModel",
+                "operations": "OperationsModel",
+                "cur_tt": "TrainType",
+                "train_type": "TrainType",
+                "cur_svc": "ServicePattern",
+                "service_pattern": "ServicePattern",
+            }
+
+        def visit_Assign(self, node):
+            rhs_type = None
+            if isinstance(node.value, ast.Attribute):
+                if isinstance(node.value.value, ast.Name):
+                    base_var = node.value.value.id
+                    attr = node.value.attr
+                    base_type = self.type_env.get(base_var)
+                    if base_type == "CanonicalProject":
+                        if attr == "infrastructure": rhs_type = "InfrastructureModel"
+                        elif attr == "rolling_stock": rhs_type = "RollingStockModel"
+                        elif attr == "signalling": rhs_type = "SignallingModel"
+                        elif attr == "operations": rhs_type = "OperationsModel"
+                        elif attr == "analysis": rhs_type = "AnalysisModel"
+                    elif base_type == "SignallingModel" and attr == "system":
+                        rhs_type = "SignallingSystem"
+                elif isinstance(node.value.value, ast.Attribute):
+                    if node.value.value.attr in ("current_project", "project"):
+                        if node.value.attr == "infrastructure": rhs_type = "InfrastructureModel"
+                        elif node.value.attr == "rolling_stock": rhs_type = "RollingStockModel"
+                        elif node.value.attr == "signalling": rhs_type = "SignallingModel"
+                        elif node.value.attr == "operations": rhs_type = "OperationsModel"
+            elif isinstance(node.value, ast.Name):
+                rhs_type = self.type_env.get(node.value.id)
+
+            for target in node.targets:
+                if isinstance(target, ast.Name) and rhs_type:
+                    self.type_env[target.id] = rhs_type
+            self.generic_visit(node)
+
+        def visit_For(self, node):
+            elem_type = None
+            iter_node = node.iter
+            if isinstance(iter_node, ast.Call) and isinstance(iter_node.func, ast.Name) and iter_node.func.id == "list":
+                if iter_node.args:
+                    iter_node = iter_node.args[0]
+
+            if isinstance(iter_node, ast.Attribute):
+                attr = iter_node.attr
+                if attr == "tracks": elem_type = "Track"
+                elif attr == "track_links": elem_type = "TrackLink"
+                elif attr == "stations": elem_type = "Station"
+                elif attr == "platforms": elem_type = "Platform"
+                elif attr == "tunnels": elem_type = "Tunnel"
+                elif attr == "tvs_sections": elem_type = "TVSSection"
+                elif attr == "train_types": elem_type = "TrainType"
+                elif attr == "signals": elem_type = "Signal"
+                elif attr == "blocks": elem_type = "SignallingBlock"
+                elif attr == "service_patterns": elem_type = "ServicePattern"
+                elif attr == "stops": elem_type = "StationStop"
+                elif attr == "link_intervals": elem_type = "ResourceInterval"
+            elif isinstance(iter_node, ast.Name):
+                if iter_node.id in ("ordered_links", "links"): elem_type = "TrackLink"
+                elif iter_node.id in ("tt_names", "train_types"): elem_type = "TrainType"
+                elif iter_node.id in ("svc_list", "service_patterns"): elem_type = "ServicePattern"
+
+            if isinstance(node.target, ast.Name) and elem_type:
+                self.type_env[node.target.id] = elem_type
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node):
+            obj_type = None
+            if isinstance(node.value, ast.Name):
+                obj_name = node.value.id
+                obj_type = self.type_env.get(obj_name)
+            elif isinstance(node.value, ast.Attribute) and isinstance(node.value.value, ast.Name):
+                p_type = self.type_env.get(node.value.value.id)
+                if p_type == "CanonicalProject":
+                    if node.value.attr == "infrastructure": obj_type = "InfrastructureModel"
+                    elif node.value.attr == "rolling_stock": obj_type = "RollingStockModel"
+                    elif node.value.attr == "signalling": obj_type = "SignallingModel"
+                    elif node.value.attr == "operations": obj_type = "OperationsModel"
+                    elif node.value.attr == "analysis": obj_type = "AnalysisModel"
+
+            if obj_type and obj_type in canonical_classes:
+                attr_name = node.attr
+                if attr_name not in canonical_classes[obj_type]:
+                    mismatches.append(f"{self.filename}:{node.lineno} {obj_type}.{attr_name}")
+            self.generic_visit(node)
+
+    for p in sorted(ui_dir.glob("*.py")):
+        tree = ast.parse(p.read_text(), filename=str(p))
+        visitor = ScopeVisitor(p.name)
+        visitor.visit(tree)
+
+    assert len(mismatches) == 0, f"Found attribute mismatches: {mismatches}"
+
+
+@pytest.mark.regression
+def test_affected_ui_handlers_execute_without_attribute_error():
+    """Verify runtime execution of handlers affected by the 3 fatal fixes."""
+    from headway.data.canonical import ResourceInterval, TVSSection
+    from headway.ui.direction_selector import DirectionSelector
+
+    session_state.load_example("01_single_track")
+    assert session_state.current_project is not None
+
+    with gr.Blocks() as app:
+        create_data_import_tab()
+        create_infrastructure_tab()
+
+    fns = {fn_obj.fn.__name__: fn_obj.fn for fn_obj in app.fns.values() if hasattr(fn_obj.fn, "__name__")}
+
+    # Fix A1 verification: validate_direction with route_id (checks TrackLink.track_id)
+    is_valid, err_msg = DirectionSelector.validate_direction(
+        direction="FORWARD",
+        project=session_state.current_project,
+        route_id="TRK_01",
+    )
+    assert is_valid is True
+    assert err_msg is None
+
+    # Fix A2 verification: handle_load_example (exercises AnalysisModel.analyses)
+    status_html, log_rows = fns["handle_load_example"]("01_single_track")
+    assert "Successfully" in status_html
+    assert any("Headway Analysis" in row[0] for row in log_rows)
+
+    # Fix A3 verification: update_infra_view on project with TVS sections (exercises TVSSection.max_train_occupancy)
+    tvs = TVSSection(
+        tvs_id="TVS_REGRESSION_01",
+        tunnel_id="TUN_01",
+        track_id="TRK_01",
+        link_intervals=[ResourceInterval(link_id="TL_01", start_offset_m=0.0, end_offset_m=500.0)],
+        max_train_occupancy=2,
+        release_delay_s=25.0,
+    )
+    session_state.current_project.infrastructure.tvs_sections.append(tvs)
+    infra_res = fns["update_infra_view"]("FORWARD")
+    tvs_table = infra_res[5]
+    assert len(tvs_table) == 1
+    assert tvs_table[0][0] == "TVS_REGRESSION_01"
+    assert tvs_table[0][4] == 2  # max_train_occupancy value correctly read
+

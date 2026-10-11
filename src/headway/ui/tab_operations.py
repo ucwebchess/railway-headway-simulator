@@ -64,14 +64,14 @@ def create_operations_tab() -> Dict[str, Any]:
             return gr.update(choices=[]), "<div style='color: #64748B;'>No services defined.</div>", fig_route, [], []
 
         svc_list = list(proj.operations.service_patterns)
-        svc_names = [getattr(s, "service_pattern_id", getattr(s, "service_id", "")) for s in svc_list]
-        cur_svc = next((s for s in svc_list if getattr(s, "service_pattern_id", getattr(s, "service_id", "")) == selected_svc_id), svc_list[0])
-        cur_id = getattr(cur_svc, "service_pattern_id", getattr(cur_svc, "service_id", "SVC_01"))
+        svc_names = [s.service_pattern_id for s in svc_list]
+        cur_svc = next((s for s in svc_list if s.service_pattern_id == selected_svc_id), svc_list[0])
+        cur_id = cur_svc.service_pattern_id
 
         stops_data: List[List[Any]] = []
         for stp in cur_svc.stops:
-            dwell_s = getattr(stp, "dwell_time_s", 30.0)
-            min_dwell_s = getattr(stp, "min_dwell_s", getattr(stp, "min_dwell_time_s", dwell_s))
+            dwell_s = stp.dwell_time_s
+            min_dwell_s = stp.min_dwell_s
             stops_data.append([
                 stp.station_id,
                 stp.platform_id or "Auto",
@@ -88,14 +88,14 @@ def create_operations_tab() -> Dict[str, Any]:
                 cur_id,
                 cur_svc.train_type_id,
                 f"{(i - 1) * 120.0:.0f} s",
-                str(getattr(cur_svc, "priority", 1)),
+                str(cur_svc.priority),
             ])
 
-        # Service Card
+        # Service Card (running_direction probed with default FORWARD per Task 2 investigation)
         dir_val = getattr(cur_svc, "running_direction", RunningDirection.FORWARD)
         dir_str = dir_val.value if isinstance(dir_val, RunningDirection) else str(dir_val)
-        target_hw = getattr(cur_svc, "planned_headway_s", getattr(cur_svc, "target_headway_s", 90.0))
-        svc_desc = getattr(cur_svc, "name", None) or getattr(cur_svc, "description", None) or cur_id
+        target_hw = cur_svc.planned_headway_s
+        svc_desc = cur_id
 
         card_html = f"""
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">

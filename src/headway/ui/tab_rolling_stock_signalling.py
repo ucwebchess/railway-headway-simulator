@@ -94,13 +94,13 @@ def create_rolling_stock_signalling_tab() -> Dict[str, Any]:
         tt_names = [tt.train_type_id for tt in tt_list]
 
         cur_tt = next((tt for tt in tt_list if tt.train_type_id == selected_tt_id), tt_list[0])
-        max_v = (cur_tt.max_speed_ms * 3.6) if hasattr(cur_tt, "max_speed_ms") else getattr(cur_tt, "max_speed_kmh", 120.0)
+        max_v = cur_tt.max_speed_ms * 3.6
         speeds_kmh = np.linspace(0, max_v, 50)
         speeds_ms = speeds_kmh / 3.6
 
         # Traction curve: F = min(F_max, P / v)
-        p_watts = getattr(cur_tt, "power_w", None) or (getattr(cur_tt, "power_kw", 2400.0) * 1000.0)
-        f_max = getattr(cur_tt, "max_tractive_effort_n", None) or (getattr(cur_tt, "maximum_tractive_effort_kn", 280.0) * 1000.0)
+        p_watts = cur_tt.power_w if cur_tt.power_w is not None else 2_400_000.0
+        f_max = cur_tt.max_tractive_effort_n if cur_tt.max_tractive_effort_n is not None else 280_000.0
         forces_kn = []
         for v in speeds_ms:
             if v <= 0.5:
@@ -125,9 +125,9 @@ def create_rolling_stock_signalling_tab() -> Dict[str, Any]:
         apply_plotly_theme(fig_tr)
 
         # Davis resistance: R = A + Bv + Cv^2
-        a = getattr(cur_tt, "davis_a_n", 2500.0)
-        b = getattr(cur_tt, "davis_b_ns_m", None) or getattr(cur_tt, "davis_b_ns_per_m", 35.0)
-        c = getattr(cur_tt, "davis_c_ns2_m2", None) or getattr(cur_tt, "davis_c_ns2_per_m2", 4.5)
+        a = cur_tt.davis_a_n
+        b = cur_tt.davis_b_ns_m
+        c = cur_tt.davis_c_ns2_m2
         davis_kn = [(a + b * v + c * (v ** 2)) / 1000.0 for v in speeds_ms]
 
         fig_dv.add_trace(go.Scatter(
@@ -146,10 +146,10 @@ def create_rolling_stock_signalling_tab() -> Dict[str, Any]:
         )
         apply_plotly_theme(fig_dv)
 
-        tare_t = (getattr(cur_tt, "mass_empty_kg", 0) / 1000.0) if hasattr(cur_tt, "mass_empty_kg") else getattr(cur_tt, "tare_mass_t", 80.0)
-        gross_t = (getattr(cur_tt, "mass_loaded_kg", 0) / 1000.0) if hasattr(cur_tt, "mass_loaded_kg") else getattr(cur_tt, "gross_mass_t", 100.0)
-        dec_svc = getattr(cur_tt, "max_service_deceleration_ms2", None) or getattr(cur_tt, "service_deceleration_ms2", 0.9)
-        dec_emg = getattr(cur_tt, "emergency_deceleration_ms2", 1.2)
+        tare_t = cur_tt.mass_empty_kg / 1000.0
+        gross_t = cur_tt.mass_loaded_kg / 1000.0
+        dec_svc = cur_tt.max_service_deceleration_ms2
+        dec_emg = cur_tt.emergency_deceleration_ms2
         p_kw = p_watts / 1000.0
         f_max_kn = f_max / 1000.0
 
@@ -173,8 +173,6 @@ def create_rolling_stock_signalling_tab() -> Dict[str, Any]:
 
         sig = proj.signalling
         sig_sys = getattr(sig, "system", None)
-        if sig_sys is None and hasattr(sig, "signalling_systems") and sig.signalling_systems:
-            sig_sys = sig.signalling_systems[0]
         tech_name = sig_sys.technology_type.value if (sig_sys and hasattr(sig_sys.technology_type, "value")) else "FIXED_BLOCK_3ASPECT"
         aspect_model = sig_sys.aspect_model.value if (sig_sys and hasattr(sig_sys.aspect_model, "value")) else "THREE_ASPECT"
 
@@ -188,8 +186,8 @@ def create_rolling_stock_signalling_tab() -> Dict[str, Any]:
 
         signals_data = []
         for s in sig.signals:
-            sig_pos = getattr(s, "offset_m", getattr(s, "position_m", 0.0))
-            lock_time = getattr(s, "approach_locking_time_s", getattr(s, "sighting_distance_m", 0.0))
+            sig_pos = s.offset_m
+            lock_time = s.sighting_distance_m
             sig_type = s.signal_type.value if hasattr(s.signal_type, "value") else str(s.signal_type)
             signals_data.append([
                 s.signal_id,

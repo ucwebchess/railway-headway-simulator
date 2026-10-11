@@ -114,7 +114,7 @@ def create_infrastructure_tab() -> Dict[str, Any]:
             x_coords.extend([start_d, end_d])
             y_coords.extend([0.0, 0.0])
 
-            grad_permille = (lnk.gradient_decimal * 1000.0) if hasattr(lnk, "gradient_decimal") else getattr(lnk, "gradient_permille", 0.0)
+            grad_permille = lnk.gradient_decimal * 1000.0
             effective_grade = -grad_permille if is_rev else grad_permille
             grad_x.extend([start_d, end_d])
             grad_y.extend([effective_grade, effective_grade])
@@ -183,7 +183,7 @@ def create_infrastructure_tab() -> Dict[str, Any]:
                 tvs.tunnel_id,
                 tvs.track_id,
                 sum(iv.end_offset_m - iv.start_offset_m for iv in tvs.link_intervals),
-                tvs.max_occupancy,
+                tvs.max_train_occupancy,
                 tvs.release_delay_s,
             ])
 
