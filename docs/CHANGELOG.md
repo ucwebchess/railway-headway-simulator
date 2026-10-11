@@ -7,6 +7,175 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0] — Initial Release
+
+### Summary
+
+First formal release of the Railway Headway & Capacity Simulator — a
+microscopic railway headway and capacity simulation application with a
+Gradio interface running in Google Colab.
+
+### Added
+
+#### Project Foundation (P00)
+- Python package architecture with a modular layout.
+- Gradio application shell with ten navigation tabs.
+- Google Colab launcher notebook.
+- pytest test framework.
+- Structured exception handling, logging, and centralized configuration.
+
+#### Data Architecture (P01)
+- Canonical engineering data models using SI units.
+- JSON Schema Draft 2020-12 artifacts for all major data contracts.
+- Six standardized Excel workbooks: Infrastructure, Signalling, Rolling
+  Stock, Operations, Headway Analysis, and Scenarios.
+- Excel import, validation, and canonical conversion.
+- SHA-256 hashing of source files and canonical configurations.
+- Basic scenario configuration and project ZIP export/import.
+- Example datasets covering single-track, double-track, station, and tunnel
+  scenarios.
+
+#### Infrastructure (P02)
+- Detailed 1D railway network with nodes and physical track links.
+- FORWARD and REVERSE route traversal and position mapping.
+- Engineering chainage independent of physical route distance.
+- Gradient, curvature, speed restriction, switch, station, platform, and
+  tunnel geometry.
+- Multi-link resource geometry and train-length utilities.
+- Infrastructure validation and route profiles.
+
+#### Rolling Stock and Dynamics (P03, P04)
+- Multiple rolling stock types with mass, length, and traction models.
+- Davis running resistance, Roeckl curvature resistance, and distributed
+  gradient resistance.
+- Equivalent dynamic mass and longitudinal force balance.
+- Service, supervised, and emergency braking models.
+- Constant and speed-dependent braking curves.
+- Forward traction and backward braking speed profile passes.
+- Fixed-step microscopic numerical integration with event localization.
+- Train-front and train-rear tracking across multiple links.
+- Station stopping, dwell, and departure.
+- Unconstrained journey-time calculation.
+
+#### Signalling (P05, P06)
+- Common resource management framework with separate physical occupation,
+  reservation, locking, release eligibility, and availability.
+- Interlocking route setup, locking, and sectional release.
+- Generic two-, three-, and four-aspect fixed-block signalling.
+- ETCS Level 2 engineering simulation model with RBC movement authority
+  and communication delays.
+- CBTC moving-block engineering simulation model with localization
+  uncertainty and protected train envelope.
+- Common movement authority interface shared across signalling systems.
+
+#### Stations, Junctions, and TVS (P07)
+- Platform reservation, occupation, and release with rear clearance.
+- Residual stationary rear occupation detection.
+- Multi-platform allocation and shared station throat handling.
+- Junction, merge, diverge, and crossover conflict control.
+- Tunnel Ventilation Section resources with one-train-per-section-per-track
+  default.
+- Shared TVS restrictions across tracks and whole-tunnel restrictions.
+- TVS entry authorization with holding points.
+
+#### Headway Analysis (P08)
+- Event-derived resource blocking intervals.
+- Seven-component blocking-time decomposition.
+- Leader–follower conflict detection and analytical temporal shift.
+- Microscopic joint-simulation verification.
+- Homogeneous and heterogeneous technical headway.
+- Directional mixed-traffic headway matrix.
+- Controlling bottleneck identification and conflict ranking.
+- Blocking-time stairway data for visualization.
+
+#### Multi-Train Operations (P09)
+- Simultaneous multi-train microscopic simulation with one shared clock.
+- Deterministic event scheduler.
+- Timetable, fixed-interval, and mixed-pattern train generation.
+- Dispatching policies and train priorities.
+- Junction sequencing and queue formation.
+- TVS entry waiting and queue tracking.
+- Constrained journey time and delay propagation.
+- Deadlock detection.
+
+#### Capacity (P10)
+- Theoretical homogeneous and mixed-pattern capacity.
+- Planning capacity with additive margin or utilization.
+- Achieved operational throughput.
+- Sustainable capacity search and stability assessment.
+- UIC 406-inspired timetable compression and capacity consumption.
+- Block-length, signalling, station, and TVS sensitivity analysis.
+- Bottleneck migration detection.
+
+#### Stochastic Simulation (P11)
+- Eight probability distributions with validated parameters.
+- Reproducible Monte Carlo execution with controlled seeds.
+- Stochastic dwell, departure readiness, and driving variability.
+- Signalling and TVS variability.
+- Correlated stochastic variables and common random numbers.
+- Statistical summaries, confidence intervals, and reliability criteria.
+- Reliability-based capacity.
+
+#### Scenario Management (P12)
+- Immutable baseline protection.
+- Scenario creation, duplication, and inheritance.
+- Explicit parameter overrides with precedence rules.
+- Effective configuration generation and hashing.
+- Scenario validation and comparison.
+- Result association with effective configuration hash.
+
+#### Visualization (P13)
+- Interactive Plotly charts for Gradio integration.
+- Static figure export for reports.
+- Speed, gradient, and curvature diagrams.
+- Time–distance diagrams.
+- Blocking-time stairway and seven-component charts.
+- Mixed-traffic headway matrix heatmaps.
+- Station, platform, and TVS occupation diagrams.
+- Capacity sensitivity, stochastic distributions, and scenario comparison
+  charts.
+- FORWARD and REVERSE direction visualization.
+
+#### Engineering Reporting (P14)
+- Professional engineering report generator matching the reference
+  document style.
+- Executive KPI dashboard.
+- Eighteen report sections covering all engineering domains.
+- Rule-based engineering recommendations.
+- PDF, HTML, Excel, CSV, and JSON export.
+- Complete report package.
+- Full calculation provenance and auditability.
+
+#### Complete Application (P15)
+- Full Gradio interface with ten functional tabs.
+- **Running direction selector: FORWARD / REVERSE.**
+- Background simulation execution with progress and cancellation.
+- File upload and download management.
+- Session state management.
+- Google Colab launcher.
+- End-to-end workflow verification.
+
+### Engineering Constraints Maintained
+
+- No hardcoded reference report values.
+- No forward-only assumptions.
+- No silent substitution of simplified models as certified systems.
+- No baseline mutation.
+- Full traceability of every KPI.
+
+### Known Limitations
+
+See `docs/KNOWN_LIMITATIONS.md` for the complete list.
+
+### Notes
+
+This is an engineering simulation tool for headway and capacity assessment.
+It does not constitute a certified signalling safety system, and the ETCS
+Level 2 and CBTC models are engineering approximations unless independently
+verified against a specific specification.
+
+---
+
 ## [1.0.0] - Milestone P15 (Final Milestone & Production Release)
 
 ### Added

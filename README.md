@@ -1,23 +1,23 @@
 # Railway Headway & Capacity Simulator
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.1.0--dev-orange.svg)](docs/CHANGELOG.md)
-[![Phase](https://img.shields.io/badge/phase-P00%20Foundation-teal.svg)](docs/DEVELOPMENT_MANIFEST.md)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](docs/CHANGELOG.md)
+[![Phase](https://img.shields.io/badge/phase-v1.0.0%20Released-success.svg)](docs/DEVELOPMENT_MANIFEST.md)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 [![UI: Gradio](https://img.shields.io/badge/UI-Gradio%20Blocks-blueviolet.svg)](src/headway/ui/app.py)
 
 A modular, microscopic railway simulation software system designed to calculate individual train trajectories, technical minimum headway, signalling blocking-time stairways, TVS (Tunnel Ventilation Section) constraints, and line operational capacity with engineering precision comparable to specialized commercial rail tools.
 
 ---
 
-### ⚠️ IMPORTANT ENGINEERING DISCLAIMER (MILESTONE P00)
+### ⚠️ IMPORTANT ENGINEERING NOTICE (RELEASE 1.0.0)
 
-**The current software version (`0.1.0-dev`) represents the P00 Project Foundation milestone.**
+**The current software version (`1.0.0`) is the formal release of the Railway Headway & Capacity Simulator, incorporating all development milestones P00 through P15.**
 
-In strict adherence to **Master AI-Agent Governance Directive RHS-MASTER-001** and prompt **RHS-P00-001 § 22**:
-- This release provides the modular package architecture, configuration framework, logging subsystem, structured exceptions, automated test suites, Google Colab launcher notebook, and Gradio user interface shell.
-- **No railway engineering calculations (train dynamics, Davis resistance, signalling aspect evaluation, headway calculations, capacity estimation, or TVS controls) are implemented in Milestone P00.**
-- All user-interface KPI cards and downstream calculation tabs are explicitly marked as unavailable placeholders.
-- Microscopic simulation algorithms will be introduced sequentially across milestones P01 through P15.
+- Microscopic railway engineering calculations (train dynamics, Davis resistance, signalling aspect evaluation, seven-component blocking times, technical headway, capacity estimation, stochastic reliability, and TVS controls) are fully implemented and verified against 748 automated tests.
+- All 10 user interface tabs and calculation engines are fully functional with explicit FORWARD and REVERSE running direction support.
+- This software is an engineering simulation tool for headway and capacity assessment; it does not constitute a certified signalling safety system, and ETCS Level 2 and CBTC models are engineering approximations unless independently verified.
+- **License:** Proprietary — All Rights Reserved.
 
 ---
 
@@ -105,7 +105,7 @@ railway-headway-simulator/
 │
 ├── requirements.txt                        # Foundation pip dependencies
 ├── pyproject.toml                          # Standard packaging configuration
-├── LICENSE                                 # Intellectual property notice
+├── LICENSE                                 # Proprietary — All Rights Reserved license
 ├── .gitignore                              # Git exclusion rules
 └── .python-version                         # Python version specification
 ```
@@ -182,18 +182,18 @@ pytest -v
 | Prompt | Scope | Milestone Status |
 |---|---|---|
 | **P00** | Project Foundation, Architecture, Testing & Colab Launcher | **COMPLETED** |
-| **P01** | Canonical Data Architecture & Excel Input System | Authorized Next |
-| **P02** | Infrastructure Network Model & Topology | Reserved |
-| **P03** | Rolling Stock Characteristics & Physics | Reserved |
-| **P04** | Braking Models & Numerical Solver | Reserved |
-| **P05** | Resource Management Engine & Fixed-Block Signalling | Reserved |
-| **P06** | Advanced Signalling (ETCS Level 2 & CBTC) | Reserved |
-| **P07** | Stations, Junctions & TVS Control Engine | Reserved |
-| **P08** | Seven-Component Blocking Time & Headway Analysis | Reserved |
-| **P09** | Multi-Train Operational Simulation Engine | Reserved |
-| **P10** | Line Capacity & UIC 406-Inspired Analysis | Reserved |
-| **P11** | Stochastic Simulation & Operational Reliability | Reserved |
-| **P12** | Scenario Management & Sensitivity Engine | Reserved |
-| **P13** | Interactive Engineering Visualizations | Reserved |
-| **P14** | Professional Engineering Reporting System | Reserved |
-| **P15** | Full Gradio UI Integration & Final Verification | Reserved |
+| **P01** | Canonical Data Architecture & Excel Input System | **COMPLETED** |
+| **P02** | Infrastructure Network Model & Topology | **COMPLETED** |
+| **P03** | Rolling Stock Characteristics & Physics | **COMPLETED** |
+| **P04** | Braking Models & Numerical Solver | **COMPLETED** |
+| **P05** | Resource Management Engine & Fixed-Block Signalling | **COMPLETED** |
+| **P06** | Advanced Signalling (ETCS Level 2 & CBTC) | **COMPLETED** |
+| **P07** | Stations, Junctions & TVS Control Engine | **COMPLETED** |
+| **P08** | Seven-Component Blocking Time & Headway Analysis | **COMPLETED** |
+| **P09** | Multi-Train Operational Simulation Engine | **COMPLETED** |
+| **P10** | Line Capacity & UIC 406-Inspired Analysis | **COMPLETED** |
+| **P11** | Stochastic Simulation & Operational Reliability | **COMPLETED** |
+| **P12** | Scenario Management & Sensitivity Engine | **COMPLETED** |
+| **P13** | Interactive Engineering Visualizations | **COMPLETED** |
+| **P14** | Professional Engineering Reporting System | **COMPLETED** |
+| **P15** | Full Gradio UI Integration & Final Verification | **COMPLETED** |

@@ -1,15 +1,23 @@
-# LICENSE & INTELLECTUAL PROPERTY NOTICE
-## Railway Headway & Capacity Simulator
+Copyright (c) 2026 OED Engineering Architecture Design. All rights reserved.
 
-**Status:** UNRESOLVED LICENSING DECISION (PLACEHOLDER)
-**Prompt Directive:** RHS-P00-001 § 16
+PROPRIETARY AND CONFIDENTIAL
 
-As mandated by Governance Directive RHS-P00-001, no open-source or proprietary license
-has been automatically assigned during milestone P00.
+This software and associated documentation files (the "Software") are the
+proprietary and confidential property of OED Engineering Architecture Design. The Software is
+provided under a proprietary license and may not be copied, modified,
+distributed, sublicensed, or used in any form, in whole or in part, without
+the prior written permission of the copyright holder.
 
-All rights, intellectual property, and copyright for this software and associated
-engineering specifications remain strictly reserved pending explicit formal licensing
-instruction by the project authority.
+No license, express or implied, is granted by this document or by the
+distribution of the Software.
 
-Redistribution, modification, commercial use, or reverse engineering is prohibited
-without explicit prior written authorization.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF,
+OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Third-party open-source components used by this Software are governed by
+their respective licenses and are acknowledged in the project documentation.
