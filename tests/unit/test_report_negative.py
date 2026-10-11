@@ -331,14 +331,16 @@ class TestReportNegative:
             assert "machine learning" not in rec.rationale.lower()
             assert "ai suggested" not in rec.rationale.lower()
 
-    def test_neg_009_export_handles_read_only_or_missing_path(self) -> None:
+    def test_neg_009_export_handles_read_only_or_missing_path(self, tmp_path: Path) -> None:
         """P14-NEG-009: Exporters raise IOError or OSError when writing to invalid file path."""
         pkg = _create_minimal_package(headway_s=90.0)
         doc = ReportAssembler.assemble_report(pkg)
-        invalid_path = Path("/non_existent_dir_xyz_123/report.html")
+        not_a_dir = tmp_path / "not_a_directory"
+        not_a_dir.write_text("this is a file, not a directory")
+        invalid_path = not_a_dir / "report.html"
 
         with pytest.raises(OSError):
             HtmlReportRenderer.render(doc, output_path=invalid_path)
 
         with pytest.raises(OSError):
-            JsonReportExporter.export(doc, output_path=Path("/non_existent_dir_xyz_123/report.json"))
+            JsonReportExporter.export(doc, output_path=not_a_dir / "report.json")
