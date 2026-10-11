@@ -319,5 +319,46 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P13-B034** | Governance | Zero engineering recalculation | Visualization adapters and builders | Reads results directly without recalculating dynamics | Exact | **VERIFIED (P13)** |
 | **P13-B035** | Diagnostic | Diagnostic reporting on missing data | Empty or corrupted trajectory | Validator produces structured diagnostic, preventing crash | Exact | **VERIFIED (P13)** |
 
+### 11. Professional Engineering Report Generator Benchmarks (Milestone P14)
+
+| Benchmark ID | Category | Description | Benchmark Scenario / Input | Expected Output / Analytical Acceptance Criteria | Tolerance | Implementation Status |
+|---|---|---|---|---|---|---|
+| **P14-B001** | Executive KPIs | Executive KPI consistency with simulation package | Standard result package with technical headway | Minimum headway, capacity, bottleneck ID reconcile exactly with simulation source | Exact | **VERIFIED (P14)** |
+| **P14-B002** | Sections | Speed profile section assembly | Trajectory with speed limits and gradient | Section 2 assembled with speed profile figure and engineering narrative | Exact | **VERIFIED (P14)** |
+| **P14-B003** | Sections | Gradient and curvature section assembly | Alignment links with vertical grades and curves | Gradient bar chart and reciprocal curvature trace integrated | Exact | **VERIFIED (P14)** |
+| **P14-B004** | Sections | Blocking stairway diagram section | Resource blocking intervals and conflict pair | Section 3 stairway figure rendered with shift annotation | Exact | **VERIFIED (P14)** |
+| **P14-B005** | Verification | Seven-component duration reconciliation | Decomposed blocking intervals | Component sum $t_1..t_7$ matches total duration within 1 ms; discrepancy highlighted | $\le 1\text{ ms}$ | **VERIFIED (P14)** |
+| **P14-B006** | Tables | Pairwise route-conflict ranking table | Headway result with conflict ranking | Tabulates rank, conflicting resources, required headway, slack | Exact | **VERIFIED (P14)** |
+| **P14-B007** | Tables | Longest individual resource occupation ranking | Sequenced blocking intervals | Tabulates resources sorted descending by standalone duration | Exact | **VERIFIED (P14)** |
+| **P14-B008** | Station | Platform occupation and stopping schedule table | Platform occupation records and station stops | Section 6 platform figure and Section 8 schedule table populated | Exact | **VERIFIED (P14)** |
+| **P14-B009** | Headway | Mixed-traffic headway heatmap and matrix table | MixedTrafficHeadwayMatrix | Section 7 heatmap and matrix table populated with directional labeling | Exact | **VERIFIED (P14)** |
+| **P14-B010** | Sensitivity | Block-length sensitivity chart section | Sensitivity study on block lengths | Section 9 dual-panel sensitivity chart populated | Exact | **VERIFIED (P14)** |
+| **P14-B011** | Tables | Detailed resource timing table | 7-component blocking breakdown | Section 10 table detailing setup, approach, run, dwell, clear, rear, release | Exact | **VERIFIED (P14)** |
+| **P14-B012** | Audit | Resource geometry provenance table | Infrastructure provenance records | Section 11 table tracing resources to baseline model objects | Exact | **VERIFIED (P14)** |
+| **P14-B013** | Audit | Assumptions and methodology audit section | SimulationResultPackage metadata and config | Section 12 documents mathematical formulation, limits, and parameters | Complete | **VERIFIED (P14)** |
+| **P14-B014** | TVS | TVS assessment section | TVS events and occupancy timeline | Section 13 populated when TVS events present; discloses omission when absent | Transparent | **VERIFIED (P14)** |
+| **P14-B015** | Operations | Operational assessment section | Multi-train operational results | Section 14 multi-train time-distance diagram and delay narrative | Transparent | **VERIFIED (P14)** |
+| **P14-B016** | Reliability | Stochastic reliability section | Monte Carlo results and summaries | Section 15 stochastic histogram, percentiles (P90, P95, P99), and CIs | Transparent | **VERIFIED (P14)** |
+| **P14-B017** | Comparison | Scenario comparison section | ScenarioComparisonReport | Section 16 KPI comparison figure and delta table | Transparent | **VERIFIED (P14)** |
+| **P14-B018** | Governance | Verification and limitations section | Methodological limits and validation status | Section 17 explicitly discloses microscopic engine bounds and assumptions | Complete | **VERIFIED (P14)** |
+| **P14-B019** | Governance | Conclusions and recommendations section | Assembled report document | Section 18 contains structured engineering recommendations | Complete | **VERIFIED (P14)** |
+| **P14-B020** | Recommendations | Rule-based recommendation correctness | Package with residual rear and long blocks | Generates deterministic engineering interventions with rationale (no speculative AI) | Deterministic | **VERIFIED (P14)** |
+| **P14-B021** | Export | HTML report publication-grade rendering | Assembled ReportDocument | Standalone responsive HTML5 with inline CSS, navy headers, KPI cards | Valid HTML | **VERIFIED (P14)** |
+| **P14-B022** | Export | Formal PDF report rendering | Assembled ReportDocument | A4 portrait PDF with running headers/footers, metadata table, and charts | Valid PDF | **VERIFIED (P14)** |
+| **P14-B023** | Export | Excel multi-sheet results export | Assembled ReportDocument | Multi-tab OOXML (.xlsx) workbook with styled header and controlling fills | Valid XLSX | **VERIFIED (P14)** |
+| **P14-B024** | Export | Tabular CSV export | Assembled ReportDocument | Individual CSV files exported for each engineering table | Valid CSV | **VERIFIED (P14)** |
+| **P14-B025** | Export | Structured JSON report export | Assembled ReportDocument | Machine-readable JSON conforming to versioned schema | Schema Valid | **VERIFIED (P14)** |
+| **P14-B026** | Export | Report assessment package ZIP bundle | Assembled ReportDocument | ZIP archive containing PDF, HTML, Excel, CSVs, JSON, and manifest | Valid ZIP | **VERIFIED (P14)** |
+| **P14-B027** | Governance | Report generation reproducibility | Identical simulation packages | Produces identical KPIs, recommendations, and section contents | Exact | **VERIFIED (P14)** |
+| **P14-B028** | Governance | Missing data handling and omission disclosure | Package with omitted optional subsystems | Inapplicable sections marked with documented engineering reasons | Transparent | **VERIFIED (P14)** |
+| **P14-B029** | Directionality | Forward direction report compliance | FORWARD direction result package | Direction banner states FORWARD; tables/charts sorted increasing chainage | Compliant | **VERIFIED (P14)** |
+| **P14-B030** | Directionality | Reverse direction report compliance | REVERSE direction result package | Direction banner states REVERSE; tables/charts sorted decreasing chainage; no FORWARD | Compliant | **VERIFIED (P14)** |
+| **P14-B031** | Directionality | Direction-specific chart axis and station order | REVERSE direction result package | Chart coordinates and station orders align strictly with direction of travel | Compliant | **VERIFIED (P14)** |
+| **P14-B032** | Governance | Zero hardcoded reference values | Packages with different headway values | All metrics computed dynamically from input simulation packages | Zero hardcoding | **VERIFIED (P14)** |
+| **P14-B033** | Audit | Report audit validation engine | Synthetically corrupted reports | ReportValidator detects formula mismatches, KPI discrepancies, omissions | Exact | **VERIFIED (P14)** |
+| **P14-B034** | Governance | Report provenance and traceability | Input configuration hash and run identity | Metadata links document to run_id, scenario_id, software version, and config hash | Traceable | **VERIFIED (P14)** |
+| **P14-B035** | Governance | Assembled report immutability | ReportDocument dataclass | Dataclass is immutable/frozen; prevents tampering after validation | Exact | **VERIFIED (P14)** |
+
+
 
 

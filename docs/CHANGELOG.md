@@ -7,7 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-dev] - Milestone P13 (Current Milestone)
+## [0.1.0-dev] - Milestone P14 (Current Milestone)
+
+### Added
+- **Canonical Report Data Models & Configuration (`headway.reporting.report_models`, `headway.reporting.report_config`):**
+  - Canonical `ReportDocument` container maintaining report metadata, executive KPIs, rolling stock parameters, infrastructure properties, bottleneck diagnosis, 18 standard engineering sections, figures, recommendations, and audit events.
+  - Immutable headline KPI container (`ExecutiveKpis`) exposing technical headway (s and min), theoretical capacity (tph), planning capacity (tph), controlling bottleneck ID, type, and physical location.
+  - Structured engineering metadata (`ReportMetadata`) with run ID, scenario ID, project ID, generation timestamp, software version, input configuration hash, and validation status.
+  - Comprehensive configuration model (`ReportConfig`) supporting report types (FULL_ASSESSMENT, EXECUTIVE_SUMMARY, TECHNICAL_APPENDIX, DIRECTIONAL_ASSESSMENT), paper sizes (A4, LETTER), orientations (PORTRAIT, LANDSCAPE), section selection toggles, and formatting thresholds.
+- **Deterministic Rule-Based Recommendation Engine (`headway.reporting.recommendations`):**
+  - Six deterministic engineering recommendation rules (`RecommendationEngine`):
+    1. Residual rear fouling: identifies station throat block clearance delays and recommends clearing point repositioning or berth adjustments.
+    2. Long signal blocks: identifies open-line blocks exceeding 1200 m with occupation > 60 s and recommends intermediate block section splitting.
+    3. Platform dwell bottleneck: detects platform dwell dominating line headway and recommends dual-berth operation or automated passenger management.
+    4. Junction sectional release: detects interlocking approach locking and recommends intermediate route release sections.
+    5. TVS single-train holding: detects tunnel ventilation headway constraints and recommends intermediate TVS section dividing.
+    6. Stochastic operational delay buffering: evaluates P95 vs deterministic spread and recommends timetable planning margins.
+  - Purely deterministic logic grounded strictly in microscopic simulation results; no unsupported or generative AI technical claims.
+- **18-Section Automated Report Assembly Engine (`headway.reporting.report_assembly`):**
+  - `ReportAssembler` assembling all 18 standard engineering sections directly from `SimulationResultPackage` without recalculating dynamics or headway:
+    - Section 1: Executive Summary & Headline KPIs (4 KPI dashboard cards).
+    - Section 2: Speed Profile, Gradient and Alignment Curvature (3-panel composite).
+    - Section 3: Blocking-Time Stairway Diagram.
+    - Section 4: Seven-Component Blocking Breakdown (stacked chart & reconciliation).
+    - Section 5: Pairwise Headway Route-Conflict Ranking Table.
+    - Section 6: Longest Individual Resource Occupations Table.
+    - Section 7: Station Resource and Platform Track Occupation.
+    - Section 8: Mixed-Traffic Directional Headway Matrix & Heatmap.
+    - Section 9: Station Stopping, Dwell and Multi-Platform Allocation Table.
+    - Section 10: Constrained Block-Length Sensitivity Analysis.
+    - Section 11: Detailed Resource Occupation Timing Breakdown Table.
+    - Section 12: Resource Geometry Provenance & Baseline Integrity Table.
+    - Section 13: Assumptions, Methodology and Signalling Configuration Audit.
+    - Section 14: Tunnel Ventilation System (TVS) Headway Assessment.
+    - Section 15: Multi-Train Operational Assessment & Capacity Stability.
+    - Section 16: Stochastic Headway & Operational Reliability (P90, P95, P99).
+    - Section 17: Scenario Comparison & Capacity Improvement.
+    - Section 18: Verification, Methodological Limits and Conclusions/Recommendations.
+  - Transparent omission disclosure: unexecuted optional subsystems are retained with clear not-applicable notices rather than silently omitted.
+  - Strict directional banner compliance: explicit `Running Direction: FORWARD` or `Running Direction: REVERSE` banner rendered prominently across all sections.
+- **Publication-Grade HTML5 Renderer (`headway.reporting.html_renderer`):**
+  - `HtmlReportRenderer` generating standalone publication-grade HTML matching the reference engineering report.
+  - Embedded CSS with dark navy headers (`#1B365D`), light gray background (`#F8F9FA`), KPI dashboard cards, zebra-striped tables with red highlighting on controlling bottlenecks, callout boxes, and print `@media print` rules for A4 pagination.
+- **Formal A4 Portrait PDF Renderer (`headway.reporting.pdf_renderer`):**
+  - `PdfReportRenderer` utilizing ReportLab for formal engineering deliverable generation in A4 portrait format.
+  - Numbered canvas with running header, title, date, running direction, page numbering (`Page X of Y`), KPI summary cards, embedded charts, styled engineering tables, and audit metadata.
+- **Multi-Tab OOXML Excel Exporter (`headway.reporting.excel_export`):**
+  - `ExcelReportExporter` generating multi-sheet `.xlsx` workbooks.
+  - `Executive_Summary` tab with project metadata, headline KPIs, rolling stock parameters, and infrastructure properties.
+  - `RECOMMENDATIONS` tab tabulating engineering interventions with rationale.
+  - Dedicated worksheets for individual engineering tables with dark navy headers, bold text, freeze panes, auto-fitted column widths, and red highlighting on controlling rows.
+- **Tabular CSV & JSON Exporters (`headway.reporting.csv_export`, `headway.reporting.json_export`):**
+  - `CsvReportExporter` exporting individual CSV files for all applicable result tables.
+  - `JsonReportExporter` serializing `ReportDocument` into versioned, schema-compliant JSON format.
+- **Comprehensive Report Package Exporter (`headway.reporting.report_package`):**
+  - `ReportPackageExporter` bundling HTML, PDF, Excel, CSVs, JSON, and SHA-256 metadata manifest into a consolidated ZIP assessment archive.
+- **Report Validation & Audit Engine (`headway.reporting.report_validation`):**
+  - `ReportValidator` enforcing criteria P14-RPT-VAL-001 through P14-RPT-VAL-008.
+  - Mathematical capacity verification ($C = 3600 / H$).
+  - Reconciliation between Executive KPIs and detailed conflict ranking tables.
+  - Blocking duration component sum check ($t_1..t_7 = t_{\mathrm{total}}$).
+  - Silent omission prevention and configuration hash integrity verification.
+
+### Verification
+- **Engineering Benchmarks:**
+  - 35 mandatory benchmarks (`P14-B001` through `P14-B035`) verified in `tests/engineering/test_report_benchmarks.py`.
+- **Negative & Integration Test Suites:**
+  - 9 negative tests verifying formula mismatches, KPI discrepancies, hash mismatches, and omission detection in `tests/unit/test_report_negative.py`.
+  - 3 end-to-end integration tests verifying cross-format rendering, ZIP packaging, and reverse-direction integrity in `tests/integration/test_report_integration.py`.
+- **Regression:**
+  - 693 total tests passing across all milestones (P01 through P14) with zero regressions.
+
+---
+
+## [0.1.0-dev] - Milestone P13
 
 ### Added
 - **Canonical Simulation Result Architecture (`headway.reporting.result_models`):**
