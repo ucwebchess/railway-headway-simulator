@@ -277,6 +277,7 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P12-B027** | Directionality | Forward vs Reverse scenario comparison | Compare identical corridor in opposite directions | Direction compatibility notes and differences captured | Exact | **VERIFIED (P12)** |
 | **P12-B028** | Reproducibility | Deterministic reproducibility across instances | Repeated independent scenario execution | Identical effective hashes and comparison reports | Exact | **VERIFIED (P12)** |
 
+<<<<<<< HEAD
 ---
 
 ### 10. Engineering Visualization & Results Architecture Benchmarks (Milestone P13)
@@ -320,4 +321,6 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P13-B035** | Diagnostic | Diagnostic reporting on missing data | Empty or corrupted trajectory | Validator produces structured diagnostic, preventing crash | Exact | **VERIFIED (P13)** |
 
 
+=======
+>>>>>>> origin/main
 
