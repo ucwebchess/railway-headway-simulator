@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.1] — Post-Release Fixes
+
+### Fixed
+
+- Action buttons: ensured visibility, correct positioning, and correct
+  click handler binding for all UI buttons across tabs.
+- HTML report preview: figures are now embedded correctly and appear in
+  the interactive preview.
+- Report download: PDF, HTML, Excel, CSV, JSON, and ZIP package downloads
+  now return existing files.
+- Data import: corrected a method call to `ScenarioManager` that caused
+  `ERR_SIM_FAIL` during custom Excel workbook upload.
+
 ## [1.0.0] — Initial Release
 
 ### Summary
