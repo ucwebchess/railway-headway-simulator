@@ -1,257 +1,131 @@
-"""Main Gradio application factory for Railway Headway & Capacity Simulator.
+"""Master Gradio Application Factory for Railway Headway Simulator.
 
-Implements the ten required application navigation tabs and dashboard
-in full compliance with P00-UI-001 through P00-UI-007.
+Milestone P15 — Complete Gradio UI (P15-UI-001 to P15-UI-005, P15-TAB-001 to P15-TAB-010).
+Assembles all ten engineering workflow tabs into a responsive, themed interface.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 import gradio as gr
 
-from headway.core.configuration import AppConfig
-from headway.core.logging_config import get_logger
-from headway.ui.components import (
-    create_header,
-    create_kpi_card,
-    create_placeholder_tab,
-    get_runtime_environment_summary,
-)
-from headway.ui.theme import ENGINEERING_CUSTOM_CSS, get_engineering_theme
+from headway.ui.tab_dashboard import create_dashboard_tab
+from headway.ui.tab_data_import import create_data_import_tab
+from headway.ui.tab_infrastructure import create_infrastructure_tab
+from headway.ui.tab_operations import create_operations_tab
+from headway.ui.tab_reports import create_reports_tab
+from headway.ui.tab_results import create_results_tab
+from headway.ui.tab_rolling_stock_signalling import create_rolling_stock_tab
+from headway.ui.tab_scenarios import create_scenarios_tab
+from headway.ui.tab_simulation import create_simulation_tab
+from headway.ui.tab_validation import create_validation_tab
+from headway.ui.theme import APP_CSS, ENGINEERING_THEME
 
-logger = get_logger("ui.app")
 
-
-def create_app(config: Optional[AppConfig] = None) -> gr.Blocks:
-    """Construct and configure the Gradio Blocks user interface.
+def create_app(app_config: Optional[Any] = None) -> gr.Blocks:
+    """Builds and returns the master 10-tab Gradio Blocks application.
 
     Args:
-        config: Application configuration. Defaults to AppConfig().
+        app_config: Optional configuration for application runtime.
 
     Returns:
-        gr.Blocks: Ready-to-launch Gradio application.
+        gr.Blocks instance configured with custom theme, CSS, and tabs.
     """
-    app_config = config or AppConfig()
-    app_config.initialize_runtime()
-
-    theme = get_engineering_theme()
-
     with gr.Blocks(
-        title=f"{app_config.app_name} v{app_config.version}",
-    ) as demo:
-        # Attach engineering theme and CSS as attributes for use during launch()
-        demo.app_theme = theme
-        demo.app_css = ENGINEERING_CUSTOM_CSS
-
+        title="Railway Headway & Capacity Simulator — Professional Assessment Platform (0.1.0-dev)",
+    ) as app:
         # Header banner
-        create_header(app_config)
+        with gr.Row(elem_classes=["app-header"]):
+            with gr.Column(scale=3):
+                gr.Markdown(
+                    """
+                    # 🚆 Railway Headway & Capacity Simulator
+                    **Microscopic Physics, Signalling Timing & Multi-Train Headway Analysis Platform**
+                    *Fully integrated simulation engine per UIC 405 / 406 standards*
+                    """
+                )
+            with gr.Column(scale=1):
+                gr.Markdown(
+                    """
+                    <div style="text-align: right; font-size: 12px; color: #64748b; padding-top: 8px;">
+                        <div><strong>Engine:</strong> Microscopic ODE (Euler/RK4)</div>
+                        <div><strong>Status:</strong> Ready</div>
+                        <div><strong>Version:</strong> 1.0.0 (P15 Final)</div>
+                    </div>
+                    """
+                )
 
-        with gr.Tabs() as tabs:
-            # TAB 1: Project Dashboard
+        gr.Markdown("---")
+
+        # 10 Top-Level Navigation Tabs
+        with gr.Tabs(elem_id="main_navigation_tabs") as main_tabs:
             with gr.TabItem("1. Project Dashboard", id="tab_dashboard"):
-                gr.Markdown("### Project Overview & System Status")
+                create_dashboard_tab()
 
-                # Executive KPI placeholders (Strictly non-invented, labeled as unavailable)
-                gr.Markdown("#### Key Performance Indicators (Microscopic Simulation)")
-                with gr.Row():
-                    create_kpi_card("Technical Min Headway", "Unimpeded leader-follower time")
-                    create_kpi_card("Theoretical Capacity", "Ideal homogeneous trains/hour")
-                    create_kpi_card("Planning Operational Capacity", "With operational planning margin")
-                with gr.Row():
-                    create_kpi_card("Controlling Bottleneck", "Infrastructure conflict critical point")
-                    create_kpi_card("TVS Occupation Status", "Tunnel Ventilation Section constraint")
-                    create_kpi_card("Simulated Throughput", "Continuous multi-train operation")
-
-                gr.Markdown("---")
-                gr.Markdown("#### Runtime Environment & Architecture Diagnostic")
-
-                with gr.Row():
-                    with gr.Column(scale=2):
-                        env_data = get_runtime_environment_summary(app_config)
-                        env_table_data = [[k, v] for k, v in env_data.items()]
-                        gr.Dataframe(
-                            headers=["System Property", "Current Configuration / Status"],
-                            value=env_table_data,
-                            datatype=["str", "str"],
-                            interactive=False,
-                            label="Host Execution Environment",
-                        )
-                    with gr.Column(scale=1):
-                        gr.Markdown("#### Governance & Roadmap Status")
-                        milestone_data = [
-                            ["P00", "Project Foundation & Colab Launcher", "ACTIVE (Current)"],
-                            ["P01", "Canonical Data & Excel Input", "Authorized Next"],
-                            ["P02", "Infrastructure Network Model", "Pending"],
-                            ["P03", "Rolling Stock Physics", "Pending"],
-                            ["P04", "Braking & Microscopic Dynamics", "Pending"],
-                            ["P05", "Resource Engine & Fixed-Block Signalling", "Pending"],
-                            ["P06", "ETCS Level 2 & CBTC Signalling", "Pending"],
-                            ["P07", "Stations, Junctions & TVS Control", "Pending"],
-                            ["P08", "Blocking Time & Headway Engine", "Pending"],
-                            ["P09", "Multi-Train Operational Dispatch", "Pending"],
-                            ["P10", "Capacity & UIC 406-Inspired Analysis", "Pending"],
-                            ["P11", "Stochastic Simulation & Reliability", "Pending"],
-                            ["P12", "Scenario Management & Sensitivity", "Pending"],
-                            ["P13", "Engineering Visualization", "Pending"],
-                            ["P14", "Professional Engineering Reporting", "Pending"],
-                            ["P15", "Full UI Integration & Acceptance Verification", "Pending"],
-                        ]
-                        gr.Dataframe(
-                            headers=["Milestone", "Subsystem Scope", "Status"],
-                            value=milestone_data,
-                            datatype=["str", "str", "str"],
-                            interactive=False,
-                            label="15-Prompt Development Sequence",
-                        )
-
-            # TAB 2: Data Import
             with gr.TabItem("2. Data Import", id="tab_import"):
-                create_placeholder_tab(
-                    tab_name="Data Import",
-                    milestone_code="P01",
-                    description=(
-                        "Provides single-file Excel workbook uploads and complete ZIP project package extraction. "
-                        "Ingests Infrastructure, Signalling, Rolling Stock, Operations, Headway Analysis, and Scenario workbooks."
-                    ),
-                    planned_capabilities=[
-                        "6 standardized Excel workbook parsers with strict type and unit normalization",
-                        "ZIP project archive extraction with security path sanitization",
-                        "Raw input caching in immutable staging directories",
-                        "Conversion into canonical JSON schemas",
-                    ],
-                )
+                create_data_import_tab()
 
-            # TAB 3: Data Validation
             with gr.TabItem("3. Data Validation", id="tab_validation"):
-                create_placeholder_tab(
-                    tab_name="Data Validation",
-                    milestone_code="P01",
-                    description=(
-                        "Performs comprehensive validation of uploaded railway datasets, cross-referencing identifiers, "
-                        "geometry consistency, signalling compatibility, and train characteristics before simulation."
-                    ),
-                    planned_capabilities=[
-                        "Cross-table referential integrity verification",
-                        "Infrastructure geometry continuity and gradient validation",
-                        "Signalling aspect and block sequence sanity checks",
-                        "Detailed error and warning diagnostics summary table",
-                    ],
-                )
+                create_validation_tab()
 
-            # TAB 4: Infrastructure Explorer
             with gr.TabItem("4. Infrastructure Explorer", id="tab_infrastructure"):
-                create_placeholder_tab(
-                    tab_name="Infrastructure Explorer",
-                    milestone_code="P02",
-                    description=(
-                        "Interactive visualization and exploration of the 1D physical railway network, tracks, links, "
-                        "switches, junctions, stations, platforms, signalling blocks, and TVS resource boundaries."
-                    ),
-                    planned_capabilities=[
-                        "Track link network graph and chainage mapping",
-                        "Gradient and curvature profile viewer",
-                        "Signal and block boundary localization",
-                        "Tunnel ventilation section (TVS) layout inspection",
-                    ],
-                )
+                create_infrastructure_tab()
 
-            # TAB 5: Rolling Stock & Signalling
-            with gr.TabItem("5. Rolling Stock & Signalling", id="tab_rs_sig"):
-                create_placeholder_tab(
-                    tab_name="Rolling Stock & Signalling",
-                    milestone_code="P03 / P05 / P06",
-                    description=(
-                        "Configuration and inspection of train dynamic characteristics (Davis resistance, mass, traction curves, "
-                        "braking models) and signalling systems (2/3/4-aspect fixed block, ETCS Level 2, CBTC moving block)."
-                    ),
-                    planned_capabilities=[
-                        "Tractive effort vs speed curve visualization",
-                        "Braking deceleration models (service, protection, emergency)",
-                        "Aspect sequence and overlap configuration",
-                        "Movement authority limit inspectors",
-                    ],
-                )
+            with gr.TabItem("5. Rolling Stock & Signalling", id="tab_rolling_stock"):
+                create_rolling_stock_tab()
 
-            # TAB 6: Services & Operations
-            with gr.TabItem("6. Services & Operations", id="tab_services"):
-                create_placeholder_tab(
-                    tab_name="Services & Operations",
-                    milestone_code="P04 / P07",
-                    description=(
-                        "Operational service patterns, stopping definitions, platform dwell durations, dispatch intervals, "
-                        "and mixed-traffic composition definitions."
-                    ),
-                    planned_capabilities=[
-                        "Train service timetable and stopping pattern manager",
-                        "Platform assignment and dwell time parameters",
-                        "Dispatching priority and operational margin settings",
-                    ],
-                )
+            with gr.TabItem("6. Services & Operations", id="tab_operations"):
+                create_operations_tab()
 
-            # TAB 7: Scenario Manager
             with gr.TabItem("7. Scenario Manager", id="tab_scenarios"):
-                create_placeholder_tab(
-                    tab_name="Scenario Manager",
-                    milestone_code="P12",
-                    description=(
-                        "Baseline scenario preservation, isolated scenario branching, parameter overriding, block-length "
-                        "sensitivities, and scenario comparison matrices."
-                    ),
-                    planned_capabilities=[
-                        "Immutable baseline scenario management",
-                        "Signalling and block length alternative scenarios",
-                        "Rolling stock variation comparisons",
-                        "Side-by-side scenario delta inspection",
-                    ],
-                )
+                create_scenarios_tab()
 
-            # TAB 8: Simulation Control
             with gr.TabItem("8. Simulation Control", id="tab_simulation"):
-                create_placeholder_tab(
-                    tab_name="Simulation Control",
-                    milestone_code="P04 / P07 / P09",
-                    description=(
-                        "Execution of microscopic numerical train trajectory integration, resource reservation/release logging, "
-                        "and multi-train conflict dispatching."
-                    ),
-                    planned_capabilities=[
-                        "Deterministic 0.1s time-step numerical integration engine",
-                        "Continuous front and rear train-length resource occupation",
-                        "Strict TVS single-train occupancy rule enforcement",
-                        "Progress tracking and simulation abort controls",
-                    ],
-                )
+                create_simulation_tab()
 
-            # TAB 9: Results & Comparison
             with gr.TabItem("9. Results & Comparison", id="tab_results"):
-                create_placeholder_tab(
-                    tab_name="Results & Comparison",
-                    milestone_code="P08 / P10 / P11",
-                    description=(
-                        "Detailed engineering analysis including 7-component blocking-time stairways, pairwise conflict matrices, "
-                        "bottleneck identification, TVS delays, and UIC 406-inspired capacity consumption."
-                    ),
-                    planned_capabilities=[
-                        "Interactive blocking-time stairway diagrams (Plotly)",
-                        "Seven-component blocking time additive breakdown table",
-                        "Heterogeneous pairwise headway matrix H(i, j)",
-                        "Stochastic Monte Carlo reliability distributions",
-                    ],
-                )
+                create_results_tab()
 
-            # TAB 10: Reports & Export
             with gr.TabItem("10. Reports & Export", id="tab_reports"):
-                create_placeholder_tab(
-                    tab_name="Reports & Export",
-                    milestone_code="P14",
-                    description=(
-                        "Generation of professional railway engineering reports mirroring the reference report standard. "
-                        "Exports include PDF executive summaries, HTML interactive packages, Excel calculation books, and JSON data."
-                    ),
-                    planned_capabilities=[
-                        "Reference report format executive PDF generator",
-                        "Complete calculation provenance and assumption audit log",
-                        "Raw simulation event log export (CSV / JSON)",
-                        "Summary KPI tables and figure bundles",
-                    ],
-                )
+                create_reports_tab()
 
-    return demo
+    return app
+
+
+def launch_app(
+    share: bool = False,
+    server_port: int = 7860,
+    server_name: str = "0.0.0.0",
+    inbrowser: bool = False,
+    quiet: bool = False,
+    **kwargs: Any,
+) -> Any:
+    """Launches the Railway Headway Simulator application.
+
+    Note on share parameter:
+        Default is share=False per security and deployment constraints.
+
+    Args:
+        share: Whether to generate a public Gradio share link (default: False).
+        server_port: Port to bind local server (default: 7860).
+        server_name: Hostname to bind server (default: '0.0.0.0').
+        inbrowser: Whether to open browser automatically (default: False).
+        quiet: Suppress banner output.
+        **kwargs: Extra parameters passed to gr.Blocks.launch.
+
+    Returns:
+        The running Gradio app instance.
+    """
+    app = create_app()
+    return app.launch(
+        share=share,
+        server_name=server_name,
+        server_port=server_port,
+        inbrowser=inbrowser,
+        quiet=quiet,
+        theme=ENGINEERING_THEME,
+        css=APP_CSS,
+        **kwargs,
+    )
+
+
+if __name__ == "__main__":
+    launch_app()

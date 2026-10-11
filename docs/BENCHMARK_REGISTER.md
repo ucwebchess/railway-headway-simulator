@@ -360,8 +360,49 @@ In strict compliance with **RHS-MASTER-001 § 28 (Mandatory Verification)**:
 | **P14-B034** | Governance | Report provenance and traceability | Input configuration hash and run identity | Metadata links document to run_id, scenario_id, software version, and config hash | Traceable | **VERIFIED (P14)** |
 | **P14-B035** | Governance | Assembled report immutability | ReportDocument dataclass | Dataclass is immutable/frozen; prevents tampering after validation | Exact | **VERIFIED (P14)** |
 
+### Milestone P15 — Gradio Interface, Google Colab Integration & Final Verification Benchmarks
 
+| Benchmark ID | Category | Target / Requirement | Verification Context | Success Criteria | Tolerance / Status | Result |
+|---|---|---|---|---|---|---|
+| **P15-B001** | Tab 1 | Dashboard project metadata & status reflection | Tab 1 Dashboard components | Project name, ID, status indicators, and summary stats displayed accurately | Exact | **VERIFIED (P15)** |
+| **P15-B002** | Tab 1 | Dashboard headline KPI cards | Tab 1 Dashboard components | Technical headway, theoretical capacity, planning capacity, and bottleneck cards rendered | Exact | **VERIFIED (P15)** |
+| **P15-B003** | Tab 1 | Dashboard state reflection upon data load | Session state integration | Dashboard components update dynamically when dataset loaded | Exact | **VERIFIED (P15)** |
+| **P15-B004** | Tab 1 | Dashboard quick navigation actions | Tab 1 Action buttons | Quick import, validate, and simulate triggers operate without errors | Responsive | **VERIFIED (P15)** |
+| **P15-B005** | Tab 2 | Data import manager instantiation | Tab 2 Import components | Workbook upload, ZIP upload, example dropdown, and template download present | Exact | **VERIFIED (P15)** |
+| **P15-B006** | Tab 2 | Example projects discovery | Verified examples directory | Discovers all 4 official example projects (single, double, station, TVS) | Exact | **VERIFIED (P15)** |
+| **P15-B007** | Tab 2 | Official example project loading | Example ingestion pipeline | Successfully loads and converts verified example dataset to canonical model | Exact | **VERIFIED (P15)** |
+| **P15-B008** | Tab 2 | Template archive packaging & download | Template generator integration | Generates standardized 6-workbook Excel templates ZIP archive | Valid ZIP | **VERIFIED (P15)** |
+| **P15-B009** | Tab 3 | Data validation interface instantiation | Tab 3 Validation components | Simulation readiness banner, severity filter, and findings table present | Exact | **VERIFIED (P15)** |
+| **P15-B010** | Tab 3 | Referential and topological audit execution | Dataset validation pipeline | Audits loaded dataset and generates structured findings table | Exact | **VERIFIED (P15)** |
+| **P15-B011** | Tab 3 | Validation findings severity filtering | Severity filter dropdown | Filters findings by CRITICAL, ERROR, WARNING, and INFO categories | Responsive | **VERIFIED (P15)** |
+| **P15-B012** | Tab 3 | Validation findings Excel export | Export findings button | Generates downloadable Excel workbook of validation findings | Valid XLSX | **VERIFIED (P15)** |
+| **P15-B013** | Tab 4 | Infrastructure explorer visualization | Plotly track schematic | Renders interactive network schematic and elevation gradient profile | Responsive | **VERIFIED (P15)** |
+| **P15-B014** | Tab 4 | Infrastructure direction view orientation toggle | View orientation radio | Toggles coordinate orientation between FORWARD and REVERSE (chainage inverted) | Responsive | **VERIFIED (P15)** |
+| **P15-B015** | Tab 4 | Station, platform, and signalling blocks registers | Tab 4 Dataframes | Tabulates all track links, stations, platforms, and blocks | Exact | **VERIFIED (P15)** |
+| **P15-B016** | Tab 4 | TVS sections and ventilation zones register | TVS sections table | Tabulates TVS sections and ventilation boundary chainages | Exact | **VERIFIED (P15)** |
+| **P15-B017** | Tab 5 | Rolling stock parameter inspector | Tab 5 Components | Displays mass, length, acceleration, decelerations, and power ratings | Exact | **VERIFIED (P15)** |
+| **P15-B018** | Tab 5 | Traction and resistance curve visualization | Plotly physics plots | Renders tractive effort vs velocity and Davis resistance curves | Exact | **VERIFIED (P15)** |
+| **P15-B019** | Tab 5 | Signalling configuration and aspect progressions | Signalling card & signals table | Displays signal aspects, block definitions, and overlap lengths | Exact | **VERIFIED (P15)** |
+| **P15-B020** | Tab 5 | Microscopic physics model selection | Train selector dropdown | Dynamically updates physics curves when different train type is selected | Responsive | **VERIFIED (P15)** |
+| **P15-B021** | Tab 6 | Commercial service patterns inspector | Tab 6 Operations components | Displays service types, priorities, planned headway, and stopping patterns | Exact | **VERIFIED (P15)** |
+| **P15-B022** | Tab 6 | Stopping schedules and dwell times table | Stopping pattern dataframe | Tabulates station dwell durations and platform assignments | Exact | **VERIFIED (P15)** |
+| **P15-B023** | Tab 6 | Timetable operational inspector | Timetable dataframe | Tabulates commercial services and scheduled platform departure times | Exact | **VERIFIED (P15)** |
+| **P15-B024** | Tab 6 | Route alignment traversal schematic | Plotly route traversal plot | Renders chainage traversal profile across selected service route | Responsive | **VERIFIED (P15)** |
+| **P15-B025** | Tab 7 | Scenario manager interface instantiation | Tab 7 Scenario components | Scenario selector, create, duplicate, delete, and diff audit tables present | Exact | **VERIFIED (P15)** |
+| **P15-B026** | Tab 7 | Baseline scenario immutability enforcement | Baseline protection banner | Protects baseline from deletion, modification, or invalid overrides | Enforced | **VERIFIED (P15)** |
+| **P15-B027** | Tab 7 | TVS policy and operational parameter selection | Scenario overrides dropdowns | Supports TVS policy selection (ONE_PER_TVS, WHOLE_TUNNEL, DISABLED) | Responsive | **VERIFIED (P15)** |
+| **P15-B028** | Tab 7 | Scenario parameter diff audit | Parameter diffs dataframe | Displays parameter changes and inheritance provenance against baseline | Exact | **VERIFIED (P15)** |
+| **P15-B029** | Tab 8 | Simulation control panel instantiation | Tab 8 Simulation components | Numerical step size, tolerance, margins, replications, progress bar present | Exact | **VERIFIED (P15)** |
+| **P15-B030** | Tab 8 | MANDATORY explicit FORWARD / REVERSE direction selector | Running direction radio | Explicit running direction selector mandatory; defaults to FORWARD | Mandatory | **VERIFIED (P15)** |
+| **P15-B031** | Tab 8 | Running direction corridor validation | DirectionSelector validator | Validates selected direction against track link directionality constraints | Exact | **VERIFIED (P15)** |
+| **P15-B032** | Tab 8 | Asynchronous background execution & progress reporting | BackgroundExecutor runner | Executes simulation pipeline without UI blocking; reports progress % and stages | Non-blocking | **VERIFIED (P15)** |
+| **P15-B033** | Tab 9 | Headline KPI cards & direction banner | Tab 9 Results components | Prominently displays running direction banner and controlling bottleneck | Exact | **VERIFIED (P15)** |
+| **P15-B034** | Tab 9 | Microscopic speed profile & blocking stairway | Plotly dynamics plots | Visualizes speed envelope, blocking times, and 7-component breakdown | Responsive | **VERIFIED (P15)** |
+| **P15-B035** | Tab 9 | Pairwise route conflict ranking table | Conflicts dataframe | Lists conflicts ordered by slack time; highlights controlling bottleneck | Exact | **VERIFIED (P15)** |
+| **P15-B036** | Tab 9 | Mixed-traffic matrix & multi-train time-distance | Mixed traffic heatmap & plot | Visualizes mixed-traffic headway matrix and multi-train trajectories | Responsive | **VERIFIED (P15)** |
+| **P15-B037** | Tab 10 | Reports hub multi-template assembly | Tab 10 Reports components | Assembles multi-section engineering report with interactive HTML preview | Publication | **VERIFIED (P15)** |
+| **P15-B038** | Tab 10 | Multi-format formal deliverable downloads | Tab 10 Download buttons | Generates and downloads PDF, Excel (.xlsx), CSV (.zip), and JSON (.json) | Valid Formats | **VERIFIED (P15)** |
+| **P15-B039** | Tab 10 | Complete assessment ZIP package bundling | ReportPackageExporter | Bundles PDF, Excel, CSVs, JSON, and metadata into formal assessment ZIP | Valid ZIP | **VERIFIED (P15)** |
+| **P15-B040** | System | Master 10-tab application integration & verification | Gradio Blocks App | Seamless end-user operation across all 10 tabs without Python code editing | Verified | **VERIFIED (P15)** |
 
-=======
->>>>>>> origin/main
 

@@ -158,6 +158,51 @@ def get_plotly_layout(
     return go.Layout(**layout_kwargs)
 
 
+def apply_plotly_theme(
+    fig: go.Figure,
+    running_direction: Optional[RunningDirection] = None,
+) -> go.Figure:
+    """Applies standardized engineering theme to an existing Plotly Figure."""
+    fig.update_layout(
+        plot_bgcolor=ChartColors.BG_WHITE,
+        paper_bgcolor=ChartColors.BG_WHITE,
+        font=dict(family="Arial, sans-serif", color=ChartColors.TEXT_DARK),
+        margin=dict(l=60, r=40, t=80, b=60),
+    )
+    fig.update_xaxes(
+        gridcolor=ChartColors.GRID_LIGHT,
+        zerolinecolor=ChartColors.GRID_LIGHT,
+        showline=True,
+        linecolor=ChartColors.TEXT_MUTED,
+        tickfont=dict(size=11, color=ChartColors.TEXT_DARK),
+    )
+    fig.update_yaxes(
+        gridcolor=ChartColors.GRID_LIGHT,
+        zerolinecolor=ChartColors.GRID_LIGHT,
+        showline=True,
+        linecolor=ChartColors.TEXT_MUTED,
+        tickfont=dict(size=11, color=ChartColors.TEXT_DARK),
+    )
+    if running_direction is not None:
+        dir_text = f"Running Direction: {running_direction.value}"
+        dir_color = ChartColors.PRIMARY_NAVY if running_direction == RunningDirection.FORWARD else ChartColors.CRITICAL_RED
+        fig.add_annotation(
+            text=f"<b>{dir_text}</b>",
+            xref="paper",
+            yref="paper",
+            x=0.99,
+            y=1.05,
+            showarrow=False,
+            font=dict(size=12, color=dir_color, family="Arial, sans-serif"),
+            bgcolor="#EDF2F7",
+            bordercolor=dir_color,
+            borderwidth=1,
+            borderpad=4,
+            opacity=0.9,
+        )
+    return fig
+
+
 def apply_mpl_theme() -> None:
     """P13-THM-001: Configure Matplotlib default rcParams for engineering publications."""
     mpl.rcParams["figure.facecolor"] = ChartColors.BG_WHITE
