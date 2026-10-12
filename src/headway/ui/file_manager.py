@@ -3,10 +3,12 @@
 Milestone P15 — File Management (P15-FILE-001 to P15-FILE-007).
 """
 
+import base64
+import mimetypes
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from headway.data.canonical import CanonicalProject
 from headway.data.converter import convert_raw_to_canonical
@@ -152,6 +154,57 @@ class FileManager:
         tmp_zip = Path(tempfile.gettempdir()) / "Railway_Headway_Templates.zip"
         shutil.make_archive(str(tmp_zip.with_suffix("")), "zip", out_dir)
         return tmp_zip
+
+    @staticmethod
+    def create_base64_download_link(
+        file_path: Union[str, Path],
+        label: Optional[str] = None,
+        mime_type: Optional[str] = None,
+    ) -> str:
+        """Create a self-contained HTML download card with embedded base64 data URI.
+
+        Bypasses Gradio internal host URLs to work reliably in Google Colab with share=False.
+        """
+        p = Path(file_path)
+        if not p.exists():
+            return f"<div style='color: #dc2626;'>File not found: {p.name}</div>"
+
+        data = p.read_bytes()
+        b64_str = base64.b64encode(data).decode("utf-8")
+
+        # Determine MIME type
+        if mime_type is None:
+            ext = p.suffix.lower()
+            mime_map = {
+                ".zip": "application/zip",
+                ".pdf": "application/pdf",
+                ".html": "text/html;charset=utf-8",
+                ".htm": "text/html;charset=utf-8",
+                ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".json": "application/json",
+                ".csv": "text/csv;charset=utf-8",
+            }
+            mime_type = mime_map.get(ext) or mimetypes.guess_type(str(p))[0] or "application/octet-stream"
+
+        filename = p.name
+        btn_label = label or f"Download {filename}"
+        size_kb = len(data) / 1024.0
+        size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{(size_kb / 1024.0):.2f} MB"
+
+        return (
+            f'<div class="headway-download-card" style="margin: 10px 0; padding: 12px 16px; '
+            f'background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; display: inline-block;">'
+            f'<div style="font-size: 13px; font-weight: 600; color: #166534; margin-bottom: 6px;">'
+            f'✅ Ready for Download ({size_str})</div>'
+            f'<a download="{filename}" href="data:{mime_type};base64,{b64_str}" '
+            f'style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; '
+            f'background: #1B365D; color: #FFFFFF; font-weight: 600; font-size: 14px; text-decoration: none; '
+            f'border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); cursor: pointer;" '
+            f'target="_blank">'
+            f'📥 {btn_label}'
+            f'</a>'
+            f'</div>'
+        )
 
 
 ProjectFileManager = FileManager
