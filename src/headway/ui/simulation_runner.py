@@ -37,6 +37,7 @@ from headway.data.canonical import (
     TVSSection,
 )
 from headway.infrastructure.direction import RunningDirection
+from headway.reporting.charts_speed import compute_permissible_speed_envelope
 from headway.reporting.report_assembly import ReportAssembler
 from headway.reporting.report_models import ReportDocument
 from headway.reporting.report_validation import ReportValidator
@@ -366,6 +367,13 @@ class SimulationRunner:
             tracker.check_cancellation()
             tracker.update(current_step=90, stage="Assembling Canonical Result Package", status_message="Packaging simulation outputs...")
 
+        # Permissible speed envelope
+        speed_envelope = compute_permissible_speed_envelope(
+            track_links=infra.track_links,
+            rolling_stock_max_speed_kmh=max_speed_ms * 3.6,
+            running_direction=running_direction,
+        )
+
         # 9. Build Canonical Result Package (P13)
         package = SimulationResultPackage(
             run_id=run_id,
@@ -384,6 +392,8 @@ class SimulationRunner:
                 "provenance_records": provenance_records,
                 "stochastic_headway_samples": [required_hw_s + k * 0.3 for k in range(30)],
                 "tvs_events": tvs_events,
+                "permissible_speed_envelope": speed_envelope,
+                "track_links": list(infra.track_links),
             },
         )
 

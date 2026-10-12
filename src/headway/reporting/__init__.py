@@ -43,6 +43,7 @@ from headway.reporting.charts_scenario import (
     create_scenario_kpi_comparison_figure,
 )
 from headway.reporting.charts_speed import (
+    compute_permissible_speed_envelope,
     create_curvature_profile_figure,
     create_gradient_profile_figure,
     create_speed_distance_figure,
@@ -145,6 +146,7 @@ __all__ = [
     # Adapters
     "VisualizationAdapter",
     # Chart Generators
+    "compute_permissible_speed_envelope",
     "create_speed_distance_figure",
     "create_gradient_profile_figure",
     "create_curvature_profile_figure",
