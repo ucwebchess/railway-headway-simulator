@@ -9,6 +9,7 @@ Covers:
 """
 
 from pathlib import Path
+import re
 import tempfile
 import zipfile
 import gradio as gr
@@ -165,7 +166,14 @@ def test_defect_03_all_report_downloads_return_existing_nonempty_files():
         update_result, status = fns[fn_name]()
         file_val = update_result.get("value") if isinstance(update_result, dict) else getattr(update_result, "value", None)
         assert file_val is not None, f"{label} returned None path"
-        p = Path(file_val)
+        if "base64," in str(file_val):
+            # Verify base64 data URI structure
+            assert "data:" in file_val and ";base64," in file_val, f"{label} missing data URI"
+            m = re.search(r'download="([^"]+)"', str(file_val))
+            assert m is not None, f"{label} HTML missing download attribute"
+            p = Path(session_state.reports_dir) / m.group(1)
+        else:
+            p = Path(file_val)
         assert p.exists(), f"{label} output file does not exist: {p}"
         assert p.suffix.lower() == ext, f"{label} expected {ext}, got {p.suffix}"
         assert p.stat().st_size > 0, f"{label} file is empty (0 bytes)"
@@ -212,7 +220,12 @@ def test_audit_02_report_package_zip_manifest_and_members():
 
     fns = {fn_obj.fn.__name__: fn_obj.fn for fn_obj in app.fns.values() if hasattr(fn_obj.fn, "__name__")}
     update_res, _ = fns["download_complete_package"]()
-    zip_path = Path(update_res["value"] if isinstance(update_res, dict) else update_res.value)
+    val = update_res["value"] if isinstance(update_res, dict) else update_res.value
+    if "base64," in str(val):
+        m = re.search(r'download="([^"]+)"', str(val))
+        zip_path = Path(session_state.reports_dir) / m.group(1) if m else Path(val)
+    else:
+        zip_path = Path(val)
 
     with zipfile.ZipFile(zip_path, "r") as zf:
         members = zf.namelist()
@@ -242,11 +255,21 @@ def test_audit_03_and_04_cross_tab_and_direction_propagation():
 
     # Results tab export handlers work with latest results
     xlsx_res = fns["export_excel_results"]()
-    xlsx_path = Path(xlsx_res["value"] if isinstance(xlsx_res, dict) else xlsx_res.value)
+    x_val = xlsx_res["value"] if isinstance(xlsx_res, dict) else xlsx_res.value
+    if "base64," in str(x_val):
+        m_x = re.search(r'download="([^"]+)"', str(x_val))
+        xlsx_path = Path(session_state.reports_dir) / m_x.group(1) if m_x else Path(x_val)
+    else:
+        xlsx_path = Path(x_val)
     assert xlsx_path.exists() and xlsx_path.stat().st_size > 0
 
     json_res = fns["export_json_results"]()
-    json_path = Path(json_res["value"] if isinstance(json_res, dict) else json_res.value)
+    j_val = json_res["value"] if isinstance(json_res, dict) else json_res.value
+    if "base64," in str(j_val):
+        m_j = re.search(r'download="([^"]+)"', str(j_val))
+        json_path = Path(session_state.reports_dir) / m_j.group(1) if m_j else Path(j_val)
+    else:
+        json_path = Path(j_val)
     assert json_path.exists() and json_path.stat().st_size > 0
 
 
