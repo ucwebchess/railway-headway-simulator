@@ -80,6 +80,11 @@ class DatasetValidator:
                 if tvs_id:
                     self._safe_register("TVS", tvs_id, "INFRASTRUCTURE", "TVSSections", row.get("_row"))
 
+            for row in infra.get_rows("SharedResourceGroups"):
+                gid = row.get("group_id")
+                if gid:
+                    self._safe_register("RESOURCE_GROUP", gid, "INFRASTRUCTURE", "SharedResourceGroups", row.get("_row"))
+
         # 2. Signalling
         sig = raw_workbooks.get("SIGNALLING")
         if sig:
@@ -174,6 +179,26 @@ class DatasetValidator:
                     self._check_ref("TUNNEL", row.get("tunnel_id"), "TVSSections.tunnel_id", "INFRASTRUCTURE", "TVSSections", tvs_id)
                 if row.get("holding_signal_id"):
                     self._check_ref("SIGNAL", row.get("holding_signal_id"), "TVSSections.holding_signal_id", "INFRASTRUCTURE", "TVSSections", tvs_id)
+
+            for row in infra.get_rows("SharedResourceGroups"):
+                gid = row.get("group_id")
+                raw_res = row.get("resource_ids")
+                res_list = raw_res if isinstance(raw_res, list) else ([raw_res] if raw_res else [])
+                for res_id in res_list:
+                    if not res_id:
+                        continue
+                    clean_res = str(res_id).strip()
+                    if not (self.registry.exists("BLOCK", clean_res) or self.registry.exists("TVS", clean_res)):
+                        self.report.add_finding(
+                            error_code="ERR_REF_MISSING",
+                            severity=Severity.ERROR,
+                            message=f"SharedResourceGroups.resource_ids references non-existent BLOCK or TVS resource '{clean_res}'.",
+                            workbook="INFRASTRUCTURE",
+                            worksheet="SharedResourceGroups",
+                            object_id=gid,
+                            column="RESOURCE_IDS",
+                            recommendation=f"Ensure resource '{clean_res}' is defined in SIGNALLING Blocks or INFRASTRUCTURE TVSSections.",
+                        )
 
         sig = raw_workbooks.get("SIGNALLING")
         if sig:
