@@ -361,7 +361,7 @@ class PdfReportRenderer:
         flowables.append(Paragraph("Executive Summary & Primary KPI Dashboard", styles["SectionHeading"]))
         flowables.append(HRFlowable(width="100%", thickness=1.5, color=cls.PRIMARY_NAVY, spaceBefore=2, spaceAfter=6))
 
-        # 4 KPI cards as a single 1-row table with 4 cells
+        # KPI cards
         kpi_cells = [
             [
                 Paragraph("TECHNICAL MIN HEADWAY", styles["KpiLabel"]),
@@ -378,20 +378,30 @@ class PdfReportRenderer:
                 Paragraph(f"{kpis.planning_capacity_tph:.1f} tph", styles["KpiVal"]),
                 Paragraph(f"{kpis.planning_margin_s:.0f}s operational buffer margin", styles["KpiSub"]),
             ],
-            [
-                Paragraph("CONTROLLING BOTTLENECK", styles["KpiLabel"]),
-                Paragraph(kpis.controlling_bottleneck_id, styles["KpiValCrit"]),
-                Paragraph(f"{kpis.controlling_bottleneck_type} • km {kpis.controlling_bottleneck_chainage_km:.2f}", styles["KpiSub"]),
-            ],
         ]
+        if kpis.total_service_duration_s is not None:
+            kpi_cells.append([
+                Paragraph("TOTAL SERVICE DURATION", styles["KpiLabel"]),
+                Paragraph(kpis.total_service_duration_str, styles["KpiVal"]),
+                Paragraph("End-to-End Line Traversal", styles["KpiSub"]),
+            ])
+        kpi_cells.append([
+            Paragraph("CONTROLLING BOTTLENECK", styles["KpiLabel"]),
+            Paragraph(kpis.controlling_bottleneck_id, styles["KpiValCrit"]),
+            Paragraph(f"{kpis.controlling_bottleneck_type} • km {kpis.controlling_bottleneck_chainage_km:.2f}", styles["KpiSub"]),
+        ])
 
-        t_kpis = Table([kpi_cells], colWidths=[130, 130, 130, 130])
+        col_w = 520.0 / len(kpi_cells)
+        col_widths = [col_w] * len(kpi_cells)
+        crit_idx = len(kpi_cells) - 1
+
+        t_kpis = Table([kpi_cells], colWidths=col_widths)
         t_kpis.setStyle(
             TableStyle([
-                ("BACKGROUND", (0, 0), (2, 0), colors.HexColor("#F8FAFC")),
-                ("BACKGROUND", (3, 0), (3, 0), colors.HexColor("#FFF5F5")),
-                ("BOX", (0, 0), (2, 0), 1, colors.HexColor("#CBD5E1")),
-                ("BOX", (3, 0), (3, 0), 1.5, cls.CRITICAL_RED),
+                ("BACKGROUND", (0, 0), (crit_idx - 1, 0), colors.HexColor("#F8FAFC")),
+                ("BACKGROUND", (crit_idx, 0), (crit_idx, 0), colors.HexColor("#FFF5F5")),
+                ("BOX", (0, 0), (crit_idx - 1, 0), 1, colors.HexColor("#CBD5E1")),
+                ("BOX", (crit_idx, 0), (crit_idx, 0), 1.5, cls.CRITICAL_RED),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
                 ("LEFTPADDING", (0, 0), (-1, -1), 4),

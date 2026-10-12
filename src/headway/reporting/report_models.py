@@ -100,7 +100,7 @@ class Recommendation:
 
 @dataclass(frozen=True)
 class ExecutiveKpis:
-    """P14-EXE-001: The four principal headline KPIs."""
+    """P14-EXE-001: The principal headline KPIs."""
 
     technical_headway_s: float
     technical_headway_min: float
@@ -111,10 +111,22 @@ class ExecutiveKpis:
     controlling_bottleneck_location_m: float
     headway_definition: str = "TECHNICAL_MINIMUM"
     planning_margin_s: float = 18.0
+    total_service_duration_s: Optional[float] = None
 
     @property
     def controlling_bottleneck_chainage_km(self) -> float:
         return self.controlling_bottleneck_location_m / 1000.0
+
+    @property
+    def total_service_duration_str(self) -> str:
+        """Formatted total service duration in HH:MM:SS."""
+        if self.total_service_duration_s is None:
+            return "N/A"
+        tot = int(round(self.total_service_duration_s))
+        hh = tot // 3600
+        mm = (tot % 3600) // 60
+        ss = tot % 60
+        return f"{hh:02d}:{mm:02d}:{ss:02d}"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -128,6 +140,8 @@ class ExecutiveKpis:
             "controlling_bottleneck_chainage_km": self.controlling_bottleneck_chainage_km,
             "headway_definition": self.headway_definition,
             "planning_margin_s": self.planning_margin_s,
+            "total_service_duration_s": self.total_service_duration_s,
+            "total_service_duration_str": self.total_service_duration_str,
         }
 
 
@@ -226,7 +240,7 @@ class ReportMetadata:
     report_type: ReportType
     running_direction: RunningDirection
     generation_time: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    software_version: str = "1.0.1"
+    software_version: str = "1.0.2"
     input_configuration_hash: str = ""
     validation_status: str = "VALID"
     title: str = "Railway Headway & Line Capacity Assessment"
@@ -294,6 +308,16 @@ class ReportDocument:
     def direction_banner_text(self) -> str:
         """P14-DIR-008: Mandatory textual direction statement."""
         return f"Running Direction: {self.running_direction.value}"
+
+    @property
+    def total_service_duration_s(self) -> Optional[float]:
+        """Total service duration in seconds across complete line."""
+        return self.executive_kpis.total_service_duration_s
+
+    @property
+    def total_service_duration_str(self) -> str:
+        """Formatted total service duration in HH:MM:SS."""
+        return self.executive_kpis.total_service_duration_str
 
     def get_section(self, section_id: ReportSectionId) -> Optional[ReportSection]:
         return self.sections.get(section_id)
