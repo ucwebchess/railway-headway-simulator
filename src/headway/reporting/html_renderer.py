@@ -73,7 +73,16 @@ class HtmlReportRenderer:
         html_parts.append("<h2 class='section-title'>Executive Summary & Headline KPIs</h2>")
         html_parts.append("</div>")
 
-        # 4 Headline KPI Cards (P14-EXE-001)
+        # Headline KPI Cards (P14-EXE-001 & Total Service Duration)
+        dur_str = kpis.total_service_duration_str if hasattr(kpis, "total_service_duration_str") else "N/A"
+        dur_card = f"""
+        <div class='kpi-card'>
+            <div class='kpi-label'>Total Service Duration (End-to-End)</div>
+            <div class='kpi-value'>{dur_str}</div>
+            <div class='kpi-subtext'>Origin departure to terminus arrival</div>
+        </div>
+        """ if dur_str != "N/A" else ""
+
         html_parts.append("<div class='kpi-grid'>")
         html_parts.append(f"""
         <div class='kpi-card'>
@@ -91,6 +100,7 @@ class HtmlReportRenderer:
             <div class='kpi-value'>{kpis.planning_capacity_tph:.1f} <span class='kpi-unit'>tph</span></div>
             <div class='kpi-subtext'>under {kpis.planning_margin_s:.0f}s operational buffer margin</div>
         </div>
+        {dur_card}
         <div class='kpi-card kpi-card-critical'>
             <div class='kpi-label'>Controlling Bottleneck</div>
             <div class='kpi-value-sm'>{html.escape(kpis.controlling_bottleneck_id)}</div>
@@ -349,7 +359,7 @@ class HtmlReportRenderer:
 
         .kpi-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 16px;
             margin-bottom: 20px;
         }

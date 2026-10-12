@@ -22,6 +22,7 @@ from headway.reporting.report_config import ReportConfig
 from headway.reporting.report_models import ReportDocument
 from headway.reporting.report_package import ReportPackageExporter
 from headway.ui.error_handling import create_error_html, create_success_html, format_exception_for_ui
+from headway.ui.file_manager import FileManager
 from headway.ui.state import session_state
 
 
@@ -88,14 +89,22 @@ def create_reports_tab() -> Dict[str, Any]:
                     components["btn_download_csv"] = gr.Button("📁 CSV Tables (.zip)", variant="secondary", scale=1)
                     components["btn_download_json"] = gr.Button("📑 JSON Report (.json)", variant="secondary", scale=1)
 
-                components["download_file_output"] = gr.File(label="Generated Deliverable File", visible=True)
+                components["download_file_output"] = gr.HTML(
+                    value="<div style='color: #64748B; font-size: 13px; font-style: italic; padding: 12px; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 6px;'>Generated deliverables will appear here for direct download.</div>",
+                    label="Generated Deliverable File",
+                    visible=True,
+                )
                 components["rep_status_msg"] = gr.HTML()
 
                 gr.Markdown("---")
                 gr.Markdown("#### Project State Backup & Restoration")
                 with gr.Row():
                     components["btn_backup_project"] = gr.Button("💾 Backup Entire Project (.zip)", variant="secondary")
-                components["project_backup_file"] = gr.File(label="Project Backup Ready", visible=False)
+                components["project_backup_file"] = gr.HTML(
+                    value="",
+                    label="Project Backup Ready",
+                    visible=False,
+                )
 
                 components["restore_project_file"] = gr.File(
                     label="Restore Project from ZIP (.zip)",
@@ -178,7 +187,7 @@ def create_reports_tab() -> Dict[str, Any]:
     def download_complete_package() -> Tuple[Any, str]:
         doc = _ensure_report_doc()
         if not doc:
-            return gr.update(visible=False), create_error_html(
+            return gr.update(value="<div style='color: #DC2626;'>No report document available.</div>", visible=True), create_error_html(
                 "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
@@ -195,12 +204,15 @@ def create_reports_tab() -> Dict[str, Any]:
                 include_json=True,
                 include_figures=True,
             )
-            return gr.update(value=str(pkg_path), visible=True), create_success_html(
+            download_html = FileManager.create_base64_download_link(
+                pkg_path, label=f"Download Assessment Package ({pkg_path.name})"
+            )
+            return gr.update(value=download_html, visible=True), create_success_html(
                 "Complete Package Generated", f"ZIP archive created at {pkg_path.name}"
             )
         except Exception as exc:
             err = format_exception_for_ui(exc, context="ZIP Package Export")
-            return gr.update(visible=False), err.to_html()
+            return gr.update(value=f"<div style='color: #DC2626;'>Error: {err.user_message}</div>", visible=True), err.to_html()
 
     components["btn_download_pkg"].click(
         fn=download_complete_package,
@@ -211,7 +223,7 @@ def create_reports_tab() -> Dict[str, Any]:
     def download_pdf() -> Tuple[Any, str]:
         doc = _ensure_report_doc()
         if not doc:
-            return gr.update(visible=False), create_error_html(
+            return gr.update(value="<div style='color: #DC2626;'>No report document available.</div>", visible=True), create_error_html(
                 "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
@@ -219,12 +231,15 @@ def create_reports_tab() -> Dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
             pdf_path = out_dir / f"Report_{doc.metadata.report_id}.pdf"
             PdfReportRenderer.render(doc, output_path=pdf_path)
-            return gr.update(value=str(pdf_path), visible=True), create_success_html(
+            download_html = FileManager.create_base64_download_link(
+                pdf_path, label=f"Download Formal PDF ({pdf_path.name})"
+            )
+            return gr.update(value=download_html, visible=True), create_success_html(
                 "PDF Rendered", f"Exported formal PDF: {pdf_path.name}"
             )
         except Exception as exc:
             err = format_exception_for_ui(exc, context="PDF Rendering")
-            return gr.update(visible=False), err.to_html()
+            return gr.update(value=f"<div style='color: #DC2626;'>Error: {err.user_message}</div>", visible=True), err.to_html()
 
     components["btn_download_pdf"].click(
         fn=download_pdf,
@@ -235,7 +250,7 @@ def create_reports_tab() -> Dict[str, Any]:
     def download_html() -> Tuple[Any, str]:
         doc = _ensure_report_doc()
         if not doc:
-            return gr.update(visible=False), create_error_html(
+            return gr.update(value="<div style='color: #DC2626;'>No report document available.</div>", visible=True), create_error_html(
                 "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
@@ -243,12 +258,15 @@ def create_reports_tab() -> Dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
             html_path = out_dir / f"Report_{doc.metadata.report_id}.html"
             HtmlReportRenderer.render(doc, output_path=html_path, embed_interactive_plotly=True)
-            return gr.update(value=str(html_path), visible=True), create_success_html(
+            download_html_link = FileManager.create_base64_download_link(
+                html_path, label=f"Download Standalone HTML ({html_path.name})"
+            )
+            return gr.update(value=download_html_link, visible=True), create_success_html(
                 "HTML Report Exported", f"Exported standalone HTML: {html_path.name}"
             )
         except Exception as exc:
             err = format_exception_for_ui(exc, context="HTML Export")
-            return gr.update(visible=False), err.to_html()
+            return gr.update(value=f"<div style='color: #DC2626;'>Error: {err.user_message}</div>", visible=True), err.to_html()
 
     components["btn_download_html"].click(
         fn=download_html,
@@ -259,7 +277,7 @@ def create_reports_tab() -> Dict[str, Any]:
     def download_xlsx() -> Tuple[Any, str]:
         doc = _ensure_report_doc()
         if not doc:
-            return gr.update(visible=False), create_error_html(
+            return gr.update(value="<div style='color: #DC2626;'>No report document available.</div>", visible=True), create_error_html(
                 "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
@@ -267,12 +285,15 @@ def create_reports_tab() -> Dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
             xlsx_path = out_dir / f"Report_{doc.metadata.report_id}.xlsx"
             ExcelReportExporter.export(doc, output_path=xlsx_path)
-            return gr.update(value=str(xlsx_path), visible=True), create_success_html(
+            download_html = FileManager.create_base64_download_link(
+                xlsx_path, label=f"Download Excel Assessment ({xlsx_path.name})"
+            )
+            return gr.update(value=download_html, visible=True), create_success_html(
                 "Excel Exported", f"Exported engineering workbook: {xlsx_path.name}"
             )
         except Exception as exc:
             err = format_exception_for_ui(exc, context="Excel Export")
-            return gr.update(visible=False), err.to_html()
+            return gr.update(value=f"<div style='color: #DC2626;'>Error: {err.user_message}</div>", visible=True), err.to_html()
 
     components["btn_download_xlsx"].click(
         fn=download_xlsx,
@@ -283,7 +304,7 @@ def create_reports_tab() -> Dict[str, Any]:
     def download_csv_zip() -> Tuple[Any, str]:
         doc = _ensure_report_doc()
         if not doc:
-            return gr.update(visible=False), create_error_html(
+            return gr.update(value="<div style='color: #DC2626;'>No report document available.</div>", visible=True), create_error_html(
                 "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
@@ -295,12 +316,15 @@ def create_reports_tab() -> Dict[str, Any]:
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for f in tmp_csv_dir.glob("*.csv"):
                     zf.write(f, arcname=f.name)
-            return gr.update(value=str(zip_path), visible=True), create_success_html(
+            download_html = FileManager.create_base64_download_link(
+                zip_path, label=f"Download CSV Archive ({zip_path.name})"
+            )
+            return gr.update(value=download_html, visible=True), create_success_html(
                 "CSV Archive Created", f"Packaged CSV tables into {zip_path.name}"
             )
         except Exception as exc:
             err = format_exception_for_ui(exc, context="CSV Export")
-            return gr.update(visible=False), err.to_html()
+            return gr.update(value=f"<div style='color: #DC2626;'>Error: {err.user_message}</div>", visible=True), err.to_html()
 
     components["btn_download_csv"].click(
         fn=download_csv_zip,
@@ -311,7 +335,7 @@ def create_reports_tab() -> Dict[str, Any]:
     def download_json() -> Tuple[Any, str]:
         doc = _ensure_report_doc()
         if not doc:
-            return gr.update(visible=False), create_error_html(
+            return gr.update(value="<div style='color: #DC2626;'>No report document available.</div>", visible=True), create_error_html(
                 "No Report Document", "Run a simulation or assemble a report first."
             )
         try:
@@ -319,12 +343,15 @@ def create_reports_tab() -> Dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
             json_path = out_dir / f"Report_{doc.metadata.report_id}.json"
             JsonReportExporter.export(doc, output_path=json_path)
-            return gr.update(value=str(json_path), visible=True), create_success_html(
+            download_html = FileManager.create_base64_download_link(
+                json_path, label=f"Download JSON Report ({json_path.name})"
+            )
+            return gr.update(value=download_html, visible=True), create_success_html(
                 "JSON Generated", f"Exported structured JSON: {json_path.name}"
             )
         except Exception as exc:
             err = format_exception_for_ui(exc, context="JSON Export")
-            return gr.update(visible=False), err.to_html()
+            return gr.update(value=f"<div style='color: #DC2626;'>Error: {err.user_message}</div>", visible=True), err.to_html()
 
     components["btn_download_json"].click(
         fn=download_json,
@@ -338,7 +365,10 @@ def create_reports_tab() -> Dict[str, Any]:
             pid = session_state.project_id or "Headway_Project"
             backup_path = tmp_dir / f"{pid}_backup.zip"
             session_state.export_project_zip(backup_path)
-            return gr.update(value=str(backup_path), visible=True), create_success_html(
+            download_html = FileManager.create_base64_download_link(
+                backup_path, label=f"Download Project Backup ({backup_path.name})"
+            )
+            return gr.update(value=download_html, visible=True), create_success_html(
                 "Project Backed Up", f"Complete session archive exported to {backup_path.name}"
             )
         except Exception as exc:

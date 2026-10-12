@@ -102,7 +102,7 @@ class ReportAssembler:
             simulation_run_id=package.run_id,
             report_type=cfg.report_type,
             running_direction=direction,
-            software_version="1.0.1",
+            software_version="1.0.2",
             input_configuration_hash=package.effective_config_hash,
             validation_status="VALID",
             title=cfg.title or "Railway Headway & Line Capacity Assessment",
@@ -254,12 +254,55 @@ class ReportAssembler:
     # -------------------------------------------------------------------------
 
     @classmethod
+    def _compute_total_service_duration(cls, package: SimulationResultPackage) -> Optional[float]:
+        """Compute Total Service Duration = Journey Time from start to end.
+
+        Total Service Duration = (Arrival Time at destination) - (Departure Time at origin)
+        Includes running time along all links, station dwells, and infrastructure restrictions.
+        """
+        # 1. If station stops exist in metadata with at least 2 stops
+        station_stops = package.metadata.get("station_stops", [])
+        if station_stops and len(station_stops) >= 2:
+            t_origin = getattr(station_stops[0], "departure_time_s", getattr(station_stops[0], "arrival_time_s", 0.0))
+            t_dest = getattr(station_stops[-1], "arrival_time_s", getattr(station_stops[-1], "departure_time_s", 0.0))
+            duration = max(0.0, float(t_dest - t_origin))
+            if duration > 0.0:
+                return duration
+
+        # 2. If platform records exist in metadata with at least 2 platforms
+        platform_recs = package.metadata.get("platform_records", [])
+        if platform_recs and len(platform_recs) >= 2:
+            t_origin = getattr(platform_recs[0], "departure_time_s", getattr(platform_recs[0], "arrival_time_s", 0.0))
+            t_dest = getattr(platform_recs[-1], "arrival_time_s", getattr(platform_recs[-1], "departure_time_s", 0.0))
+            duration = max(0.0, float(t_dest - t_origin))
+            if duration > 0.0:
+                return duration
+
+        # 3. Microscopic train trajectories (primary train traversal duration)
+        if package.trajectories:
+            traj = package.trajectories.get("TRN_LEADER") or next(iter(package.trajectories.values()))
+            if traj and traj.samples and len(traj.samples) >= 2:
+                dur = float(traj.journey_time_s)
+                if dur > 0.0:
+                    return dur
+
+        # 4. Multi-train simulation trajectories
+        if package.multi_train_result and package.multi_train_result.trajectories:
+            traj = next(iter(package.multi_train_result.trajectories.values()))
+            if traj and traj.samples and len(traj.samples) >= 2:
+                dur = float(traj.journey_time_s)
+                if dur > 0.0:
+                    return dur
+
+        return None
+
+    @classmethod
     def _build_executive_kpis(
         cls,
         package: SimulationResultPackage,
         primary_hw: Optional[HeadwayResult],
     ) -> ExecutiveKpis:
-        """P14-EXE-001: Extract the 4 headline KPIs from simulation results."""
+        """P14-EXE-001: Extract the headline KPIs from simulation results."""
         hw_s = 0.0
         bottleneck_id = "UNKNOWN"
         bottleneck_type = "UNCONSTRAINED"
@@ -285,6 +328,7 @@ class ReportAssembler:
         margin_s = 18.0
         theo_cap = (3600.0 / hw_s) if hw_s > 0 else 0.0
         plan_cap = (3600.0 / (hw_s + margin_s)) if (hw_s + margin_s) > 0 else 0.0
+        total_service_dur = cls._compute_total_service_duration(package)
 
         return ExecutiveKpis(
             technical_headway_s=round(hw_s, 1),
@@ -296,6 +340,7 @@ class ReportAssembler:
             controlling_bottleneck_location_m=bottleneck_loc,
             headway_definition=primary_hw.headway_definition if primary_hw else "TECHNICAL_MINIMUM",
             planning_margin_s=margin_s,
+            total_service_duration_s=round(total_service_dur, 1) if total_service_dur is not None else None,
         )
 
     @classmethod
@@ -368,9 +413,25 @@ class ReportAssembler:
         """Section 1: Speed, Gradients & Curvature (P14-SEC01-001)."""
         has_traj = bool(package.trajectories)
         fig_key = "fig_speed_alignment"
+        envelope = package.metadata.get("permissible_speed_envelope")
+        track_links = package.metadata.get("track_links")
         if has_traj:
             first_traj = next(iter(package.trajectories.values()))
-            figures_data[fig_key] = create_speed_distance_figure(first_traj, running_direction=direction)
+            figures_data[fig_key] = create_speed_distance_figure(
+                first_traj,
+                permissible_speed_envelope=envelope,
+                track_links=track_links,
+                running_direction=direction,
+            )
+
+        dur_s = cls._compute_total_service_duration(package)
+        sec_kpis: Dict[str, Any] = {}
+        if dur_s is not None:
+            tot = int(round(dur_s))
+            dur_str = f"{tot // 3600:02d}:{(tot % 3600) // 60:02d}:{tot % 60:02d}"
+            sec_kpis["total_service_duration_s"] = round(dur_s, 1)
+            sec_kpis["total_service_duration_str"] = dur_str
+            sec_kpis["Total Service Duration (End-to-End)"] = dur_str
 
         return ReportSection(
             section_id=ReportSectionId.SPEED_GRADIENT_CURVATURE,
@@ -383,6 +444,7 @@ class ReportAssembler:
                 f"accounting for vertical track gradients and horizontal curvature aligned in the {direction.value} running direction.",
                 f"Directional alignment enforces gradient sign inversion for REVERSE operations where applicable.",
             ],
+            kpis=sec_kpis,
             figure_keys=[fig_key] if has_traj else [],
         )
 
@@ -672,7 +734,7 @@ class ReportAssembler:
                 "and verification status to ensure total calculation auditability.",
             ],
             kpis={
-                "Software Version": "1.0.1",
+                "Software Version": "1.0.2",
                 "Config Hash": package.effective_config_hash,
                 "Model Fidelity": infra.model_fidelity,
                 "Signalling Tech": infra.signalling_technology,

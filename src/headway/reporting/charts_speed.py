@@ -11,6 +11,7 @@ Satisfies:
 """
 
 from typing import Any, Dict, List, Optional, Sequence, Union
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -21,6 +22,52 @@ from headway.reporting.visualization_adapters import VisualizationAdapter
 from headway.simulation.trajectory import TrainTrajectory
 
 
+def compute_permissible_speed_envelope(
+    track_links: Optional[Sequence[TrackLink]] = None,
+    rolling_stock_max_speed_kmh: Optional[float] = None,
+    running_direction: RunningDirection = RunningDirection.FORWARD,
+    total_distance_m: Optional[float] = None,
+) -> List[Dict[str, float]]:
+    """Computes the permissible speed envelope step function along route distance.
+
+    At each route distance:
+    permissible_speed(d) = min(infrastructure_speed(d), rolling_stock_max_speed)
+    Drawn as a step function matching the underlying speed-limit intervals.
+    Respects FORWARD and REVERSE running direction.
+    """
+    if not track_links:
+        if total_distance_m and total_distance_m > 0:
+            speed = rolling_stock_max_speed_kmh or 90.0
+            return [
+                {"route_distance_m": 0.0, "max_speed_kmh": speed},
+                {"route_distance_m": total_distance_m, "max_speed_kmh": speed},
+            ]
+        return []
+
+    links = list(track_links)
+    if running_direction == RunningDirection.REVERSE:
+        links = list(reversed(links))
+
+    envelope: List[Dict[str, float]] = []
+    curr_m = 0.0
+
+    for link in links:
+        length = float(link.length_m)
+        infra_kmh = float(link.max_speed_ms) * 3.6
+        eff_speed = infra_kmh
+        if rolling_stock_max_speed_kmh is not None:
+            eff_speed = min(eff_speed, rolling_stock_max_speed_kmh)
+
+        start_m = curr_m
+        end_m = curr_m + length
+
+        envelope.append({"route_distance_m": start_m, "max_speed_kmh": eff_speed})
+        envelope.append({"route_distance_m": end_m, "max_speed_kmh": eff_speed})
+        curr_m = end_m
+
+    return envelope
+
+
 def create_speed_distance_figure(
     trajectories: Union[TrainTrajectory, Sequence[TrainTrajectory]],
     permissible_speed_envelope: Optional[Sequence[Dict[str, float]]] = None,
@@ -29,29 +76,16 @@ def create_speed_distance_figure(
     tvs_sections: Optional[Sequence[TVSSection]] = None,
     title: str = "Train Speed Profile & Permissible Speed Envelope",
     running_direction: Optional[RunningDirection] = None,
+    track_links: Optional[Sequence[TrackLink]] = None,
+    rolling_stock_max_speed_kmh: Optional[float] = None,
 ) -> go.Figure:
-    """P13-SPD-001 to 005: Generate interactive Plotly Speed–Distance diagram."""
+    """P13-SPD-001 to 005: Generate interactive Plotly Speed–Distance diagram with speed envelope."""
     traj_list = [trajectories] if isinstance(trajectories, TrainTrajectory) else list(trajectories)
     eff_dir = running_direction or (traj_list[0].running_direction if traj_list else RunningDirection.FORWARD)
 
     fig = go.Figure()
 
-    # 1. Plot permissible speed envelope if provided
-    if permissible_speed_envelope:
-        env_x = [pt.get("route_distance_m", 0.0) / 1000.0 for pt in permissible_speed_envelope]
-        env_y = [pt.get("max_speed_kmh", 0.0) for pt in permissible_speed_envelope]
-        fig.add_trace(
-            go.Scatter(
-                x=env_x,
-                y=env_y,
-                mode="lines",
-                line=dict(color=ChartColors.SPEED_ENVELOPE, width=2, dash="dash"),
-                name="Permissible Speed Limit",
-                hoverinfo="x+y+name",
-            )
-        )
-
-    # 2. Plot train speed trajectories
+    # 1. Plot train speed trajectories (Trace 0: Simulated Speed)
     colors = [ChartColors.LEADER_TRAIN, ChartColors.FOLLOWER_TRAIN, ChartColors.OPPOSING_TRAIN, ChartColors.SECONDARY_BLUE]
 
     for idx, traj in enumerate(traj_list):
@@ -60,14 +94,62 @@ def create_speed_distance_figure(
         role = "Leader" if idx == 0 and len(traj_list) > 1 else ("Follower" if idx == 1 else "")
         label = f"{traj.train_id} ({role})" if role else traj.train_id
 
+        trace_name = f"Simulated Speed ({label})" if len(traj_list) > 1 else f"Simulated Speed: {label}"
         fig.add_trace(
             go.Scatter(
                 x=df["route_distance_km"],
                 y=df["speed_kmh"],
                 mode="lines",
                 line=dict(color=t_color, width=2.5),
-                name=f"Speed: {label}",
+                name=trace_name,
                 hovertemplate="Distance: %{x:.3f} km<br>Speed: %{y:.1f} km/h<extra></extra>",
+            )
+        )
+
+    # 2. Derive permissible speed envelope if not provided
+    if permissible_speed_envelope is None:
+        if track_links:
+            permissible_speed_envelope = compute_permissible_speed_envelope(
+                track_links=track_links,
+                rolling_stock_max_speed_kmh=rolling_stock_max_speed_kmh,
+                running_direction=eff_dir,
+            )
+        else:
+            try:
+                from headway.ui.state import session_state
+                if session_state.project and session_state.project.infrastructure.track_links:
+                    rs = session_state.project.rolling_stock
+                    rs_max = (rs.train_types[0].max_speed_ms * 3.6) if rs.train_types else None
+                    permissible_speed_envelope = compute_permissible_speed_envelope(
+                        track_links=session_state.project.infrastructure.track_links,
+                        rolling_stock_max_speed_kmh=rs_max,
+                        running_direction=eff_dir,
+                    )
+            except Exception:
+                pass
+
+        if permissible_speed_envelope is None and traj_list and traj_list[0].samples:
+            primary_t = traj_list[0]
+            max_v = max(s.speed_kmh for s in primary_t.samples)
+            tot_dist = primary_t.total_distance_m or primary_t.samples[-1].front_distance_m
+            ceil_v = max(80.0, float(np.ceil(max_v / 10.0) * 10.0))
+            permissible_speed_envelope = [
+                {"route_distance_m": 0.0, "max_speed_kmh": ceil_v},
+                {"route_distance_m": tot_dist, "max_speed_kmh": ceil_v},
+            ]
+
+    # 3. Plot permissible speed envelope as red dashed line
+    if permissible_speed_envelope:
+        env_x = [pt.get("route_distance_m", 0.0) / 1000.0 for pt in permissible_speed_envelope]
+        env_y = [pt.get("max_speed_kmh", 0.0) for pt in permissible_speed_envelope]
+        fig.add_trace(
+            go.Scatter(
+                x=env_x,
+                y=env_y,
+                mode="lines",
+                line=dict(color=ChartColors.SPEED_ENVELOPE, width=2.5, dash="dash"),
+                name="Permissible Speed Envelope",
+                hoverinfo="x+y+name",
             )
         )
 

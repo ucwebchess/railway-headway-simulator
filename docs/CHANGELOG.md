@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.2] — Post-Release Fixes (Round 2)
+
+### Fixed
+
+- Download failure in Google Colab: report files are now served through
+  an embedded base64 data URI so downloads work without exposing the
+  internal Colab runtime hostname. The application continues to run with
+  `share=False`.
+- Total service duration for the complete line is now displayed in the
+  engineering report summary.
+- The Speed & Alignment chart now displays the permissible speed envelope
+  as a red dashed line, matching the reference report.
+
+### Verified
+
+- All report download formats work in a real Google Colab session.
+
 ## [1.0.1] — Post-Release Fixes
 
 ### Fixed

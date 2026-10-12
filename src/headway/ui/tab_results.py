@@ -30,6 +30,7 @@ from headway.reporting.tables import (
 )
 from headway.ui.direction_selector import DirectionSelector
 from headway.ui.error_handling import create_error_html, create_success_html
+from headway.ui.file_manager import FileManager
 from headway.ui.state import session_state
 
 
@@ -49,7 +50,7 @@ def create_results_tab() -> Dict[str, Any]:
             components["export_xlsx_btn"] = gr.Button("📊 Export Results to Excel (.xlsx)", variant="secondary")
             components["export_json_btn"] = gr.Button("📑 Export Results to JSON (.json)", variant="secondary")
 
-        components["export_file_download"] = gr.File(label="Export File Download Ready", visible=False)
+        components["export_file_download"] = gr.HTML(label="Export File Download Ready", visible=False)
 
         # Direction Banner
         components["res_direction_banner"] = gr.HTML(
@@ -185,7 +186,16 @@ def create_results_tab() -> Dict[str, Any]:
 
         # Figures from doc or visualizers
         primary_traj = next(iter(pkg.trajectories.values()), None)
-        fig_speed = create_speed_distance_figure(primary_traj, running_direction=direction) if primary_traj else empty_fig
+        fig_speed = (
+            create_speed_distance_figure(
+                primary_traj,
+                permissible_speed_envelope=pkg.metadata.get("permissible_speed_envelope"),
+                track_links=pkg.metadata.get("track_links"),
+                running_direction=direction,
+            )
+            if primary_traj
+            else empty_fig
+        )
 
         primary_hw = next(iter(pkg.headway_results.values()), None)
         fig_stair = create_blocking_stairway_figure(primary_hw) if primary_hw else empty_fig
@@ -286,12 +296,15 @@ def create_results_tab() -> Dict[str, Any]:
             doc = ReportAssembler.assemble_report(package=session_state.latest_result_package)
             session_state.latest_report_doc = doc
         if not doc:
-            return gr.update(visible=False)
+            return gr.update(value="<div style='color: #DC2626;'>No results available to export.</div>", visible=True)
         out_dir = Path(session_state.reports_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"Simulation_Results_{doc.metadata.report_id}.xlsx"
         ExcelReportExporter.export(doc, output_path=out_path)
-        return gr.update(value=str(out_path), visible=True)
+        download_html = FileManager.create_base64_download_link(
+            out_path, label=f"Download Excel Results ({out_path.name})"
+        )
+        return gr.update(value=download_html, visible=True)
 
     components["export_xlsx_btn"].click(
         fn=export_excel_results,
@@ -305,12 +318,15 @@ def create_results_tab() -> Dict[str, Any]:
             doc = ReportAssembler.assemble_report(package=session_state.latest_result_package)
             session_state.latest_report_doc = doc
         if not doc:
-            return gr.update(visible=False)
+            return gr.update(value="<div style='color: #DC2626;'>No results available to export.</div>", visible=True)
         out_dir = Path(session_state.reports_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"Simulation_Results_{doc.metadata.report_id}.json"
         JsonReportExporter.export(doc, output_path=out_path)
-        return gr.update(value=str(out_path), visible=True)
+        download_html = FileManager.create_base64_download_link(
+            out_path, label=f"Download JSON Results ({out_path.name})"
+        )
+        return gr.update(value=download_html, visible=True)
 
     components["export_json_btn"].click(
         fn=export_json_results,
