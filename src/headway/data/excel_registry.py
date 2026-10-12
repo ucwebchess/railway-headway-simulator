@@ -44,6 +44,7 @@ class WorksheetDef:
     columns: List[ColumnDef]
     required: bool = True
     min_rows: int = 0
+    example_rows: Optional[List[List[Any]]] = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,10 @@ INFRASTRUCTURE_WORKBOOK = WorkbookDef(
             ],
             required=True,
             min_rows=1,
+            example_rows=[
+                ["ND_01", "Terminal buffer stop", "BUFFER_STOP"],
+                ["ND_02", "Downstream endpoint", "ENDPOINT"],
+            ],
         ),
         WorksheetDef(
             name="Tracks",
@@ -183,7 +188,7 @@ INFRASTRUCTURE_WORKBOOK = WorkbookDef(
             columns=[
                 ColumnDef("GROUP_ID", "group_id", FieldType.STRING, required=True, description="Unique conflict group ID", example_value="GRP_01"),
                 ColumnDef("DESCRIPTION", "description", FieldType.STRING, required=False, description="Group description", example_value="Crossover conflict"),
-                ColumnDef("RESOURCE_IDS", "resource_ids", FieldType.STRING_LIST, required=True, description="Comma-separated resource IDs", example_value="BLK_01, BLK_02"),
+                ColumnDef("RESOURCE_IDS", "resource_ids", FieldType.STRING_LIST, required=True, description="Comma-separated resource IDs", example_value="BLK_01"),
             ],
             required=False,
         ),
@@ -201,7 +206,22 @@ SIGNALLING_WORKBOOK = WorkbookDef(
             name="SignallingSystem",
             description="Global signalling system configuration",
             columns=[
-                ColumnDef("TECHNOLOGY_TYPE", "technology_type", FieldType.STRING, required=True, allowed_values=["GENERIC_FIXED_BLOCK_ENGINEERING_MODEL", "ETCS_LEVEL_2", "CBTC_MOVING_BLOCK"], default_value="GENERIC_FIXED_BLOCK_ENGINEERING_MODEL", description="Signalling architecture", example_value="GENERIC_FIXED_BLOCK_ENGINEERING_MODEL"),
+                ColumnDef(
+                    "TECHNOLOGY_TYPE",
+                    "technology_type",
+                    FieldType.STRING,
+                    required=True,
+                    allowed_values=[
+                        "GENERIC_FIXED_BLOCK_ENGINEERING_MODEL",
+                        "ETCS_LEVEL_2",
+                        "ETCS_LEVEL_2_ENGINEERING_MODEL",
+                        "CBTC_MOVING_BLOCK",
+                        "CBTC_MOVING_BLOCK_ENGINEERING_MODEL",
+                    ],
+                    default_value="GENERIC_FIXED_BLOCK_ENGINEERING_MODEL",
+                    description="Signalling architecture",
+                    example_value="GENERIC_FIXED_BLOCK_ENGINEERING_MODEL",
+                ),
                 ColumnDef("ASPECT_MODEL", "aspect_model", FieldType.STRING, required=True, allowed_values=["TWO_ASPECT", "THREE_ASPECT", "FOUR_ASPECT"], default_value="THREE_ASPECT", description="Signalling aspect hierarchy", example_value="THREE_ASPECT"),
                 ColumnDef("DEFAULT_OVERLAP_M", "default_overlap_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", default_value=50.0, description="Safety overlap distance", example_value=50.0),
                 ColumnDef("SIGHTING_TIME_S", "sighting_time_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=8.0, description="Driver sighting time in seconds", example_value=8.0),
@@ -223,6 +243,10 @@ SIGNALLING_WORKBOOK = WorkbookDef(
                 ColumnDef("SIGHTING_DISTANCE_M", "sighting_distance_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", default_value=200.0, description="Driver sighting distance", example_value=200.0),
             ],
             required=False,
+            example_rows=[
+                ["SIG_01", "LNK_01", 100.0, "NOMINAL", "MAIN", 200.0],
+                ["SIG_02", "LNK_01", 1100.0, "NOMINAL", "MAIN", 200.0],
+            ],
         ),
         WorksheetDef(
             name="Blocks",
@@ -394,6 +418,10 @@ SCENARIOS_WORKBOOK = WorkbookDef(
             ],
             required=True,
             min_rows=1,
+            example_rows=[
+                ["SCN_BASELINE", "Baseline 3-Aspect signalling", True],
+                ["SCN_ALT_01", "Alternative headway sensitivity with extended overlap", False],
+            ],
         ),
         WorksheetDef(
             name="Overrides",
