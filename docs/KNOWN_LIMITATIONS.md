@@ -1,7 +1,7 @@
 # KNOWN LIMITATIONS REGISTER
 ## Railway Headway & Capacity Simulator
 
-**Software Version:** `1.0.1`  
+**Software Version:** `1.0.2`  
 **Milestone:** `P03 — Rolling Stock, Traction & Resistance Engine`  
 **Authority:** RHS-MASTER-001 § 3; RHS-P01-001; RHS-P02-001; RHS-P03-001 § 18  
 

@@ -30,7 +30,7 @@ def create_app(app_config: Optional[Any] = None) -> gr.Blocks:
         gr.Blocks instance configured with custom theme, CSS, and tabs.
     """
     with gr.Blocks(
-        title="Railway Headway & Capacity Simulator — Professional Assessment Platform (1.0.1)",
+        title="Railway Headway & Capacity Simulator — Professional Assessment Platform (1.0.2)",
     ) as app:
         # Header banner
         with gr.Row(elem_classes=["app-header"]):
@@ -48,7 +48,7 @@ def create_app(app_config: Optional[Any] = None) -> gr.Blocks:
                     <div style="text-align: right; font-size: 12px; color: #64748b; padding-top: 8px;">
                         <div><strong>Engine:</strong> Microscopic ODE (Euler/RK4)</div>
                         <div><strong>Status:</strong> Ready</div>
-                        <div><strong>Version:</strong> 1.0.1 (Release)</div>
+                        <div><strong>Version:</strong> 1.0.2 (Release)</div>
                     </div>
                     """
                 )

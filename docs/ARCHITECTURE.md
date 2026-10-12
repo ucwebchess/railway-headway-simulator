@@ -31,7 +31,7 @@ src/headway/
 │   ├── identifiers.py      # Identifier normalization, syntax checks, duplicate detection
 │   ├── logging_config.py   # Centralized contextual logging
 │   ├── units.py            # Centralized unit normalization (SI) and Davis coefficient conversion
-│   └── version.py          # Single authoritative version source (1.0.1)
+│   └── version.py          # Single authoritative version source (1.0.2)
 │
 ├── data/               # Excel ingestion, validation, canonical contracts, packaging (P01)
 │   ├── canonical.py        # Strongly typed Pydantic models with SI internal units
