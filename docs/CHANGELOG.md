@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.3] — Template Example Consistency
+
+### Fixed
+
+- The six Excel workbook templates now load with zero validation errors.
+  The example rows in the infrastructure, signalling, and scenario
+  workbooks referenced identifiers that were not defined elsewhere in the
+  example network. These missing definitions have been added, or the
+  references removed where a single-resource example is sufficient.
+- The INSTRUCTIONS worksheet no longer claims that example rows are
+  prefixed with `EXAMPLE_`. The example is a runnable minimal network and
+  now documents itself accurately.
+- The SignallingSystem worksheet now accepts all five values defined in
+  the canonical `SignallingTechnologyType` enum, including
+  `ETCS_LEVEL_2_ENGINEERING_MODEL` and
+  `CBTC_MOVING_BLOCK_ENGINEERING_MODEL`.
+- Cross-reference validation now checks
+  `SharedResourceGroups.resource_ids` against defined block and TVS
+  resources.
+
+### Added
+
+- 8 regression tests that verify template integrity, ensuring that any
+  future change to the schema registry triggers a test failure if the
+  templates fall out of alignment.
+
+### Verified
+
+- All six templates from `templates/` load with 0 errors and 0 warnings.
+- Test suite: 769 tests passing.
+
+---
+
 ## [1.0.2] — Post-Release Fixes (Round 2)
 
 ### Fixed
