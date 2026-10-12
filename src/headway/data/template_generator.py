@@ -52,7 +52,7 @@ def _build_instructions_sheet(wb: openpyxl.Workbook, wb_def: WorkbookDef) -> Non
         "GENERAL INSTRUCTIONS FOR ENGINEERING DATA ENTRY:",
         "1. Do not modify, remove, or reorder column header names in Row 1 of data worksheets.",
         "2. Review the units specified in Row 2 for each column (e.g. km/h, m, tonnes, kN, ‰).",
-        "3. Row 3 contains an illustrative example row (marked with ID 'EXAMPLE_*'). Replace or delete before production use.",
+        "3. Row 3 contains a minimal valid baseline network for demonstration purposes. You may modify or replace it with your own railway data. The example is designed to load without validation errors.",
         "4. Identifiers must be unique within each worksheet and must not contain special symbols or spaces.",
         "5. Cross-references (such as Link IDs, Station IDs, Train Type IDs) must match exact casing.",
         "6. Do not save workbook with Excel macros (.xlsm is prohibited).",
@@ -127,15 +127,6 @@ def _build_domain_worksheet(wb: openpyxl.Workbook, ws_def: WorksheetDef) -> None
         cell_sub.alignment = Alignment(horizontal="center", vertical="center")
         cell_sub.border = THIN_BORDER
 
-        # Example row
-        ex_val = col.example_value
-        if ex_val is None and col.default_value is not None:
-            ex_val = col.default_value
-        cell_ex = ws.cell(row=3, column=c_idx, value=ex_val)
-        cell_ex.font = EXAMPLE_FONT
-        cell_ex.fill = EXAMPLE_FILL
-        cell_ex.border = THIN_BORDER
-
         # Data Validation (dropdown) for columns with allowed_values
         if col.allowed_values:
             formula = '"' + ",".join(col.allowed_values) + '"'
@@ -145,6 +136,25 @@ def _build_domain_worksheet(wb: openpyxl.Workbook, ws_def: WorksheetDef) -> None
 
         # Set column width
         ws.column_dimensions[openpyxl.utils.get_column_letter(c_idx)].width = max(len(col.name) + 5, 16)
+
+    # Example rows (starting at Row 3)
+    rows_to_write = ws_def.example_rows
+    if not rows_to_write:
+        single_row = []
+        for col in ws_def.columns:
+            ex_val = col.example_value
+            if ex_val is None and col.default_value is not None:
+                ex_val = col.default_value
+            single_row.append(ex_val)
+        rows_to_write = [single_row]
+
+    for r_offset, row_vals in enumerate(rows_to_write):
+        r_idx = 3 + r_offset
+        for c_idx, val in enumerate(row_vals, start=1):
+            cell_ex = ws.cell(row=r_idx, column=c_idx, value=val)
+            cell_ex.font = EXAMPLE_FONT
+            cell_ex.fill = EXAMPLE_FILL
+            cell_ex.border = THIN_BORDER
 
 
 def generate_workbook_template(wb_def: WorkbookDef, output_path: Path, project_id: str = "PRJ_DEMO") -> Path:
