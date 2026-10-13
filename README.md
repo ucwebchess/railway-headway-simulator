@@ -14,7 +14,7 @@ A modular, microscopic railway simulation software system designed to calculate 
 
 **The current software version (`1.1.0`) is the formal release of the Railway Headway & Capacity Simulator, incorporating all development milestones P00 through P15, post-release fixes, template consistency improvements, and the comprehensive reference demonstration line (`05_comprehensive_line`).**
 
-- Microscopic railway engineering calculations (train dynamics, Davis resistance, signalling aspect evaluation, seven-component blocking times, technical headway, capacity estimation, stochastic reliability, and TVS controls) are fully implemented and verified against 748 automated tests.
+- Microscopic railway engineering calculations (train dynamics, Davis resistance, signalling aspect evaluation, seven-component blocking times, technical headway, capacity estimation, stochastic reliability, and TVS controls) are fully implemented and verified against 777 automated tests.
 - All 10 user interface tabs and calculation engines are fully functional with explicit FORWARD and REVERSE running direction support.
 - This software is an engineering simulation tool for headway and capacity assessment; it does not constitute a certified signalling safety system, and ETCS Level 2 and CBTC models are engineering approximations unless independently verified.
 - **License:** Proprietary — All Rights Reserved.
@@ -155,6 +155,15 @@ headway-sim --port 7860
 python -m headway --port 7860 --log-level INFO
 ```
 Then open your browser at `http://127.0.0.1:7860`.
+
+### 5.3 Reference Example
+
+The comprehensive demonstration line at
+`examples/05_comprehensive_line/` is the recommended starting point
+for new users. It exercises the full capability of the simulator in a
+single coherent 26 km double-track corridor with stations, a mountain
+tunnel, TVS restrictions, mixed traffic, and both FORWARD and REVERSE
+operation.
 
 ---
 
