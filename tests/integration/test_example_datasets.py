@@ -1,4 +1,4 @@
-"""Integration tests verifying that all four official example datasets pass validation."""
+"""Integration tests verifying that all official example datasets pass validation."""
 
 from pathlib import Path
 import pytest
@@ -16,6 +16,7 @@ from headway.data.validator import DatasetValidator
         "02_double_track",
         "03_station_platform",
         "04_tunnel_tvs",
+        "05_comprehensive_line",
     ],
 )
 def test_example_project_passes_validation(example_dirname: str):

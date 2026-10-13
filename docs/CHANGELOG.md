@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] — Comprehensive Demonstration Line
+
+### Added
+
+- **Comprehensive Reference Dataset (`05_comprehensive_line`)**:
+  - Six standardized Excel workbooks conforming strictly to the schema registry:
+    - `01_Infrastructure.xlsx`: 26 km alignment with 11 topology nodes, 3 tracks (`TRK_UP` nominal, `TRK_DN` reverse, `TRK_SIDING` bidirectional), 18 track links, 3 passenger stations (Alpha, Beta, Gamma), 8 platform faces, 8 stopping points, 1 bored tunnel (`TNL_01`), 4 TVS sections, and 1 single-train safety resource group (`SRG_TUNNEL`).
+    - `02_Signalling.xlsx`: Generic 3-aspect fixed-block engineering model with 18 signals, 18 blocks, and 6 interlocking routes (including main through-routes, siding bypass, and TVS evaluation segments).
+    - `03_RollingStock.xlsx`: 3 rolling stock types: High-Speed Passenger (`TRN_HSR`), Regional Commuter (`TRN_REG`), and Heavy Freight (`TRN_FRT`) with full Davis resistance coefficients and 5-point non-linear traction and deceleration curves.
+    - `04_Operations.xlsx`: 6 service patterns (express, all-stop, through freight, reverse express/all-stop, siding freight) and 8 station stopping profiles.
+    - `05_HeadwayAnalysis.xlsx`: 10 headway analysis configurations covering forward and reverse directions, mixed traffic, TVS comparison, and high-resolution integration (0.05 s).
+    - `06_Scenarios.xlsx`: 5 study scenarios (baseline, block subdivision, 200 km/h line speed enhancement, extended station dwells, TVS multi-train occupancy) with parameter overrides.
+  - `generate.py`: Self-contained, repeatable workbook generation script.
+  - `README.md`: Technical documentation of corridor layout, signalling, fleet, operations, and execution workflows.
+- **UI Integration**:
+  - Registered `05_comprehensive_line` in the official examples dropdown and fallback list in Tab 2 (`src/headway/ui/tab_data_import.py`).
+- **Integration Tests**:
+  - `tests/integration/test_comprehensive_line.py`: Full suite asserting 0 validation errors, exact canonical entity counts across all domains, dynamic example discovery, and bidirectional (`FORWARD` and `REVERSE`) simulation pipeline resolution.
+  - Updated `tests/integration/test_example_datasets.py` to validate all five official example datasets.
+
+---
+
 ## [1.0.3] — Template Example Consistency
 
 ### Fixed

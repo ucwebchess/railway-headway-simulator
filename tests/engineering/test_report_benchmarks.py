@@ -728,7 +728,7 @@ class TestReportBenchmarks:
         doc = ReportAssembler.assemble_report(pkg)
         assert doc.metadata.input_configuration_hash == pkg.effective_config_hash
         assert doc.metadata.scenario_id == pkg.scenario_id
-        assert doc.metadata.software_version == "1.0.3"
+        assert doc.metadata.software_version == "1.1.0"
 
     def test_p14_b035_report_immutability(self) -> None:
         """P14-B035: Executive KPIs and Recommendations are frozen dataclasses."""
