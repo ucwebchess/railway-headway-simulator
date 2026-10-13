@@ -70,6 +70,24 @@ Three stations with 8 total platform faces:
   - `TVS_04`: [3,750 m, 5,000 m], max occupancy 1.
 - **Shared Resource Group `SRG_TUNNEL`**: Enforces corridor-wide single-train occupancy across `{TVS_01, TVS_02, TVS_03, TVS_04}` under emergency ventilation regime.
 
+### 2.5 Design Rationale: Asymmetric TVS Allocation (UP Track vs. DN Track)
+
+The allocation of TVS sections exclusively to the UP track (`LNK_08`) while the DN tunnel segment (`LNK_13`) operates without TVS sections is an **intentional engineering design decision** based on three key factors:
+
+1. **Twin-Bore Infrastructure Differentiation**:
+   The corridor models a twin single-track base tunnel system with segregated ventilation and safety concepts:
+   - **Bore 1 (`TRK_UP`, `LNK_08`)**: Represents an active, mechanically ventilated tunnel tube equipped with four sectional Tunnel Ventilation System zones (`TVS_01`–`TVS_04`), holding signal `SIG_UP_08`, and single-train group protection (`SRG_TUNNEL`).
+   - **Bore 2 (`TRK_DN`, `LNK_13`)**: Represents a dedicated uncompartmentalized running tube governed purely by conventional lineside signalling blocks (`BLK_DN_03`), representing a passive ventilation or unrestricted baseline tube.
+
+2. **Comparative Benchmark for TVS Headway Penalties**:
+   A primary objective of this reference line is to allow direct comparative assessment of the capacity impact of tunnel ventilation constraints:
+   - Headway analysis `AN_TVS_UP` evaluates operations under active TVS and shared resource group safety constraints on `LNK_08`.
+   - Headway analyses `AN_HSR_HSR_DN` and `AN_REG_REG_DN` evaluate operations over the identical 5,000 m tunnel physical length on `LNK_13` governed solely by fixed-block signalling.
+   - Comparing the resulting headways quantitatively isolates the exact "TVS safety penalty" against a baseline unconstrained tunnel crossing.
+
+3. **Specification & Schema Registry Alignment**:
+   The benchmark dataset specification (`RHS-EXPAND-EXAMPLES-001 § 7.1` and `§ 7.6`) explicitly mandates exactly four TVS sections (`TVS_01`–`TVS_04`) and one shared resource group (`SRG_TUNNEL`). Replicating TVS sections on `LNK_13` would alter canonical entity counts (expanding from 4 to 8 TVS sections) and eliminate the deliberate comparative baseline.
+
 ---
 
 ## 3. Signalling System (`02_Signalling.xlsx`)
