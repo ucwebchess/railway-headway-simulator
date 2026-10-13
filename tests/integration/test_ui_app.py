@@ -14,7 +14,7 @@ def test_gradio_app_construction(test_config: AppConfig):
     assert isinstance(demo, gr.Blocks)
     assert demo.title is not None
     assert "Railway Headway & Capacity Simulator" in demo.title
-    assert "1.0.2" in demo.title
+    assert "1.0.3" in demo.title
 
 
 @pytest.mark.integration

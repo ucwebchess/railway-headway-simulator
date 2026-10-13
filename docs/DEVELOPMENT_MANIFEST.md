@@ -1,17 +1,18 @@
 # DEVELOPMENT MANIFEST
 ## Railway Headway & Capacity Simulator
 
-**Current Version:** `1.0.0`  
+**Current Version:** `1.0.3`  
 **Current Phase:** `RELEASED`  
-**Release Date:** `2026-10-11`  
+**Release Date:** `2026-10-13`  
 **Status:** `Released`  
+**Latest Fix:** PR #25 (Template example consistency)  
 **License:** `Proprietary — All Rights Reserved`  
 **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)  
-**Test Status:** 748 tests passing (100% pass rate)  
+**Test Status:** 769 tests passing (100% pass rate)  
 **All Modules:** Complete (P00–P15)  
 **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`  
-**Next Steps:** None for Release 1.0.0. Future enhancements documented separately.  
-**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-RELEASE-PREP-001  
+**Next Steps:** None for Release 1.0.3. Future enhancements documented separately.  
+**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-RELEASE-PREP-V1.0.3-001  
 
 ---
 
@@ -89,16 +90,17 @@
 
 ### 4. Release Status
 
-**Release 1.0.0 — Production Released.**  
-- **Current Version:** `1.0.0`
+**Release 1.0.3 — Production Released.**  
+- **Current Version:** `1.0.3`
 - **Current Phase:** `RELEASED`
-- **Release Date:** 2026-10-11
+- **Release Date:** `2026-10-13`
 - **Status:** `Released`
-- **All Modules:** Complete (All 16 milestone increments P00 through P15 fully integrated and operational)
-- **Test Status:** 748 tests passing (100% pass rate: 748 passed, 0 failed, 0 skipped)
+- **Latest Fix:** PR #25 (Template example consistency — closed reference graph in template example rows, corrected INSTRUCTIONS worksheet wording, aligned SignallingTechnologyType enum registry, and added SharedResourceGroups cross-reference validation)
+- **All Modules:** Complete (All 16 milestone increments P00 through P15 fully integrated, operational, and verified)
+- **Test Status:** 769 tests passing (100% pass rate: 769 passed, 0 failed, 0 skipped)
 - **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)
 - **License:** Proprietary — All Rights Reserved
 - **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`
-- **Next Steps:** None for Release 1.0.0. Future enhancements documented separately.
+- **Next Steps:** None for Release 1.0.3. Future enhancements documented separately.
 - The complete microscopic railway headway simulation application is ready for final delivery and operational deployment.
 
