@@ -97,7 +97,7 @@
 - **Status:** `Released`
 - **Latest Enhancement:** RHS-EXPAND-EXAMPLES-001 (Comprehensive Demonstration Line `05_comprehensive_line` with 6 standard workbooks, 11 nodes, 3 tracks, 18 links, 8 platforms, 4 TVS sections, 1 shared resource group, 18 signals, 18 blocks, 6 interlocking routes, 3 train types, 6 service patterns, 10 headway analyses, and 5 scenarios)
 - **All Modules:** Complete (All 16 milestone increments P00 through P15 + Content Expansion verified)
-- **Test Status:** 775 tests passing (100% pass rate: 775 passed, 0 failed, 0 skipped)
+- **Test Status:** 777 tests passing (100% pass rate: 777 passed, 0 failed, 0 skipped)
 - **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)
 - **License:** Proprietary — All Rights Reserved
 - **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`

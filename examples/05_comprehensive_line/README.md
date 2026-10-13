@@ -21,9 +21,11 @@ The physical infrastructure corridor spans approximately 26.0 km between Termina
 ### 2.1 Track Definitions
 | Track ID | Description | Directionality |
 | :--- | :--- | :--- |
-| `TRK_UP` | Main Line Up (North to South) | `NOMINAL` (Forward Only) |
-| `TRK_DN` | Main Line Down (South to North) | `REVERSE` (Reverse Only) |
+| `TRK_UP` | Main Line Up (North to South) | `NOMINAL` (North to South) |
+| `TRK_DN` | Main Line Down (South to North) | `NOMINAL` (South to North) |
 | `TRK_SIDING` | Mid-Corridor Overtaking Loop / Freight Siding | `BIDIRECTIONAL` |
+
+*Note on Canonical Directionality Semantics*: In the canonical railway model, `TrackDirectionality` is defined strictly relative to each link's local topological orientation (`start_node_id` $\to$ `end_node_id`). Because the Down track links (`LNK_11` through `LNK_17`) are explicitly oriented in the operational direction of train travel from South (`ND_11`) to North (`ND_01`), `TRK_DN` is configured as `NOMINAL` so that `RunningDirection.FORWARD` traversals along those links are permitted without contradiction.
 
 ### 2.2 Corridor Alignment & Track Links
 | Link ID | Track ID | Start Node | End Node | Length [m] | Speed Limit [km/h] | Gradient [‰] | Description / Landmark |
@@ -38,13 +40,13 @@ The physical infrastructure corridor spans approximately 26.0 km between Termina
 | `LNK_08` | `TRK_UP` | `ND_08` | `ND_09` | 5,000 | 120 | 0.0 | Comprehensive Model Tunnel (`TNL_01`) |
 | `LNK_09` | `TRK_UP` | `ND_09` | `ND_10` | 2,000 | 120 | +1.0 | Tunnel Southern Exit |
 | `LNK_10` | `TRK_UP` | `ND_10` | `ND_11` | 1,000 | 80 | 0.0 | Station Gamma & Terminal South |
-| `LNK_11` | `TRK_DN` | `ND_11` | `ND_10` | 1,000 | 80 | 0.0 | Terminal South Departure (Reverse) |
-| `LNK_12` | `TRK_DN` | `ND_10` | `ND_09` | 2,000 | 120 | -1.0 | Reverse Tunnel Approach |
-| `LNK_13` | `TRK_DN` | `ND_09` | `ND_08` | 5,000 | 120 | 0.0 | Reverse Tunnel Segment |
-| `LNK_14` | `TRK_DN` | `ND_08` | `ND_07` | 2,500 | 140 | +2.0 | Reverse Tunnel Exit Ascent |
-| `LNK_15` | `TRK_DN` | `ND_07` | `ND_05` | 4,500 | 160 | 0.0 | Reverse Station Beta Inter-Station |
-| `LNK_16` | `TRK_DN` | `ND_05` | `ND_03` | 6,000 | 160 | 0.0 | Reverse Mid-Corridor Long Section |
-| `LNK_17` | `TRK_DN` | `ND_03` | `ND_01` | 4,000 | 160 | 0.0 | Reverse Station Alpha & Terminal North |
+| `LNK_11` | `TRK_DN` | `ND_11` | `ND_10` | 1,000 | 80 | 0.0 | Terminal South Departure (Down Line) |
+| `LNK_12` | `TRK_DN` | `ND_10` | `ND_09` | 2,000 | 120 | -1.0 | Down Tunnel Approach |
+| `LNK_13` | `TRK_DN` | `ND_09` | `ND_08` | 5,000 | 120 | 0.0 | Down Tunnel Segment |
+| `LNK_14` | `TRK_DN` | `ND_08` | `ND_07` | 2,500 | 140 | +2.0 | Down Tunnel Exit Ascent |
+| `LNK_15` | `TRK_DN` | `ND_07` | `ND_05` | 4,500 | 160 | 0.0 | Down Station Beta Inter-Station |
+| `LNK_16` | `TRK_DN` | `ND_05` | `ND_03` | 6,000 | 160 | 0.0 | Down Mid-Corridor Long Section |
+| `LNK_17` | `TRK_DN` | `ND_03` | `ND_01` | 4,000 | 160 | 0.0 | Down Station Alpha & Terminal North |
 | `LNK_18` | `TRK_SIDING` | `ND_04` | `ND_05` | 2,000 | 80 | 0.0 | Mid-Junction Loop / Freight Siding |
 
 ### 2.3 Passenger Stations & Platform Allocations
@@ -100,9 +102,9 @@ The allocation of TVS sections exclusively to the UP track (`LNK_08`) while the 
 - **Interlocking Routes**:
   1. `RT_UP_MAIN`: Full north-to-south UP corridor through main line links (`LNK_01`–`LNK_10`).
   2. `RT_UP_SIDING`: Bypass route routing trains through siding track `LNK_18` between `ND_04` and `ND_05`. Conflicts with `RT_UP_MAIN`.
-  3. `RT_DN_MAIN`: Full south-to-north DOWN corridor through reverse links (`LNK_11`–`LNK_17`).
+  3. `RT_DN_MAIN`: Full south-to-north DOWN corridor through Down line links (`LNK_11`–`LNK_17`).
   4. `RT_UP_SHORT`: Short turnback route terminating at Station Beta (`SIG_UP_07`).
-  5. `RT_DN_SHORT`: Short reverse entry route from Station Beta South to Terminal North.
+  5. `RT_DN_SHORT`: Short Down line entry route from Station Beta South to Terminal North.
   6. `RT_TVS_SEG`: Isolated tunnel and TVS ventilation evaluation route segment (`LNK_07`–`LNK_09`).
 
 ---
@@ -153,8 +155,8 @@ Ten analysis cases evaluate corridor limits:
 - **`AN_HSR_REG_UP`**: Heterogeneous headway: High-speed leader followed by Regional commuter.
 - **`AN_REG_HSR_UP`**: Heterogeneous headway: Regional leader followed by High-speed express.
 - **`AN_FRT_HSR_UP`**: Mixed freight-passenger headway.
-- **`AN_HSR_HSR_DN`**: Directional verification: High-speed headway in `REVERSE` direction.
-- **`AN_REG_REG_DN`**: Directional verification: Regional commuter headway in `REVERSE` direction.
+- **`AN_HSR_HSR_DN`**: Directional verification: High-speed headway along Down corridor (South to North).
+- **`AN_REG_REG_DN`**: Directional verification: Regional commuter headway along Down corridor (South to North).
 - **`AN_TVS_UP`**: TVS comparison analysis on tunnel segment `LNK_08`.
 - **`AN_HIGHRES_UP`**: High-precision integration analysis (0.05 s step, 0.01 s tolerance).
 

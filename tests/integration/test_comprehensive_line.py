@@ -13,11 +13,14 @@ Satisfies RHS-EXPAND-EXAMPLES-001 § 7.6:
 from pathlib import Path
 import pytest
 
+from headway.data.canonical import TrackDirectionality
 from headway.data.converter import convert_raw_to_canonical
 from headway.data.importer import ExcelImporter
 from headway.data.validation import Severity, ValidationReport
 from headway.data.validator import DatasetValidator
-from headway.infrastructure.direction import RunningDirection
+from headway.infrastructure.direction import DirectionPolicyError, RunningDirection
+from headway.infrastructure.graph import PhysicalNetworkGraph
+from headway.infrastructure.route import RouteEngine
 from headway.ui.file_manager import FileManager
 from headway.ui.simulation_runner import SimulationRunner
 
@@ -149,3 +152,86 @@ def test_comprehensive_line_forward_and_reverse_analyses_resolve():
     assert pkg_rev.running_direction == RunningDirection.REVERSE
     assert doc_rev.metadata.running_direction == RunningDirection.REVERSE
     assert doc_rev.executive_kpis.technical_headway_s > 0.0
+
+
+@pytest.mark.integration
+def test_comprehensive_line_track_directionality_matches_permitted_routes():
+    """Regression test for RHS-CORRECTION-COMPREHENSIVE-DIR-001.
+
+    Verifies:
+    1. For every track in the comprehensive example, declared directionality matches
+       actual permitted traversal of at least one reference route.
+    2. TRK_DN specifically permits South -> North routing from ND_11 to ND_01.
+    3. If TRK_DN directionality were set to REVERSE, South -> North routing fails.
+    """
+    project, report, _ = FileManager.load_example_project("05_comprehensive_line")
+    assert report.is_simulation_ready
+
+    graph = PhysicalNetworkGraph(project.infrastructure)
+    engine = RouteEngine(graph)
+
+    # 1. TRK_UP (NOMINAL): permits North -> South traversal ND_01 -> ND_11
+    up_links = [f"LNK_{i:02d}" for i in range(1, 11)]
+    route_up = engine.build_route_from_traversals("RT_UP_REF", [(l, RunningDirection.FORWARD) for l in up_links])
+    assert route_up.start_node_id == "ND_01"
+    assert route_up.end_node_id == "ND_11"
+    assert route_up.total_length_m == 25000.0
+
+    # 2. TRK_DN (NOMINAL): permits South -> North traversal ND_11 -> ND_01
+    track_dn = next(t for t in project.infrastructure.tracks if t.track_id == "TRK_DN")
+    assert track_dn.directionality == TrackDirectionality.NOMINAL, "TRK_DN must be NOMINAL to permit ND_11 -> ND_01 traversal"
+
+    dn_links = [f"LNK_{i:02d}" for i in range(11, 18)]
+    route_dn = engine.build_route_from_traversals("RT_DN_REF", [(l, RunningDirection.FORWARD) for l in dn_links])
+    assert route_dn.start_node_id == "ND_11", f"Expected start at ND_11 (South), got {route_dn.start_node_id}"
+    assert route_dn.end_node_id == "ND_01", f"Expected exit at ND_01 (North), got {route_dn.end_node_id}"
+    assert route_dn.total_length_m == 25000.0
+
+    # Verify node-sequence routing from ND_11 to ND_01
+    node_seq = ["ND_11", "ND_10", "ND_09", "ND_08", "ND_07", "ND_05", "ND_03", "ND_01"]
+    route_dn_nodes = engine.build_route_from_nodes("RT_DN_NODES", node_seq)
+    assert route_dn_nodes.link_ids == dn_links
+
+    # 3. TRK_SIDING (BIDIRECTIONAL): permits both FORWARD (ND_04 -> ND_05) and REVERSE (ND_05 -> ND_04)
+    route_sd_fwd = engine.build_route_from_traversals("RT_SD_FWD", [("LNK_18", RunningDirection.FORWARD)])
+    assert route_sd_fwd.start_node_id == "ND_04" and route_sd_fwd.end_node_id == "ND_05"
+
+    route_sd_rev = engine.build_route_from_traversals("RT_SD_REV", [("LNK_18", RunningDirection.REVERSE)])
+    assert route_sd_rev.start_node_id == "ND_05" and route_sd_rev.end_node_id == "ND_04"
+
+    # 4. Invariant: If TRK_DN were REVERSE, attempting South -> North routing must fail
+    modified_infra = project.infrastructure.model_copy(deep=True)
+    for t in modified_infra.tracks:
+        if t.track_id == "TRK_DN":
+            t.directionality = TrackDirectionality.REVERSE
+    bad_graph = PhysicalNetworkGraph(modified_infra)
+    bad_engine = RouteEngine(bad_graph)
+    with pytest.raises(DirectionPolicyError):
+        bad_engine.build_route_from_traversals("RT_BAD_DN", [(l, RunningDirection.FORWARD) for l in dn_links])
+
+
+@pytest.mark.integration
+def test_comprehensive_line_dn_headway_analyses_resolve():
+    """Verify that both DN analyses (AN_HSR_HSR_DN and AN_REG_REG_DN) resolve successfully."""
+    project, report, _ = FileManager.load_example_project("05_comprehensive_line")
+    assert report.is_simulation_ready
+
+    # Check that AN_HSR_HSR_DN and AN_REG_REG_DN are defined in project
+    analyses = {a.analysis_id: a for a in project.analysis.analyses}
+    assert "AN_HSR_HSR_DN" in analyses
+    assert "AN_REG_REG_DN" in analyses
+
+    # Check service patterns route from ND_11 to ND_01
+    graph = PhysicalNetworkGraph(project.infrastructure)
+    engine = RouteEngine(graph)
+
+    svc_map = {s.service_pattern_id: s for s in project.operations.service_patterns}
+    for an_id, svc_id in [("AN_HSR_HSR_DN", "SVC_HSR_EXP_DN"), ("AN_REG_REG_DN", "SVC_REG_ALL_DN")]:
+        svc = svc_map[svc_id]
+        route = engine.build_route_from_traversals(
+            f"RT_{an_id}",
+            [(lid, RunningDirection.FORWARD) for lid in svc.route_link_sequence]
+        )
+        assert route.start_node_id == "ND_11", f"{an_id} should start at ND_11 (South)"
+        assert route.end_node_id == "ND_01", f"{an_id} should end at ND_01 (North)"
+        assert route.total_length_m == 25000.0

@@ -219,7 +219,7 @@ def generate_comprehensive_workbooks(output_directory: Optional[Path] = None) ->
 
     tracks_data = [
         ["TRK_UP", "Main Line Up (North to South)", "NOMINAL"],
-        ["TRK_DN", "Main Line Down (South to North)", "REVERSE"],
+        ["TRK_DN", "Main Line Down (South to North)", "NOMINAL"],
         ["TRK_SIDING", "Overtaking Loop / Freight Siding Track", "BIDIRECTIONAL"],
     ]
 
@@ -353,13 +353,13 @@ def generate_comprehensive_workbooks(output_directory: Optional[Path] = None) ->
         ["SIG_UP_08", "LNK_08", 50.0, "NOMINAL", "MAIN", 200.0],
         ["SIG_UP_09", "LNK_09", 50.0, "NOMINAL", "MAIN", 200.0],
         ["SIG_UP_10", "LNK_10", 50.0, "NOMINAL", "MAIN", 200.0],
-        ["SIG_DN_01", "LNK_11", 50.0, "REVERSE", "MAIN", 200.0],
-        ["SIG_DN_02", "LNK_12", 50.0, "REVERSE", "MAIN", 200.0],
-        ["SIG_DN_03", "LNK_13", 50.0, "REVERSE", "MAIN", 200.0],
-        ["SIG_DN_04", "LNK_14", 50.0, "REVERSE", "MAIN", 200.0],
-        ["SIG_DN_05", "LNK_15", 50.0, "REVERSE", "MAIN", 200.0],
-        ["SIG_DN_06", "LNK_16", 50.0, "REVERSE", "MAIN", 200.0],
-        ["SIG_DN_07", "LNK_17", 50.0, "REVERSE", "MAIN", 200.0],
+        ["SIG_DN_01", "LNK_11", 50.0, "NOMINAL", "MAIN", 200.0],
+        ["SIG_DN_02", "LNK_12", 50.0, "NOMINAL", "MAIN", 200.0],
+        ["SIG_DN_03", "LNK_13", 50.0, "NOMINAL", "MAIN", 200.0],
+        ["SIG_DN_04", "LNK_14", 50.0, "NOMINAL", "MAIN", 200.0],
+        ["SIG_DN_05", "LNK_15", 50.0, "NOMINAL", "MAIN", 200.0],
+        ["SIG_DN_06", "LNK_16", 50.0, "NOMINAL", "MAIN", 200.0],
+        ["SIG_DN_07", "LNK_17", 50.0, "NOMINAL", "MAIN", 200.0],
         ["SIG_SD_01", "LNK_18", 50.0, "BIDIRECTIONAL", "MAIN", 200.0],
     ]
 
