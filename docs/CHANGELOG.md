@@ -11,21 +11,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Comprehensive Reference Dataset (`05_comprehensive_line`)**:
-  - Six standardized Excel workbooks conforming strictly to the schema registry:
-    - `01_Infrastructure.xlsx`: 26 km alignment with 11 topology nodes, 3 tracks (`TRK_UP` nominal, `TRK_DN` reverse, `TRK_SIDING` bidirectional), 18 track links, 3 passenger stations (Alpha, Beta, Gamma), 8 platform faces, 8 stopping points, 1 bored tunnel (`TNL_01`), 4 TVS sections, and 1 single-train safety resource group (`SRG_TUNNEL`).
-    - `02_Signalling.xlsx`: Generic 3-aspect fixed-block engineering model with 18 signals, 18 blocks, and 6 interlocking routes (including main through-routes, siding bypass, and TVS evaluation segments).
-    - `03_RollingStock.xlsx`: 3 rolling stock types: High-Speed Passenger (`TRN_HSR`), Regional Commuter (`TRN_REG`), and Heavy Freight (`TRN_FRT`) with full Davis resistance coefficients and 5-point non-linear traction and deceleration curves.
-    - `04_Operations.xlsx`: 6 service patterns (express, all-stop, through freight, reverse express/all-stop, siding freight) and 8 station stopping profiles.
-    - `05_HeadwayAnalysis.xlsx`: 10 headway analysis configurations covering forward and reverse directions, mixed traffic, TVS comparison, and high-resolution integration (0.05 s).
-    - `06_Scenarios.xlsx`: 5 study scenarios (baseline, block subdivision, 200 km/h line speed enhancement, extended station dwells, TVS multi-train occupancy) with parameter overrides.
-  - `generate.py`: Self-contained, repeatable workbook generation script.
-  - `README.md`: Technical documentation of corridor layout, signalling, fleet, operations, and execution workflows.
-- **UI Integration**:
-  - Registered `05_comprehensive_line` in the official examples dropdown and fallback list in Tab 2 (`src/headway/ui/tab_data_import.py`).
-- **Integration Tests**:
-  - `tests/integration/test_comprehensive_line.py`: Full suite asserting 0 validation errors, exact canonical entity counts across all domains, dynamic example discovery, and bidirectional (`FORWARD` and `REVERSE`) simulation pipeline resolution.
-  - Updated `tests/integration/test_example_datasets.py` to validate all five official example datasets.
+- **Comprehensive Demonstration Line** — new reference example dataset
+  in `examples/05_comprehensive_line/`. A 26 km double-track railway
+  corridor with:
+  - 11 topology nodes, 3 tracks (Up, Down, Siding), 18 track links.
+  - 3 passenger stations with 8 platform faces.
+  - A 5.0 km twin-bore mountain tunnel with 4 sectional Tunnel
+    Ventilation System (TVS) zones on the Up bore and a single
+    cross-bore shared resource group.
+  - Generic 3-aspect fixed-block signalling: 18 signals, 18 blocks,
+    6 interlocking routes.
+  - Heterogeneous rolling stock fleet: High-Speed Passenger, Regional
+    Commuter, and Heavy Freight with full Davis resistance coefficients
+    and multi-point traction and braking curves.
+  - 6 service patterns covering express, all-stops, through-freight,
+    and overtaking-loop duties.
+  - 10 headway analysis cases covering homogeneous, heterogeneous,
+    directional, TVS-constrained, and high-precision integration.
+  - 5 study scenarios: baseline, block length subdivision, speed
+    upgrade, dwell stress, and TVS safety-rule comparison.
+
+  The example demonstrates FORWARD and REVERSE operation, mixed-traffic
+  headway, tunnel ventilation restrictions, and scenario comparison in
+  a single validated project.
+
+### Fixed
+
+- `TRK_DN` directionality corrected from `REVERSE` to `NOMINAL` so that
+  the Down track's physical link orientation (South to North) matches
+  the permitted traversal direction. Down-line analyses now resolve
+  correctly.
+- Down-line signal directionality aligned to match.
+
+### Verified
+
+- All six workbooks of the comprehensive example load with zero
+  validation errors.
+- All 10 analysis cases resolve to valid headway results.
+- The example appears in the Data Import tab's example dropdown.
+
+### Notes
+
+- `05_comprehensive_line` is now the reference multi-scenario example
+  for training, testing, and capability demonstration. The existing
+  minimal examples (`01`–`04`) remain available for focused single-topic
+  use.
 
 ---
 

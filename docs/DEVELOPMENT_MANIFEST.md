@@ -5,22 +5,23 @@
 **Current Phase:** `RELEASED`  
 **Release Date:** `2026-10-13`  
 **Status:** `Released`  
-**Latest Enhancement:** RHS-EXPAND-EXAMPLES-001 (Comprehensive Demonstration Line `05_comprehensive_line`)  
+**Test Status:** 777 tests passing  
+**Latest Addition:** Comprehensive Demonstration Line (`05_comprehensive_line`)  
+**Reference Example:** `examples/05_comprehensive_line/`  
 **License:** `Proprietary — All Rights Reserved`  
 **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)  
-**Test Status:** Full test suite passing (100% pass rate)  
 **All Modules:** Complete (P00–P15 + Content Expansion)  
 **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`  
 **Next Steps:** None for Release 1.1.0. Future enhancements documented separately.  
-**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-EXPAND-EXAMPLES-001  
+**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-EXPAND-EXAMPLES-001; RHS-RELEASE-PREP-V1.1.0-001  
 
 ---
 
 ### 1. Project Milestone State
 
-- **Current Active Milestone:** RELEASED (Release 1.0.0 — Production Release)
-- **Preceding Milestones:** P00 (Foundation), P01 (Data Architecture), RHS-CI-001 (GitHub Actions CI), P02 (Physical Infrastructure Network), P03 (Rolling Stock Physics), P04 (Microscopic Train Dynamics), P05 (Resource Management & Fixed-Block Signalling), P06 (ETCS L2 & CBTC), P07 (Stations, Junctions & TVS), P08 (Technical Headway & Blocking Time), P09 (Microscopic Multi-Train Operations), P10 (Railway Capacity, UIC 406 & Sensitivity Analysis), P11 (Stochastic Simulation & Operational Reliability), P12 (Scenario Management & Comparative Analytics), P13 (Interactive Visualizations & Diagrams), P14 (Multi-Format Engineering Reporting), P15 (Complete Application & Verification)
-- **Status:** All planned development milestones completed. Release 1.0.0 released for production deployment.
+- **Current Active Milestone:** RELEASED (Release 1.1.0 — Production Release)
+- **Preceding Milestones:** P00 (Foundation), P01 (Data Architecture), RHS-CI-001 (GitHub Actions CI), P02 (Physical Infrastructure Network), P03 (Rolling Stock Physics), P04 (Microscopic Train Dynamics), P05 (Resource Management & Fixed-Block Signalling), P06 (ETCS L2 & CBTC), P07 (Stations, Junctions & TVS), P08 (Technical Headway & Blocking Time), P09 (Microscopic Multi-Train Operations), P10 (Railway Capacity, UIC 406 & Sensitivity Analysis), P11 (Stochastic Simulation & Operational Reliability), P12 (Scenario Management & Comparative Analytics), P13 (Interactive Visualizations & Diagrams), P14 (Multi-Format Engineering Reporting), P15 (Complete Application & Verification), Release 1.0.3, RHS-EXPAND-EXAMPLES-001
+- **Status:** All planned development milestones completed. Release 1.1.0 prepared for production deployment.
 
 ---
 
@@ -28,7 +29,7 @@
 
 | Subsystem Module | File Path | Status | Notes |
 |---|---|---|---|
-| Core Version | `src/headway/core/version.py` | Complete | Single source of version (`1.0.0`) |
+| Core Version | `src/headway/core/version.py` | Complete | Single source of version (`1.1.0`) |
 | Core Exceptions | `src/headway/core/exceptions.py` | Complete | Structured base and specialized exception types (`RollingStockError`, `InfrastructureError`, `SignallingError`) |
 | Core Configuration | `src/headway/core/configuration.py` | Complete | Strongly typed config, Colab detection, env overrides |
 | Core Logging | `src/headway/core/logging_config.py` | Complete | Contextual logging, Colab-compatible streams, file log |
@@ -47,7 +48,7 @@
 | Scenario Overrides | `src/headway/scenarios/engine.py` | Complete | Baseline immutability and isolated parameter overrides |
 | JSON Schema Artifacts | `schemas/*.schema.json` | Complete | 16 machine-readable JSON Schema Draft 2020-12 files |
 | Excel Workbook Templates | `templates/*.xlsx` | Complete | 6 standardized Excel templates |
-| Official Example Datasets | `examples/*/*.xlsx` | Complete | 4 validated example projects (Single, Double, Station, TVS) |
+| Official Example Datasets | `examples/*/*.xlsx` | Complete | 5 validated example projects (Single, Double, Station, TVS, Comprehensive) |
 | UI Subsystem & Colab Launcher | `src/headway/ui/` | Complete (P15) | Full 10 navigation tabs, mandatory explicit FORWARD/REVERSE selector, ThreadPool executor with cancellation, error handling without raw tracebacks, multi-format deliverable exports, session state backup/restore, and Colab launcher notebook |
 | Infrastructure Subsystem | `src/headway/infrastructure/` | Complete (P02) | Graph, forward/reverse route traversal, alignment, speed, switches, stations, TVS, train footprint, preprocessor, adapters |
 | Rolling Stock Physics | `src/headway/rolling_stock/` | Complete (P03/P04) | Parameters, mass conditions, equivalent mass, traction models, resistance, braking models (`NET_EFFECTIVE` & `BRAKE_GENERATED`), stopping distance/time kinematics |
@@ -65,8 +66,8 @@
 
 ### 3. Verification & Test Suite Status
 
-- **Automated Tests:** 748 automated tests (Unit, Integration, Engineering Benchmarks, Negative, UI E2E) executing via pytest.
-- **Test Pass Rate:** 100% (748 passed, 0 failed).
+- **Automated Tests:** 777 automated tests (Unit, Integration, Engineering Benchmarks, Negative, UI E2E) executing via pytest.
+- **Test Pass Rate:** 100% (777 passed, 0 failed, 0 skipped).
 - **Engineering Verification:**
   - `BM-PHY-002`: Davis coefficient normalization verified.
   - `BENCH-P02-001` through `BENCH-P02-010`: All 10 P02 engineering benchmarks verified.
@@ -84,7 +85,7 @@
   - `P14-B001` through `P14-B035`: All 35 P14 professional engineering report generator benchmarks verified.
   - `P15-B001` through `P15-B040`: All 40 P15 complete Gradio UI, explicit FORWARD/REVERSE direction selector, background execution, error presentation, and deliverable export benchmarks verified.
   - `P15-E2E-001` through `P15-E2E-025`: All 25 P15 end-to-end integration workflows verified across all verified example projects.
-- **Example Projects:** All 4 official example datasets integrated and verified with bidirectional calculations.
+- **Example Projects:** All 5 official example datasets integrated and verified with bidirectional calculations.
 
 ---
 
@@ -95,9 +96,10 @@
 - **Current Phase:** `RELEASED`
 - **Release Date:** `2026-10-13`
 - **Status:** `Released`
-- **Latest Enhancement:** RHS-EXPAND-EXAMPLES-001 (Comprehensive Demonstration Line `05_comprehensive_line` with 6 standard workbooks, 11 nodes, 3 tracks, 18 links, 8 platforms, 4 TVS sections, 1 shared resource group, 18 signals, 18 blocks, 6 interlocking routes, 3 train types, 6 service patterns, 10 headway analyses, and 5 scenarios)
-- **All Modules:** Complete (All 16 milestone increments P00 through P15 + Content Expansion verified)
 - **Test Status:** 777 tests passing (100% pass rate: 777 passed, 0 failed, 0 skipped)
+- **Latest Addition:** Comprehensive Demonstration Line (`05_comprehensive_line`)
+- **Reference Example:** `examples/05_comprehensive_line/`
+- **All Modules:** Complete (All 16 milestone increments P00 through P15 + Content Expansion verified)
 - **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)
 - **License:** Proprietary — All Rights Reserved
 - **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`
