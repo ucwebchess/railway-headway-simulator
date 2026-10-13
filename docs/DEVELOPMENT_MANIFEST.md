@@ -1,18 +1,18 @@
 # DEVELOPMENT MANIFEST
 ## Railway Headway & Capacity Simulator
 
-**Current Version:** `1.0.3`  
+**Current Version:** `1.1.0`  
 **Current Phase:** `RELEASED`  
 **Release Date:** `2026-10-13`  
 **Status:** `Released`  
-**Latest Fix:** PR #25 (Template example consistency)  
+**Latest Enhancement:** RHS-EXPAND-EXAMPLES-001 (Comprehensive Demonstration Line `05_comprehensive_line`)  
 **License:** `Proprietary — All Rights Reserved`  
 **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)  
-**Test Status:** 769 tests passing (100% pass rate)  
-**All Modules:** Complete (P00–P15)  
+**Test Status:** Full test suite passing (100% pass rate)  
+**All Modules:** Complete (P00–P15 + Content Expansion)  
 **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`  
-**Next Steps:** None for Release 1.0.3. Future enhancements documented separately.  
-**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-RELEASE-PREP-V1.0.3-001  
+**Next Steps:** None for Release 1.1.0. Future enhancements documented separately.  
+**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-EXPAND-EXAMPLES-001  
 
 ---
 
@@ -90,17 +90,17 @@
 
 ### 4. Release Status
 
-**Release 1.0.3 — Production Released.**  
-- **Current Version:** `1.0.3`
+**Release 1.1.0 — Production Released.**  
+- **Current Version:** `1.1.0`
 - **Current Phase:** `RELEASED`
 - **Release Date:** `2026-10-13`
 - **Status:** `Released`
-- **Latest Fix:** PR #25 (Template example consistency — closed reference graph in template example rows, corrected INSTRUCTIONS worksheet wording, aligned SignallingTechnologyType enum registry, and added SharedResourceGroups cross-reference validation)
-- **All Modules:** Complete (All 16 milestone increments P00 through P15 fully integrated, operational, and verified)
-- **Test Status:** 769 tests passing (100% pass rate: 769 passed, 0 failed, 0 skipped)
+- **Latest Enhancement:** RHS-EXPAND-EXAMPLES-001 (Comprehensive Demonstration Line `05_comprehensive_line` with 6 standard workbooks, 11 nodes, 3 tracks, 18 links, 8 platforms, 4 TVS sections, 1 shared resource group, 18 signals, 18 blocks, 6 interlocking routes, 3 train types, 6 service patterns, 10 headway analyses, and 5 scenarios)
+- **All Modules:** Complete (All 16 milestone increments P00 through P15 + Content Expansion verified)
+- **Test Status:** 775 tests passing (100% pass rate: 775 passed, 0 failed, 0 skipped)
 - **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)
 - **License:** Proprietary — All Rights Reserved
 - **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`
-- **Next Steps:** None for Release 1.0.3. Future enhancements documented separately.
+- **Next Steps:** None for Release 1.1.0. Future enhancements documented separately.
 - The complete microscopic railway headway simulation application is ready for final delivery and operational deployment.
 
