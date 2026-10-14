@@ -138,6 +138,12 @@ def test_multilink_block_reverse_traversal():
 
     for step in range(1500):
         sim.step()
+        # When train is in middle of L1 in reverse (front at 1500m, rear at 1400m - past L2)
+        if 1300.0 <= rev_train.current_position_m <= 1800.0:
+            assert rev_train.train_id in coord.resource_controller.resources["BLK_MULTI_REV"].occupants, (
+                "Block must remain occupied while train rear is in L1 reverse interval!"
+            )
+
         # When train enters L1 in reverse (route distance > 1050m)
         if rev_train.current_position_m >= 1100.0 and rev_train.rear_position_m < 2000.0:
             if rev_train.train_id in coord.resource_controller.resources["BLK_MULTI_REV"].occupants:
