@@ -48,6 +48,8 @@ class BrakingEvaluation:
 class BrakingModel(ABC):
     """Abstract base class for rolling stock braking models."""
 
+    performance_factor: float = 1.0
+
     @abstractmethod
     def evaluate_deceleration(
         self,
@@ -91,6 +93,7 @@ class ConstantDecelerationBrakingModel(BrakingModel):
         semantics: BrakingSemantics = BrakingSemantics.NET_EFFECTIVE,
         response_delay_s: float = 0.0,
         build_up_time_s: float = 0.0,
+        performance_factor: float = 1.0,
     ) -> None:
         if service_deceleration_ms2 <= 0:
             raise RollingStockError(
@@ -114,6 +117,7 @@ class ConstantDecelerationBrakingModel(BrakingModel):
         self.semantics = semantics
         self.response_delay_s = float(response_delay_s)
         self.build_up_time_s = float(build_up_time_s)
+        self.performance_factor = float(performance_factor)
 
     @classmethod
     def from_parameters(
@@ -122,6 +126,7 @@ class ConstantDecelerationBrakingModel(BrakingModel):
         semantics: BrakingSemantics = BrakingSemantics.NET_EFFECTIVE,
         response_delay_s: float = 0.0,
         build_up_time_s: float = 0.0,
+        performance_factor: float = 1.0,
     ) -> "ConstantDecelerationBrakingModel":
         return cls(
             service_deceleration_ms2=params.max_service_deceleration_ms2,
@@ -129,12 +134,15 @@ class ConstantDecelerationBrakingModel(BrakingModel):
             semantics=semantics,
             response_delay_s=response_delay_s,
             build_up_time_s=build_up_time_s,
+            performance_factor=performance_factor,
         )
 
     def _get_nominal_deceleration(self, category: BrakingCategory) -> float:
         if category == BrakingCategory.EMERGENCY:
             return self.emergency_deceleration_ms2
-        return self.service_deceleration_ms2
+        if category == BrakingCategory.SUPERVISED:
+            return self.service_deceleration_ms2
+        return self.service_deceleration_ms2 * self.performance_factor
 
     def _get_buildup_factor(self, time_since_command_s: float) -> float:
         if time_since_command_s < self.response_delay_s:
@@ -261,6 +269,7 @@ class SpeedDependentBrakingModel(BrakingModel):
         semantics: BrakingSemantics = BrakingSemantics.NET_EFFECTIVE,
         response_delay_s: float = 0.0,
         build_up_time_s: float = 0.0,
+        performance_factor: float = 1.0,
     ) -> None:
         if not curve_points or len(curve_points) < 2:
             raise RollingStockError(
@@ -290,6 +299,14 @@ class SpeedDependentBrakingModel(BrakingModel):
         self.semantics = semantics
         self.response_delay_s = float(response_delay_s)
         self.build_up_time_s = float(build_up_time_s)
+        self.performance_factor = float(performance_factor)
+
+    def _get_multiplier(self, category: BrakingCategory) -> float:
+        if category == BrakingCategory.EMERGENCY:
+            return self.emergency_factor
+        if category == BrakingCategory.SUPERVISED:
+            return 1.0
+        return self.performance_factor
 
     def _interpolate_deceleration(self, speed_ms: float) -> float:
         if speed_ms <= self.points[0][0]:
@@ -323,7 +340,7 @@ class SpeedDependentBrakingModel(BrakingModel):
             raise RollingStockError(f"Speed must be non-negative (got {speed_ms} m/s).")
 
         base_dec = self._interpolate_deceleration(speed_ms)
-        nominal = base_dec * (self.emergency_factor if category == BrakingCategory.EMERGENCY else 1.0)
+        nominal = base_dec * self._get_multiplier(category)
         factor = self._get_buildup_factor(time_since_command_s)
         effective = nominal * factor
 
@@ -352,7 +369,7 @@ class SpeedDependentBrakingModel(BrakingModel):
         dv = (initial_speed_ms - target_speed_ms) / num_slices
         total_d = 0.0
 
-        mult = self.emergency_factor if category == BrakingCategory.EMERGENCY else 1.0
+        mult = self._get_multiplier(category)
 
         for i in range(num_slices):
             v_mid = target_speed_ms + (i + 0.5) * dv
@@ -382,7 +399,7 @@ class SpeedDependentBrakingModel(BrakingModel):
         dv = (initial_speed_ms - target_speed_ms) / num_slices
         total_t = 0.0
 
-        mult = self.emergency_factor if category == BrakingCategory.EMERGENCY else 1.0
+        mult = self._get_multiplier(category)
 
         for i in range(num_slices):
             v_mid = target_speed_ms + (i + 0.5) * dv
@@ -400,6 +417,7 @@ def create_braking_model(
     semantics: BrakingSemantics = BrakingSemantics.NET_EFFECTIVE,
     response_delay_s: float = 0.0,
     build_up_time_s: float = 0.0,
+    performance_factor: float = 1.0,
 ) -> BrakingModel:
     """Factory creating appropriate braking model from parameters."""
     return ConstantDecelerationBrakingModel(
@@ -408,4 +426,5 @@ def create_braking_model(
         semantics=semantics,
         response_delay_s=response_delay_s,
         build_up_time_s=build_up_time_s,
+        performance_factor=performance_factor,
     )

@@ -42,6 +42,8 @@ class TractionEvaluation:
 class TractionModel(ABC):
     """Abstract base class for rolling stock traction models."""
 
+    performance_factor: float = 1.0
+
     @abstractmethod
     def evaluate_tractive_effort(
         self,
@@ -63,6 +65,7 @@ class SimplifiedTractionModel(TractionModel):
         self,
         params: RollingStockParameters,
         efficiency: float = 1.0,
+        performance_factor: float = 1.0,
     ) -> None:
         if params.max_tractive_effort_n is None or params.max_tractive_effort_n <= 0:
             raise RollingStockError(
@@ -85,6 +88,7 @@ class SimplifiedTractionModel(TractionModel):
         self.max_tractive_effort_n = float(params.max_tractive_effort_n)
         self.power_w = float(params.power_w)
         self.efficiency = float(efficiency)
+        self.performance_factor = float(performance_factor)
 
     def evaluate_tractive_effort(
         self,
@@ -104,15 +108,18 @@ class SimplifiedTractionModel(TractionModel):
             hyperbolic_force = (self.power_w / speed_ms) * self.efficiency
             raw_force = min(self.max_tractive_effort_n * self.efficiency, hyperbolic_force)
 
+        # Apply operational performance factor to nominal traction force
+        scaled_force = raw_force * self.performance_factor
+
         # Operational acceleration limit: F_acc = m_eq * a_max
         acc_limit_force = self.params.equivalent_mass_kg * self.params.max_acceleration_ms2
-        effective_force = raw_force
+        effective_force = scaled_force
         is_acc_limited = False
         if apply_acceleration_limit and effective_force > acc_limit_force:
             effective_force = acc_limit_force
             is_acc_limited = True
 
-        # Adhesion limit: F_adh = mu * m_adh * g
+        # Adhesion limit: F_adh = mu * m_adh * g (applied to the derated traction force)
         adhesion_evaluated = False
         adh_limit_force = None
         is_adh_limited = False
@@ -155,6 +162,7 @@ class DetailedTractionCurveModel(TractionModel):
         self,
         params: RollingStockParameters,
         efficiency: float = 1.0,
+        performance_factor: float = 1.0,
     ) -> None:
         if not params.traction_curve:
             raise RollingStockError(
@@ -169,6 +177,7 @@ class DetailedTractionCurveModel(TractionModel):
 
         self.params = params
         self.efficiency = float(efficiency)
+        self.performance_factor = float(performance_factor)
         self.points: List[Tuple[float, float]] = []
 
         # P03-TR-003 & P03-B021: Strict validation of points
@@ -241,15 +250,18 @@ class DetailedTractionCurveModel(TractionModel):
                 power_limited_force = (self.params.power_w / speed_ms) * self.efficiency
                 raw_force = min(raw_force, power_limited_force)
 
+        # Apply operational performance factor to nominal traction force
+        scaled_force = raw_force * self.performance_factor
+
         # Operational acceleration limit
         acc_limit_force = self.params.equivalent_mass_kg * self.params.max_acceleration_ms2
-        effective_force = raw_force
+        effective_force = scaled_force
         is_acc_limited = False
         if apply_acceleration_limit and effective_force > acc_limit_force:
             effective_force = acc_limit_force
             is_acc_limited = True
 
-        # Adhesion limit
+        # Adhesion limit (applied to the derated traction force)
         adhesion_evaluated = False
         adh_limit_force = None
         is_adh_limited = False
@@ -282,9 +294,10 @@ class DetailedTractionCurveModel(TractionModel):
 def create_traction_model(
     params: RollingStockParameters,
     efficiency: float = 1.0,
+    performance_factor: float = 1.0,
 ) -> TractionModel:
     """Factory creating appropriate traction model based on params configuration."""
     if params.traction_model_type == TractionModelType.DETAILED_CURVE:
-        return DetailedTractionCurveModel(params, efficiency=efficiency)
+        return DetailedTractionCurveModel(params, efficiency=efficiency, performance_factor=performance_factor)
     else:
-        return SimplifiedTractionModel(params, efficiency=efficiency)
+        return SimplifiedTractionModel(params, efficiency=efficiency, performance_factor=performance_factor)

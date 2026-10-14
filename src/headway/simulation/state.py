@@ -23,6 +23,7 @@ class DynamicMode(str, Enum):
     CRUISING = "CRUISING"                    # Maintaining steady speed against track resistances
     COASTING = "COASTING"                    # Zero traction and zero braking (free rolling)
     SERVICE_BRAKING = "SERVICE_BRAKING"      # Normal operational service brake application
+    SUPERVISED_BRAKING = "SUPERVISED_BRAKING"# Safety-critical protection intervention
     EMERGENCY_BRAKING = "EMERGENCY_BRAKING"  # Maximum emergency brake application
     DWELLING = "DWELLING"                    # Stationary at a station platform performing passenger dwell
 

@@ -371,7 +371,8 @@ class MultiTrainSimulator:
         dist_to_eoa = max(0.0, eoa_m - curr_s)
 
         # Braking curve speed limit to stop at eoa_m
-        b_service = train.params.max_service_deceleration_ms2
+        # Operational service braking scales with performance factor
+        b_service = train.params.max_service_deceleration_ms2 * train.performance_factor
         v_brake_sq = 2.0 * b_service * dist_to_eoa
         v_brake_limit = math.sqrt(max(0.0, v_brake_sq))
 
@@ -442,10 +443,16 @@ class MultiTrainSimulator:
             is_coast = False
             tract_n = None
 
-            if curr_v >= v_brake_limit - 0.05:
+            if train.dynamic_mode == DynamicMode.EMERGENCY_BRAKING:
+                # Emergency braking uses full unscaled capability
+                target_dec = train.params.emergency_deceleration_ms2
+            elif train.dynamic_mode == DynamicMode.SUPERVISED_BRAKING:
+                # Safety-critical supervised braking uses full unscaled capability
+                target_dec = train.params.max_service_deceleration_ms2
+            elif curr_v >= v_brake_limit - 0.05:
                 train.dynamic_mode = DynamicMode.SERVICE_BRAKING
                 train.operational_state = OperationalState.RUNNING
-                target_dec = train.params.max_service_deceleration_ms2
+                target_dec = train.params.max_service_deceleration_ms2 * train.performance_factor
             elif curr_v >= v_line_limit - 0.05:
                 train.dynamic_mode = DynamicMode.CRUISING
                 train.operational_state = OperationalState.RUNNING
