@@ -17,6 +17,7 @@ from headway.data.validator import DatasetValidator
         "03_station_platform",
         "04_tunnel_tvs",
         "05_comprehensive_line",
+        "06_multilink_blocks",
     ],
 )
 def test_example_project_passes_validation(example_dirname: str):

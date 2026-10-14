@@ -56,6 +56,7 @@ def _build_instructions_sheet(wb: openpyxl.Workbook, wb_def: WorkbookDef) -> Non
         "4. Identifiers must be unique within each worksheet and must not contain special symbols or spaces.",
         "5. Cross-references (such as Link IDs, Station IDs, Train Type IDs) must match exact casing.",
         "6. Do not save workbook with Excel macros (.xlsm is prohibited).",
+        "7. For multi-link signalling blocks or TVS sections, define spatial geometry intervals in the 'BlockGeometry' or 'TVSGeometry' worksheet with sequential numbering.",
         "",
         "WORKSHEET INVENTORY:",
     ]
@@ -109,10 +110,12 @@ def _build_domain_worksheet(wb: openpyxl.Workbook, ws_def: WorksheetDef) -> None
     ws = wb.create_sheet(title=ws_def.name)
     ws.views.sheetView[0].showGridLines = True
 
+    active_cols = [c for c in ws_def.columns if not getattr(c, "deprecated", False)]
+
     # Row 1: Header names
     # Row 2: Units / descriptions
     # Row 3: Example row
-    for c_idx, col in enumerate(ws_def.columns, start=1):
+    for c_idx, col in enumerate(active_cols, start=1):
         cell_h = ws.cell(row=1, column=c_idx, value=col.name)
         cell_h.font = HEADER_FONT
         cell_h.fill = HEADER_FILL
@@ -141,7 +144,7 @@ def _build_domain_worksheet(wb: openpyxl.Workbook, ws_def: WorksheetDef) -> None
     rows_to_write = ws_def.example_rows
     if not rows_to_write:
         single_row = []
-        for col in ws_def.columns:
+        for col in active_cols:
             ex_val = col.example_value
             if ex_val is None and col.default_value is not None:
                 ex_val = col.default_value

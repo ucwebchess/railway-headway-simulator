@@ -28,7 +28,7 @@ def create_data_import_tab() -> Dict[str, Any]:
             with gr.Column(scale=1):
                 gr.Markdown("#### Option A: Load Official Example Project")
                 ex_map = FileManager.get_example_projects()
-                ex_names = list(ex_map.keys()) if ex_map else ["01_single_track", "02_double_track", "03_station_platform", "04_tunnel_tvs", "05_comprehensive_line"]
+                ex_names = list(ex_map.keys()) if ex_map else ["01_single_track", "02_double_track", "03_station_platform", "04_tunnel_tvs", "05_comprehensive_line", "06_multilink_blocks"]
 
                 components["example_dropdown"] = gr.Dropdown(
                     choices=ex_names,

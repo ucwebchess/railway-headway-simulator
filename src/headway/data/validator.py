@@ -4,7 +4,7 @@ Strictly satisfies RHS-P01-001 § 15 and § 16.
 Enforces physical and relational integrity without executing microscopic train dynamics.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from headway.core.identifiers import IdentifierRegistry, normalize_identifier
 from headway.data.importer import RawWorkbookData
 from headway.data.validation import Severity, ValidationReport
@@ -171,14 +171,26 @@ class DatasetValidator:
                 self._check_ref("PLATFORM", row.get("platform_id"), "StoppingPoints.platform_id", "INFRASTRUCTURE", "StoppingPoints", spid)
                 self._check_ref("LINK", row.get("link_id"), "StoppingPoints.link_id", "INFRASTRUCTURE", "StoppingPoints", spid)
 
+            # TVS sections
+            infra_tvs_geom = infra.get_rows("TVSGeometry")
+            sig_wb = raw_workbooks.get("SIGNALLING")
+            sig_tvs_geom = sig_wb.get_rows("TVSGeometry") if sig_wb else []
+            has_tvs_geom = bool(infra_tvs_geom or sig_tvs_geom)
+
             for row in infra.get_rows("TVSSections"):
                 tvs_id = row.get("tvs_id")
                 self._check_ref("TRACK", row.get("track_id"), "TVSSections.track_id", "INFRASTRUCTURE", "TVSSections", tvs_id)
-                self._check_ref("LINK", row.get("link_id"), "TVSSections.link_id", "INFRASTRUCTURE", "TVSSections", tvs_id)
+                if row.get("link_id") is not None or not has_tvs_geom:
+                    self._check_ref("LINK", row.get("link_id"), "TVSSections.link_id", "INFRASTRUCTURE", "TVSSections", tvs_id)
                 if row.get("tunnel_id") and self.registry.get_all("TUNNEL"):
                     self._check_ref("TUNNEL", row.get("tunnel_id"), "TVSSections.tunnel_id", "INFRASTRUCTURE", "TVSSections", tvs_id)
                 if row.get("holding_signal_id"):
                     self._check_ref("SIGNAL", row.get("holding_signal_id"), "TVSSections.holding_signal_id", "INFRASTRUCTURE", "TVSSections", tvs_id)
+
+            for row in infra_tvs_geom:
+                tvs_id = row.get("tvs_id")
+                self._check_ref("TVS", tvs_id, "TVSGeometry.tvs_id", "INFRASTRUCTURE", "TVSGeometry", tvs_id)
+                self._check_ref("LINK", row.get("link_id"), "TVSGeometry.link_id", "INFRASTRUCTURE", "TVSGeometry", tvs_id)
 
             for row in infra.get_rows("SharedResourceGroups"):
                 gid = row.get("group_id")
@@ -206,13 +218,27 @@ class DatasetValidator:
                 sid = row.get("signal_id")
                 self._check_ref("LINK", row.get("link_id"), "Signals.link_id", "SIGNALLING", "Signals", sid)
 
+            block_geom_rows = sig.get_rows("BlockGeometry")
+            has_block_geom = bool(block_geom_rows)
+
             for row in sig.get_rows("Blocks"):
                 bid = row.get("block_id")
-                self._check_ref("LINK", row.get("link_id"), "Blocks.link_id", "SIGNALLING", "Blocks", bid)
+                if row.get("link_id") is not None or not has_block_geom:
+                    self._check_ref("LINK", row.get("link_id"), "Blocks.link_id", "SIGNALLING", "Blocks", bid)
                 if row.get("entry_signal_id"):
                     self._check_ref("SIGNAL", row.get("entry_signal_id"), "Blocks.entry_signal_id", "SIGNALLING", "Blocks", bid)
                 if row.get("exit_signal_id"):
                     self._check_ref("SIGNAL", row.get("exit_signal_id"), "Blocks.exit_signal_id", "SIGNALLING", "Blocks", bid)
+
+            for row in block_geom_rows:
+                bid = row.get("block_id")
+                self._check_ref("BLOCK", bid, "BlockGeometry.block_id", "SIGNALLING", "BlockGeometry", bid)
+                self._check_ref("LINK", row.get("link_id"), "BlockGeometry.link_id", "SIGNALLING", "BlockGeometry", bid)
+
+            for row in sig.get_rows("TVSGeometry"):
+                tvs_id = row.get("tvs_id")
+                self._check_ref("TVS", tvs_id, "TVSGeometry.tvs_id", "SIGNALLING", "TVSGeometry", tvs_id)
+                self._check_ref("LINK", row.get("link_id"), "TVSGeometry.link_id", "SIGNALLING", "TVSGeometry", tvs_id)
 
             for row in sig.get_rows("InterlockingRoutes"):
                 rid = row.get("route_id")
@@ -279,15 +305,211 @@ class DatasetValidator:
                 recommendation=f"Ensure {target_ns} '{clean_ref}' is defined in corresponding worksheet.",
             )
 
+    def _validate_resource_geometry(
+        self,
+        resource_type: str,
+        master_rows: List[Dict[str, Any]],
+        geom_rows: List[Dict[str, Any]],
+        link_lengths: Dict[str, float],
+        link_nodes: Dict[str, Tuple[Optional[str], Optional[str]]],
+        workbook: str,
+        master_ws: str,
+        geom_ws: str,
+        id_field: str,
+    ) -> None:
+        """Validate multi-link resource intervals, sequence continuity, link continuity, and physical continuity."""
+        has_geom = len(geom_rows) > 0
+        has_legacy = any(r.get("link_id") is not None for r in master_rows)
+
+        # Dual geometry warning (Task 3)
+        if has_geom and has_legacy:
+            self.report.add_finding(
+                error_code="WARN_DUAL_GEOMETRY_SPECIFIED",
+                severity=Severity.WARNING,
+                message=f"Both '{geom_ws}' worksheet and legacy geometry columns in '{master_ws}' are present. '{geom_ws}' will take precedence.",
+                workbook=workbook,
+                worksheet=master_ws,
+                recommendation=f"Remove deprecated geometry columns (LINK_ID, START_OFFSET_M, END_OFFSET_M) from '{master_ws}'.",
+            )
+
+        err_bounds_code = "ERR_ENG_BLOCK_BOUNDS_INVALID" if id_field == "block_id" else "ERR_ENG_TVS_BOUNDS_INVALID"
+
+        geom_by_id: Dict[str, List[Dict[str, Any]]] = {}
+        for r in geom_rows:
+            rid = r.get(id_field)
+            if rid:
+                geom_by_id.setdefault(rid, []).append(r)
+
+        for master_row in master_rows:
+            rid = master_row.get(id_field)
+            if not rid:
+                continue
+
+            if has_geom and rid in geom_by_id:
+                res_geom = geom_by_id[rid]
+
+                # 1. Sequence continuity starting at 1
+                try:
+                    sorted_geom = sorted(res_geom, key=lambda x: int(x.get("sequence", 0)))
+                    actual_seqs = [int(x.get("sequence", 0)) for x in sorted_geom]
+                except (ValueError, TypeError):
+                    actual_seqs = []
+                    sorted_geom = res_geom
+
+                expected_seqs = list(range(1, len(sorted_geom) + 1))
+                if actual_seqs != expected_seqs:
+                    self.report.add_finding(
+                        error_code="ERR_GEOMETRY_SEQUENCE_DISCONTINUITY",
+                        severity=Severity.ERROR,
+                        message=f"{resource_type} '{rid}' sequence must start at 1 and be strictly contiguous without gaps (got {actual_seqs}).",
+                        workbook=workbook,
+                        worksheet=geom_ws,
+                        object_id=rid,
+                        column="SEQUENCE",
+                        recommendation=f"Renumber intervals for '{rid}' consecutively starting at 1.",
+                    )
+
+                # 2. Link bounds clamping/validation for each interval
+                for g_row in sorted_geom:
+                    seq = g_row.get("sequence")
+                    lid = g_row.get("link_id")
+                    start = g_row.get("start_offset_m")
+                    end = g_row.get("end_offset_m")
+
+                    if start is None or end is None:
+                        continue
+
+                    if start < 0.0 or start >= end:
+                        self.report.add_finding(
+                            error_code=err_bounds_code,
+                            severity=Severity.ERROR,
+                            message=f"{resource_type} '{rid}' sequence {seq} interval [{start}, {end}] on link '{lid}' is inverted or negative.",
+                            workbook=workbook,
+                            worksheet=geom_ws,
+                            object_id=rid,
+                        )
+
+                    if lid in link_lengths:
+                        max_len = link_lengths[lid]
+                        if end > max_len + 1e-3:
+                            self.report.add_finding(
+                                error_code=err_bounds_code,
+                                severity=Severity.ERROR,
+                                message=f"{resource_type} '{rid}' sequence {seq} end offset {end} m exceeds link '{lid}' length ({max_len} m).",
+                                workbook=workbook,
+                                worksheet=geom_ws,
+                                object_id=rid,
+                            )
+
+                # 3. Link continuity across intervals & physical continuity
+                for i in range(len(sorted_geom) - 1):
+                    curr = sorted_geom[i]
+                    nxt = sorted_geom[i + 1]
+                    curr_seq = curr.get("sequence")
+                    nxt_seq = nxt.get("sequence")
+                    curr_lid = curr.get("link_id")
+                    nxt_lid = nxt.get("link_id")
+                    curr_end = curr.get("end_offset_m")
+                    nxt_start = nxt.get("start_offset_m")
+
+                    if curr_lid == nxt_lid:
+                        # Same link: offsets must be contiguous
+                        if curr_end is not None and nxt_start is not None and abs(curr_end - nxt_start) > 1e-3:
+                            self.report.add_finding(
+                                error_code="ERR_ENG_PHYSICAL_DISCONTINUITY",
+                                severity=Severity.ERROR,
+                                message=f"{resource_type} '{rid}' physical discontinuity on link '{curr_lid}' between sequence {curr_seq} (end {curr_end} m) and sequence {nxt_seq} (start {nxt_start} m).",
+                                workbook=workbook,
+                                worksheet=geom_ws,
+                                object_id=rid,
+                            )
+                    else:
+                        # Different links:
+                        # A. Link continuity in network graph
+                        curr_nodes = link_nodes.get(curr_lid)
+                        nxt_nodes = link_nodes.get(nxt_lid)
+                        if curr_nodes and nxt_nodes:
+                            curr_s_node, curr_e_node = curr_nodes
+                            nxt_s_node, nxt_e_node = nxt_nodes
+                            shared = {curr_s_node, curr_e_node} & {nxt_s_node, nxt_e_node}
+                            if not shared:
+                                self.report.add_finding(
+                                    error_code="ERR_ENG_LINK_DISCONTINUITY",
+                                    severity=Severity.ERROR,
+                                    message=f"{resource_type} '{rid}' consecutive intervals on links '{curr_lid}' and '{nxt_lid}' do not connect at a common node.",
+                                    workbook=workbook,
+                                    worksheet=geom_ws,
+                                    object_id=rid,
+                                )
+                            else:
+                                # B. Physical continuity across boundary
+                                curr_len = link_lengths.get(curr_lid)
+                                nxt_len = link_lengths.get(nxt_lid)
+                                is_continuous = False
+
+                                if curr_e_node == nxt_s_node:
+                                    if curr_len is not None and abs(curr_end - curr_len) <= 1e-3 and abs(nxt_start - 0.0) <= 1e-3:
+                                        is_continuous = True
+                                elif curr_e_node == nxt_e_node:
+                                    if curr_len is not None and nxt_len is not None and abs(curr_end - curr_len) <= 1e-3 and abs(nxt_start - nxt_len) <= 1e-3:
+                                        is_continuous = True
+                                elif curr_s_node == nxt_s_node:
+                                    if abs(curr_end - 0.0) <= 1e-3 and abs(nxt_start - 0.0) <= 1e-3:
+                                        is_continuous = True
+                                elif curr_s_node == nxt_e_node:
+                                    if nxt_len is not None and abs(curr_end - 0.0) <= 1e-3 and abs(nxt_start - nxt_len) <= 1e-3:
+                                        is_continuous = True
+
+                                if not is_continuous:
+                                    self.report.add_finding(
+                                        error_code="ERR_ENG_PHYSICAL_DISCONTINUITY",
+                                        severity=Severity.ERROR,
+                                        message=f"{resource_type} '{rid}' physical discontinuity across boundary between link '{curr_lid}' (end {curr_end} m, length {curr_len} m) and link '{nxt_lid}' (start {nxt_start} m).",
+                                        workbook=workbook,
+                                        worksheet=geom_ws,
+                                        object_id=rid,
+                                    )
+            else:
+                # Fallback to legacy columns on master row
+                lid = master_row.get("link_id")
+                start = master_row.get("start_offset_m")
+                end = master_row.get("end_offset_m")
+                if not lid or start is None or end is None:
+                    self.report.add_finding(
+                        error_code="ERR_GEOMETRY_MISSING",
+                        severity=Severity.ERROR,
+                        message=f"{resource_type} '{rid}' has no geometry intervals defined in '{geom_ws}' and missing legacy columns in '{master_ws}'.",
+                        workbook=workbook,
+                        worksheet=master_ws,
+                        object_id=rid,
+                    )
+                else:
+                    if lid in link_lengths:
+                        max_len = link_lengths[lid]
+                        if start < 0.0 or end > max_len or start >= end:
+                            self.report.add_finding(
+                                error_code=err_bounds_code,
+                                severity=Severity.ERROR,
+                                message=f"{resource_type} '{rid}' interval [{start}, {end}] exceeds link '{lid}' length ({max_len} m) or is inverted.",
+                                workbook=workbook,
+                                worksheet=master_ws,
+                                object_id=rid,
+                            )
+
     def _validate_engineering_configuration(self, raw_workbooks: Dict[str, RawWorkbookData]) -> None:
         """Validate engineering boundaries, spatial offset limits, and physical parameters (Level 4)."""
-        # Map link_id -> length_m
+        # Map link_id -> length_m and link_id -> (start_node_id, end_node_id)
         link_lengths: Dict[str, float] = {}
+        link_nodes: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
         infra = raw_workbooks.get("INFRASTRUCTURE")
         if infra:
             for row in infra.get_rows("TrackLinks"):
                 lid = row.get("link_id")
                 length = row.get("length_m")
+                s_node = row.get("start_node_id")
+                e_node = row.get("end_node_id")
+                if lid:
+                    link_nodes[lid] = (s_node, e_node)
                 if lid and length is not None:
                     try:
                         f_len = float(length)
@@ -323,12 +545,9 @@ class DatasetValidator:
                             object_id=pid,
                         )
 
-            # TVS sections within link bounds & positive occupancy
+            # TVS sections positive occupancy
             for row in infra.get_rows("TVSSections"):
                 tvs_id = row.get("tvs_id")
-                lid = row.get("link_id")
-                start = row.get("start_offset_m")
-                end = row.get("end_offset_m")
                 occ = row.get("max_train_occupancy", 1)
                 if occ is not None and occ < 1:
                     self.report.add_finding(
@@ -339,37 +558,42 @@ class DatasetValidator:
                         worksheet="TVSSections",
                         object_id=tvs_id,
                     )
-                if lid in link_lengths and start is not None and end is not None:
-                    max_len = link_lengths[lid]
-                    if start < 0.0 or end > max_len or start >= end:
-                        self.report.add_finding(
-                            error_code="ERR_ENG_TVS_BOUNDS_INVALID",
-                            severity=Severity.ERROR,
-                            message=f"TVS '{tvs_id}' interval [{start}, {end}] exceeds link '{lid}' length ({max_len} m).",
-                            workbook="INFRASTRUCTURE",
-                            worksheet="TVSSections",
-                            object_id=tvs_id,
-                        )
 
-        # Signalling blocks within link bounds
+            # TVS geometry validation
+            sig = raw_workbooks.get("SIGNALLING")
+            tvs_geom_rows = infra.get_rows("TVSGeometry")
+            tvs_wb_name = "INFRASTRUCTURE"
+            if not tvs_geom_rows and sig:
+                tvs_geom_rows = sig.get_rows("TVSGeometry")
+                if tvs_geom_rows:
+                    tvs_wb_name = "SIGNALLING"
+
+            self._validate_resource_geometry(
+                resource_type="TVS section",
+                master_rows=infra.get_rows("TVSSections"),
+                geom_rows=tvs_geom_rows,
+                link_lengths=link_lengths,
+                link_nodes=link_nodes,
+                workbook=tvs_wb_name,
+                master_ws="TVSSections",
+                geom_ws="TVSGeometry",
+                id_field="tvs_id",
+            )
+
+        # Signalling blocks
         sig = raw_workbooks.get("SIGNALLING")
         if sig:
-            for row in sig.get_rows("Blocks"):
-                bid = row.get("block_id")
-                lid = row.get("link_id")
-                start = row.get("start_offset_m")
-                end = row.get("end_offset_m")
-                if lid in link_lengths and start is not None and end is not None:
-                    max_len = link_lengths[lid]
-                    if start < 0.0 or end > max_len or start >= end:
-                        self.report.add_finding(
-                            error_code="ERR_ENG_BLOCK_BOUNDS_INVALID",
-                            severity=Severity.ERROR,
-                            message=f"Signalling block '{bid}' interval [{start}, {end}] exceeds link '{lid}' length ({max_len} m).",
-                            workbook="SIGNALLING",
-                            worksheet="Blocks",
-                            object_id=bid,
-                        )
+            self._validate_resource_geometry(
+                resource_type="Signalling block",
+                master_rows=sig.get_rows("Blocks"),
+                geom_rows=sig.get_rows("BlockGeometry"),
+                link_lengths=link_lengths,
+                link_nodes=link_nodes,
+                workbook="SIGNALLING",
+                master_ws="Blocks",
+                geom_ws="BlockGeometry",
+                id_field="block_id",
+            )
 
         # Rolling stock mass and deceleration consistency
         rs = raw_workbooks.get("ROLLING_STOCK")
