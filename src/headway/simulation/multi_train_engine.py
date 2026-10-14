@@ -123,7 +123,9 @@ class MultiTrainSimulator:
         self._unconstrained_cache: Dict[str, Tuple[float, float]] = {}
         # Track occupied resources by train: train_id -> set of resource_ids
         self._train_occupied_resources: Dict[str, Set[str]] = {}
-        self._train_entered_resources: Dict[str, Set[Tuple[int, str]]] = {}
+        self._train_entered_resources: Dict[str, Set[Any]] = {}
+        # Per-train, per-resource set of intervals in progress: train_id -> {res_id: set_of_interval_tokens}
+        self._train_active_intervals: Dict[str, Dict[str, Set[Any]]] = {}
 
     def register_train(self, train: TrainServiceInstance) -> None:
         """Register a single train instance for simulation."""
@@ -136,6 +138,7 @@ class MultiTrainSimulator:
         self.origin_queue.enqueue(train)
         self._train_occupied_resources[train.train_id] = set()
         self._train_entered_resources[train.train_id] = set()
+        self._train_active_intervals[train.train_id] = {}
 
     def register_trains(self, trains: List[TrainServiceInstance]) -> None:
         """Register multiple train instances."""
@@ -192,12 +195,27 @@ class MultiTrainSimulator:
                 res_links = [inv.link_id for inv in res.intervals] if res.intervals else []
                 if trav.link_id in res_links or getattr(res, "link_id", None) == trav.link_id or res_id == f"BLK_{trav.link_id}":
                     if res.category == ResourceCategory.TRACK_BLOCK:
+                        # Earliest entry distance along route for this block interval on this link
+                        block_entry_dist = dist_along
+                        if res.intervals:
+                            matching = [inv for inv in res.intervals if inv.link_id == trav.link_id]
+                            if matching:
+                                try:
+                                    s_vals = [
+                                        min(trav.physical_offset_to_route_distance(max(0.0, min(inv.start_offset_m, trav.length_m))),
+                                            trav.physical_offset_to_route_distance(max(0.0, min(inv.end_offset_m, trav.length_m))))
+                                        for inv in matching
+                                    ]
+                                    block_entry_dist = min(s_vals)
+                                except PositionMappingError:
+                                    pass
+
                         # Check if block is ahead of train front
-                        if dist_along > curr_pos:
+                        if block_entry_dist > curr_pos:
                             # Is block available for this train?
                             if not self.coordinator.resource_controller.is_resource_available(res_id, train.train_id, self.current_time_s):
-                                if dist_along < min_eoa:
-                                    min_eoa = dist_along
+                                if block_entry_dist < min_eoa:
+                                    min_eoa = block_entry_dist
                                     governing_cause = "SIGNALLING"
                                     holding_res = res_id
 
@@ -482,23 +500,45 @@ class MultiTrainSimulator:
             curr_rear = train.rear_position_m
             held_res = self._train_occupied_resources.setdefault(train.train_id, set())
             entered = self._train_entered_resources.setdefault(train.train_id, set())
+            active_intervals = self._train_active_intervals.setdefault(train.train_id, {})
 
             # Check all route traversals
             for i, trav in enumerate(train.route.traversals):
-                link_start = train.route.physical_to_route_distance(trav.link_id, 0.0)
-                link_end = train.route.physical_to_route_distance(trav.link_id, trav.length_m)
-                if link_start is None or link_end is None:
-                    continue
-
-                r_start = min(link_start, link_end)
-                r_end = max(link_start, link_end)
-
                 # Find resources associated with this link
                 for res_id, res in self.coordinator.resource_controller.resources.items():
-                    res_links = [inv.link_id for inv in res.intervals] if res.intervals else []
-                    if trav.link_id in res_links or getattr(res, "link_id", None) == trav.link_id or res_id == f"BLK_{trav.link_id}":
-                        key = (i, res_id)
-                        # Front entry
+                    res_intervals = res.intervals if res.intervals else []
+                    matching_intervals: List[Tuple[int, Optional[ResourceInterval]]] = [
+                        (inv_idx, inv) for inv_idx, inv in enumerate(res_intervals)
+                        if inv.link_id == trav.link_id
+                    ]
+                    if not matching_intervals and (
+                        getattr(res, "link_id", None) == trav.link_id or res_id == f"BLK_{trav.link_id}"
+                    ):
+                        matching_intervals = [(0, None)]
+
+                    for inv_idx, inv in matching_intervals:
+                        if inv is not None:
+                            try:
+                                clamped_start = max(0.0, min(inv.start_offset_m, trav.length_m))
+                                clamped_end = max(0.0, min(inv.end_offset_m, trav.length_m))
+                                s1 = trav.physical_offset_to_route_distance(clamped_start)
+                                s2 = trav.physical_offset_to_route_distance(clamped_end)
+                                r_start = min(s1, s2)
+                                r_end = max(s1, s2)
+                            except PositionMappingError:
+                                continue
+                        else:
+                            link_start = train.route.physical_to_route_distance(trav.link_id, 0.0)
+                            link_end = train.route.physical_to_route_distance(trav.link_id, trav.length_m)
+                            if link_start is None or link_end is None:
+                                continue
+                            r_start = min(link_start, link_end)
+                            r_end = max(link_start, link_end)
+
+                        key = (i, res_id, inv_idx)
+                        interval_token = (i, inv_idx)
+
+                        # Front entry into this interval
                         if key not in entered and curr_front >= r_start and curr_rear < r_end:
                             if res_id not in res.reservations:
                                 self.coordinator.resource_controller.reserve_resource(
@@ -507,22 +547,28 @@ class MultiTrainSimulator:
                                     timestamp_s=current_time_s,
                                     running_direction=train.running_direction,
                                 )
-                            self.coordinator.resource_controller.front_enter_resource(
-                                train_id=train.train_id,
-                                resource_id=res_id,
-                                timestamp_s=current_time_s,
-                            )
+                            if res_id not in held_res:
+                                self.coordinator.resource_controller.front_enter_resource(
+                                    train_id=train.train_id,
+                                    resource_id=res_id,
+                                    timestamp_s=current_time_s,
+                                )
+                                held_res.add(res_id)
                             entered.add(key)
-                            held_res.add(res_id)
+                            active_intervals.setdefault(res_id, set()).add(interval_token)
 
-                        # Rear clearance
-                        if res_id in held_res and curr_rear >= r_end:
-                            self.coordinator.resource_controller.rear_clear_resource(
-                                train_id=train.train_id,
-                                resource_id=res_id,
-                                timestamp_s=current_time_s,
-                            )
-                            held_res.discard(res_id)
+                        # Rear clearance of this interval
+                        res_in_prog = active_intervals.get(res_id, set())
+                        if interval_token in res_in_prog and curr_rear >= r_end:
+                            res_in_prog.discard(interval_token)
+                            # Only call rear_clear_resource when all entered intervals have cleared
+                            if len(res_in_prog) == 0 and res_id in held_res:
+                                self.coordinator.resource_controller.rear_clear_resource(
+                                    train_id=train.train_id,
+                                    resource_id=res_id,
+                                    timestamp_s=current_time_s,
+                                )
+                                held_res.discard(res_id)
 
             # Check occupied platforms for rear clearance (P07 & P09-ST-007)
             for plat_id, plat_obj in self.coordinator.platform_controller.platforms.items():
@@ -534,7 +580,9 @@ class MultiTrainSimulator:
 
             # Check TVS sections for front entry and rear clearance (P07 & P09-TVS-003)
             for tvs_id, cfg in getattr(self.coordinator.tvs_controller, "configs", {}).items():
-                for interval in cfg.tvs.link_intervals:
+                tvs_key = f"TVS_{tvs_id}"
+                tvs_in_prog = active_intervals.setdefault(tvs_key, set())
+                for inv_idx, interval in enumerate(cfg.tvs.link_intervals):
                     try:
                         tvs_start = train.route.physical_to_route_distance(interval.link_id, interval.start_offset_m)
                         tvs_end = train.route.physical_to_route_distance(interval.link_id, interval.end_offset_m)
@@ -543,16 +591,21 @@ class MultiTrainSimulator:
                     if tvs_start is not None and tvs_end is not None:
                         t_start = min(tvs_start, tvs_end)
                         t_end = max(tvs_start, tvs_end)
-                        tvs_key = f"TVS_{tvs_id}"
-                        if tvs_key not in entered and curr_front >= t_start and curr_rear < t_end:
-                            self.coordinator.tvs_controller.front_enter_tvs(
-                                train.train_id, tvs_id, current_time_s, running_direction=train.running_direction
-                            )
-                            entered.add(tvs_key)
-                            held_res.add(tvs_key)
-                        if tvs_key in held_res and curr_rear >= t_end:
-                            self.coordinator.tvs_controller.rear_clear_tvs(train.train_id, tvs_id, current_time_s)
-                            held_res.discard(tvs_key)
+                        token = (tvs_id, inv_idx)
+                        key = (token, "TVS")
+                        if key not in entered and curr_front >= t_start and curr_rear < t_end:
+                            if tvs_key not in held_res:
+                                self.coordinator.tvs_controller.front_enter_tvs(
+                                    train.train_id, tvs_id, current_time_s, running_direction=train.running_direction
+                                )
+                                held_res.add(tvs_key)
+                            entered.add(key)
+                            tvs_in_prog.add(token)
+                        if token in tvs_in_prog and curr_rear >= t_end:
+                            tvs_in_prog.discard(token)
+                            if len(tvs_in_prog) == 0 and tvs_key in held_res:
+                                self.coordinator.tvs_controller.rear_clear_tvs(train.train_id, tvs_id, current_time_s)
+                                held_res.discard(tvs_key)
 
     def _record_trajectory_samples(self) -> None:
         """Record trajectory samples and time-distance dataset points at storage intervals."""
@@ -596,6 +649,41 @@ class MultiTrainSimulator:
                 )
             )
 
+    def step(self, dt: Optional[float] = None) -> None:
+        """Execute a single discrete simulation timestep."""
+        if dt is None:
+            dt = self.dt_s
+
+        newly_dispatched = self.origin_queue.process_origin_dispatches(
+            coordinator=self.coordinator,
+            current_time_s=self.current_time_s,
+        )
+        for t in newly_dispatched:
+            self.active_trains.append(t)
+            self.dispatched_trains.append(t)
+
+        for train in list(self.active_trains):
+            if not train.is_completed:
+                self._step_train(train, dt)
+                if train.is_completed and train not in self.completed_trains:
+                    self.completed_trains.append(train)
+                    self.active_trains.remove(train)
+                    held = self._train_occupied_resources.get(train.train_id, set())
+                    for r_id in list(held):
+                        if r_id in self.coordinator.platform_controller.platforms:
+                            self.coordinator.platform_controller.rear_clear_platform(train.train_id, r_id, self.current_time_s)
+                        else:
+                            self.coordinator.resource_controller.rear_clear_resource(train.train_id, r_id, self.current_time_s)
+                    held.clear()
+                    self._train_active_intervals.get(train.train_id, {}).clear()
+                    for tvs_id in list(getattr(self.coordinator.tvs_controller, "configs", {}).keys()):
+                        if train.train_id in self.coordinator.tvs_controller.active_occupants.get(tvs_id, set()):
+                            self.coordinator.tvs_controller.rear_clear_tvs(train.train_id, tvs_id, self.current_time_s)
+
+        self._update_resource_occupations(self.current_time_s)
+        self.coordinator.process_timestep_events(self.current_time_s)
+        self.current_time_s += dt
+
     def run_simulation(
         self,
         max_duration_s: float = 3600.0,
@@ -631,6 +719,7 @@ class MultiTrainSimulator:
                             else:
                                 self.coordinator.resource_controller.rear_clear_resource(train.train_id, r_id, self.current_time_s)
                         held.clear()
+                        self._train_active_intervals.get(train.train_id, {}).clear()
                         for tvs_id in list(getattr(self.coordinator.tvs_controller, "configs", {}).keys()):
                             if train.train_id in self.coordinator.tvs_controller.active_occupants.get(tvs_id, set()):
                                 self.coordinator.tvs_controller.rear_clear_tvs(train.train_id, tvs_id, self.current_time_s)
