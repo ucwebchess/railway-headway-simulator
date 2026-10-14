@@ -33,6 +33,7 @@ class ColumnDef:
     default_value: Optional[Any] = None
     description: str = ""
     example_value: Optional[Any] = None
+    deprecated: bool = False
 
 
 @dataclass(frozen=True)
@@ -173,14 +174,32 @@ INFRASTRUCTURE_WORKBOOK = WorkbookDef(
                 ColumnDef("TVS_ID", "tvs_id", FieldType.STRING, required=True, description="Unique TVS identifier", example_value="TVS_01"),
                 ColumnDef("TUNNEL_ID", "tunnel_id", FieldType.STRING, required=True, description="Parent tunnel identifier", example_value="TNL_01"),
                 ColumnDef("TRACK_ID", "track_id", FieldType.STRING, required=True, description="Track line governed", example_value="TRK_M1"),
-                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=True, description="Link containing TVS section", example_value="LNK_01"),
-                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="TVS start boundary offset", example_value=300.0),
-                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="TVS end boundary offset", example_value=1100.0),
+                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=False, deprecated=True, description="Link containing TVS section (Deprecated: use TVSGeometry)", example_value="LNK_01"),
+                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=False, deprecated=True, excel_unit="m", canonical_unit="m", description="TVS start boundary offset (Deprecated: use TVSGeometry)", example_value=300.0),
+                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=False, deprecated=True, excel_unit="m", canonical_unit="m", description="TVS end boundary offset (Deprecated: use TVSGeometry)", example_value=1100.0),
                 ColumnDef("MAX_OCCUPANCY", "max_train_occupancy", FieldType.INTEGER, required=False, default_value=1, description="Maximum simultaneous trains (Default 1)", example_value=1),
                 ColumnDef("HOLDING_SIGNAL_ID", "holding_signal_id", FieldType.STRING, required=False, description="Signal holding follower train if TVS occupied", example_value="SIG_01"),
                 ColumnDef("RELEASE_DELAY_S", "release_delay_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=0.0, description="Ventilation purge delay after rear exit", example_value=15.0),
             ],
             required=False,
+            example_rows=[
+                ["TVS_01", "TNL_01", "TRK_M1", 1, "SIG_01", 15.0],
+            ],
+        ),
+        WorksheetDef(
+            name="TVSGeometry",
+            description="Multi-link spatial interval geometry for Tunnel Ventilation Sections",
+            columns=[
+                ColumnDef("TVS_ID", "tvs_id", FieldType.STRING, required=True, description="TVS section identifier", example_value="TVS_01"),
+                ColumnDef("SEQUENCE", "sequence", FieldType.INTEGER, required=True, description="Ordered sequence of interval within TVS section (1, 2, ...)", example_value=1),
+                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=True, description="Track link traversed by this interval", example_value="LNK_01"),
+                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Start offset along link in meters", example_value=300.0),
+                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="End offset along link in meters", example_value=1100.0),
+            ],
+            required=False,
+            example_rows=[
+                ["TVS_01", 1, "LNK_01", 300.0, 1100.0],
+            ],
         ),
         WorksheetDef(
             name="SharedResourceGroups",
@@ -255,14 +274,47 @@ SIGNALLING_WORKBOOK = WorkbookDef(
                 ColumnDef("BLOCK_ID", "block_id", FieldType.STRING, required=True, description="Unique block section identifier", example_value="BLK_01"),
                 ColumnDef("ENTRY_SIGNAL_ID", "entry_signal_id", FieldType.STRING, required=False, description="Boundary entry signal", example_value="SIG_01"),
                 ColumnDef("EXIT_SIGNAL_ID", "exit_signal_id", FieldType.STRING, required=False, description="Boundary exit signal", example_value="SIG_02"),
-                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=True, description="Track link containing block", example_value="LNK_01"),
-                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Block start offset along link", example_value=100.0),
-                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Block end offset along link", example_value=1100.0),
+                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=False, deprecated=True, description="Track link containing block (Deprecated: use BlockGeometry)", example_value="LNK_01"),
+                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=False, deprecated=True, excel_unit="m", canonical_unit="m", description="Block start offset along link (Deprecated: use BlockGeometry)", example_value=100.0),
+                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=False, deprecated=True, excel_unit="m", canonical_unit="m", description="Block end offset along link (Deprecated: use BlockGeometry)", example_value=1100.0),
                 ColumnDef("OVERLAP_M", "overlap_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", default_value=50.0, description="Safety overlap past exit signal", example_value=50.0),
                 ColumnDef("RELEASE_DELAY_S", "release_delay_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=4.0, description="Track circuit release delay", example_value=4.0),
             ],
             required=True,
             min_rows=1,
+            example_rows=[
+                ["BLK_01", "SIG_01", "SIG_02", 50.0, 4.0],
+            ],
+        ),
+        WorksheetDef(
+            name="BlockGeometry",
+            description="Multi-link spatial interval geometry for signalling blocks",
+            columns=[
+                ColumnDef("BLOCK_ID", "block_id", FieldType.STRING, required=True, description="Signalling block identifier", example_value="BLK_01"),
+                ColumnDef("SEQUENCE", "sequence", FieldType.INTEGER, required=True, description="Ordered sequence of interval within block (1, 2, ...)", example_value=1),
+                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=True, description="Track link traversed by this interval", example_value="LNK_01"),
+                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Start offset along link in meters", example_value=100.0),
+                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="End offset along link in meters", example_value=1100.0),
+            ],
+            required=False,
+            example_rows=[
+                ["BLK_01", 1, "LNK_01", 100.0, 1100.0],
+            ],
+        ),
+        WorksheetDef(
+            name="TVSGeometry",
+            description="Multi-link spatial interval geometry for Tunnel Ventilation Sections",
+            columns=[
+                ColumnDef("TVS_ID", "tvs_id", FieldType.STRING, required=True, description="TVS section identifier", example_value="TVS_01"),
+                ColumnDef("SEQUENCE", "sequence", FieldType.INTEGER, required=True, description="Ordered sequence of interval within TVS section (1, 2, ...)", example_value=1),
+                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=True, description="Track link traversed by this interval", example_value="LNK_01"),
+                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Start offset along link in meters", example_value=300.0),
+                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="End offset along link in meters", example_value=1100.0),
+            ],
+            required=False,
+            example_rows=[
+                ["TVS_01", 1, "LNK_01", 300.0, 1100.0],
+            ],
         ),
         WorksheetDef(
             name="InterlockingRoutes",

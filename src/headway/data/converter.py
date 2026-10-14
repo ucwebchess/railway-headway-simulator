@@ -182,24 +182,48 @@ def _build_infrastructure_model(infra_wb: Optional[RawWorkbookData]) -> Infrastr
         for r in infra_wb.get_rows("Tunnels")
     ]
 
-    tvs_sections = [
-        TVSSection(
-            tvs_id=r["tvs_id"],
-            tunnel_id=r["tunnel_id"],
-            track_id=r["track_id"],
-            link_intervals=[
+    # Task 2 & 3: TVSGeometry support with backward compatibility
+    tvs_geom_rows = []
+    if "TVSGeometry" in infra_wb.worksheets:
+        tvs_geom_rows = infra_wb.get_rows("TVSGeometry")
+    has_tvs_geom = len(tvs_geom_rows) > 0
+    tvs_geom_map: Dict[str, List[ResourceInterval]] = {}
+    if has_tvs_geom:
+        sorted_tvs_rows = sorted(tvs_geom_rows, key=lambda r: int(r.get("sequence", 1)))
+        for r in sorted_tvs_rows:
+            tvs_id = r["tvs_id"]
+            tvs_geom_map.setdefault(tvs_id, []).append(
                 ResourceInterval(
                     link_id=r["link_id"],
                     start_offset_m=float(r["start_offset_m"]),
                     end_offset_m=float(r["end_offset_m"]),
                 )
-            ],
-            max_train_occupancy=int(r.get("max_train_occupancy", 1)),
-            holding_signal_id=r.get("holding_signal_id"),
-            release_delay_s=float(r.get("release_delay_s", 0.0)),
+            )
+
+    tvs_sections = []
+    for r in infra_wb.get_rows("TVSSections"):
+        tvs_id = r["tvs_id"]
+        if has_tvs_geom and tvs_id in tvs_geom_map:
+            ivs = tvs_geom_map[tvs_id]
+        else:
+            ivs = [
+                ResourceInterval(
+                    link_id=r["link_id"],
+                    start_offset_m=float(r["start_offset_m"]),
+                    end_offset_m=float(r["end_offset_m"]),
+                )
+            ]
+        tvs_sections.append(
+            TVSSection(
+                tvs_id=tvs_id,
+                tunnel_id=r["tunnel_id"],
+                track_id=r["track_id"],
+                link_intervals=ivs,
+                max_train_occupancy=int(r.get("max_train_occupancy", 1)),
+                holding_signal_id=r.get("holding_signal_id"),
+                release_delay_s=float(r.get("release_delay_s", 0.0)),
+            )
         )
-        for r in infra_wb.get_rows("TVSSections")
-    ]
 
     shared_groups = [
         SharedResourceGroup(
@@ -320,23 +344,45 @@ def _build_signalling_model(sig_wb: Optional[RawWorkbookData]) -> SignallingMode
         for r in sig_wb.get_rows("Signals")
     ]
 
-    blocks = [
-        SignallingBlock(
-            block_id=r["block_id"],
-            entry_signal_id=r.get("entry_signal_id"),
-            exit_signal_id=r.get("exit_signal_id"),
-            link_intervals=[
+    # Task 2 & 3: BlockGeometry support with backward compatibility
+    block_geom_rows = sig_wb.get_rows("BlockGeometry") if "BlockGeometry" in sig_wb.worksheets else []
+    has_block_geom = len(block_geom_rows) > 0
+    block_geom_map: Dict[str, List[ResourceInterval]] = {}
+    if has_block_geom:
+        sorted_block_rows = sorted(block_geom_rows, key=lambda r: int(r.get("sequence", 1)))
+        for r in sorted_block_rows:
+            bid = r["block_id"]
+            block_geom_map.setdefault(bid, []).append(
                 ResourceInterval(
                     link_id=r["link_id"],
                     start_offset_m=float(r["start_offset_m"]),
                     end_offset_m=float(r["end_offset_m"]),
                 )
-            ],
-            overlap_m=float(r.get("overlap_m", 50.0)),
-            release_delay_s=float(r.get("release_delay_s", 4.0)),
+            )
+
+    blocks = []
+    for r in sig_wb.get_rows("Blocks"):
+        bid = r["block_id"]
+        if has_block_geom and bid in block_geom_map:
+            ivs = block_geom_map[bid]
+        else:
+            ivs = [
+                ResourceInterval(
+                    link_id=r["link_id"],
+                    start_offset_m=float(r["start_offset_m"]),
+                    end_offset_m=float(r["end_offset_m"]),
+                )
+            ]
+        blocks.append(
+            SignallingBlock(
+                block_id=bid,
+                entry_signal_id=r.get("entry_signal_id"),
+                exit_signal_id=r.get("exit_signal_id"),
+                link_intervals=ivs,
+                overlap_m=float(r.get("overlap_m", 50.0)),
+                release_delay_s=float(r.get("release_delay_s", 4.0)),
+            )
         )
-        for r in sig_wb.get_rows("Blocks")
-    ]
 
     routes = [
         InterlockingRoute(
