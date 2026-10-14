@@ -378,6 +378,11 @@ class PdfReportRenderer:
                 Paragraph(f"{kpis.planning_capacity_tph:.1f} tph", styles["KpiVal"]),
                 Paragraph(f"{kpis.planning_margin_s:.0f}s operational buffer margin", styles["KpiSub"]),
             ],
+            [
+                Paragraph("PERFORMANCE FACTOR", styles["KpiLabel"]),
+                Paragraph(kpis.performance_factor_str, styles["KpiVal"]),
+                Paragraph(f"Source: {kpis.performance_factor_source}", styles["KpiSub"]),
+            ],
         ]
         if kpis.total_service_duration_s is not None:
             kpi_cells.append([

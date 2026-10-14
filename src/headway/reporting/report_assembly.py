@@ -102,7 +102,7 @@ class ReportAssembler:
             simulation_run_id=package.run_id,
             report_type=cfg.report_type,
             running_direction=direction,
-            software_version="1.2.0",
+            software_version="1.3.0",
             input_configuration_hash=package.effective_config_hash,
             validation_status="VALID",
             title=cfg.title or "Railway Headway & Line Capacity Assessment",
@@ -329,6 +329,8 @@ class ReportAssembler:
         theo_cap = (3600.0 / hw_s) if hw_s > 0 else 0.0
         plan_cap = (3600.0 / (hw_s + margin_s)) if (hw_s + margin_s) > 0 else 0.0
         total_service_dur = cls._compute_total_service_duration(package)
+        pf = getattr(primary_hw, "performance_factor", 1.0) if primary_hw else package.metadata.get("performance_factor", 1.0)
+        pf_src = getattr(primary_hw, "performance_factor_source", "default") if primary_hw else package.metadata.get("performance_factor_source", "default")
 
         return ExecutiveKpis(
             technical_headway_s=round(hw_s, 1),
@@ -341,6 +343,8 @@ class ReportAssembler:
             headway_definition=primary_hw.headway_definition if primary_hw else "TECHNICAL_MINIMUM",
             planning_margin_s=margin_s,
             total_service_duration_s=round(total_service_dur, 1) if total_service_dur is not None else None,
+            performance_factor=float(pf),
+            performance_factor_source=str(pf_src),
         )
 
     @classmethod
@@ -724,6 +728,9 @@ class ReportAssembler:
         infra: InfrastructureSummary,
     ) -> ReportSection:
         """Section 12: Assumptions, Schema Versions & Audit Log (P14-SEC12-001)."""
+        pf = package.metadata.get("performance_factor", 1.0)
+        pf_src = package.metadata.get("performance_factor_source", "default")
+        pf_pct = int(round(float(pf) * 100))
         return ReportSection(
             section_id=ReportSectionId.ASSUMPTIONS_AUDIT,
             title="Assumptions, Schema Versions and Audit Log",
@@ -732,12 +739,16 @@ class ReportAssembler:
             narrative_paragraphs=[
                 "Records software build versions, input dataset IDs, SHA-256 configuration hashes, mathematical solver time steps, "
                 "and verification status to ensure total calculation auditability.",
+                f"Operational Performance Factor is configured at {pf_pct}% ({pf_src}), scaling train operational traction force "
+                f"and service braking deceleration to {pf_pct}% of nominal capability. Safety-critical supervised braking, emergency "
+                f"braking, and signalling protection envelopes remain unscaled at 100% of nominal capability.",
             ],
             kpis={
-                "Software Version": "1.2.0",
+                "Software Version": "1.3.0",
                 "Config Hash": package.effective_config_hash,
                 "Model Fidelity": infra.model_fidelity,
                 "Signalling Tech": infra.signalling_technology,
+                "Performance Factor": f"{pf_pct}% ({pf_src})",
                 "Davis A": f"{rs.davis_a_n:.1f} N",
                 "Davis B": f"{rs.davis_b_ns_per_m:.2f} Ns/m",
                 "Davis C": f"{rs.davis_c_ns2_per_m2:.4f} Ns²/m²",

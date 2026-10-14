@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] — Operational Performance Factor
+
+### Added
+
+- **Operational Performance Factor (`performance_factor`)**:
+  - Implemented configurable operational traction and service braking derating ($f_p \in [0.50, 1.00]$).
+  - Precedence hierarchy: Analysis row setting > Scenario default (`default_performance_factor`) > Baseline fallback (1.0).
+  - Derates operational traction force $F_{\text{traction, effective}} = f_p \cdot F_{\text{traction, nominal}}(v)$ in `DynamicMode.ACCELERATING`.
+  - Derates operational service braking $b_{\text{service, effective}} = f_p \cdot b_{\text{service, nominal}}(v)$ in `DynamicMode.SERVICE_BRAKING`.
+  - Wheel-rail adhesion limits applied to the derated traction force.
+- **Safety Invariants Preserved**:
+  - Emergency braking deceleration ($b_{\text{emergency}}$) strictly preserved at 100% unscaled capability.
+  - Movement authority protection and supervised braking envelope calculation strictly computed from 100% unscaled nominal capability.
+  - Cruising/coasting, running resistances (Davis equation), track gradients, curvature, civil speed restrictions, and rolling stock maximum speed remain unaffected.
+- **Canonical Model & Excel Schema Extensions**:
+  - `AnalysisConfig`: Added `performance_factor: float` and `performance_factor_source: str`.
+  - `Scenario` / `ScenarioDefinition`: Added `default_performance_factor: Optional[float]`.
+  - `AnalysisSettings` worksheet: Added optional `PERFORMANCE_FACTOR` column (FLOAT, [0.5, 1.0]).
+  - `ScenarioDefinitions` worksheet: Added optional `DEFAULT_PERFORMANCE_FACTOR` column (FLOAT, [0.5, 1.0]).
+  - Excel importer and dataset validator enforce `ERR_FIELD_RANGE` for values outside [0.5, 1.0].
+  - JSON draft schemas (`analysis.schema.json`, `scenario.schema.json`) updated to support new attributes.
+  - Regenerated all standard Excel templates in `templates/` with updated engineering guidance.
+- **Reporting & Visualizations**:
+  - Added Performance Factor headline KPI card across Gradio UI, interactive HTML reports, formal ReportLab PDF documents, and Excel assessment export.
+  - Documented effective factor and resolution source in engineering report assumptions and audit log trail.
+- **Verification Suite**:
+  - Added dedicated test suite (`tests/engineering/test_performance_factor.py`) covering canonical models, precedence hierarchy, importer/validator checks, traction derating, braking distance scaling, emergency braking safety invariants, and reporting rendering.
+
+---
+
 ## [1.2.0] — Multi-Link Signalling Blocks & Schema Extension
 
 ### Added

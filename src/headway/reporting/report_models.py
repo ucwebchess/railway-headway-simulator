@@ -112,6 +112,13 @@ class ExecutiveKpis:
     headway_definition: str = "TECHNICAL_MINIMUM"
     planning_margin_s: float = 18.0
     total_service_duration_s: Optional[float] = None
+    performance_factor: float = 1.0
+    performance_factor_source: str = "default"
+
+    @property
+    def performance_factor_str(self) -> str:
+        """Formatted performance factor percentage (e.g. 95%)."""
+        return f"{int(round(self.performance_factor * 100))}%"
 
     @property
     def controlling_bottleneck_chainage_km(self) -> float:
@@ -142,6 +149,9 @@ class ExecutiveKpis:
             "planning_margin_s": self.planning_margin_s,
             "total_service_duration_s": self.total_service_duration_s,
             "total_service_duration_str": self.total_service_duration_str,
+            "performance_factor": self.performance_factor,
+            "performance_factor_str": self.performance_factor_str,
+            "performance_factor_source": self.performance_factor_source,
         }
 
 
@@ -240,7 +250,7 @@ class ReportMetadata:
     report_type: ReportType
     running_direction: RunningDirection
     generation_time: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    software_version: str = "1.2.0"
+    software_version: str = "1.3.0"
     input_configuration_hash: str = ""
     validation_status: str = "VALID"
     title: str = "Railway Headway & Line Capacity Assessment"

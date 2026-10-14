@@ -80,6 +80,13 @@ def create_results_tab() -> Dict[str, Any]:
                     <div style="font-size: 11px; color: #94a3b8;">With planning margin</div>
                 </div>
             """)
+            components["res_kpi_perf_factor"] = gr.HTML("""
+                <div class="kpi-card">
+                    <div class="kpi-title">Performance Factor</div>
+                    <div style="font-size: 22px; font-weight: 700; color: #1B365D;">100%</div>
+                    <div style="font-size: 11px; color: #94a3b8;">Traction & Service Braking</div>
+                </div>
+            """)
             components["res_kpi_bottleneck"] = gr.HTML("""
                 <div class="kpi-card">
                     <div class="kpi-title">Controlling Bottleneck</div>
@@ -165,9 +172,10 @@ def create_results_tab() -> Dict[str, Any]:
             k_hw = """<div class="kpi-card"><div class="kpi-title">Technical Min Headway</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
             k_theo = """<div class="kpi-card"><div class="kpi-title">Theoretical Line Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
             k_plan = """<div class="kpi-card"><div class="kpi-title">Planning Operational Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
+            k_perf = """<div class="kpi-card"><div class="kpi-title">Performance Factor</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
             k_bot = """<div class="kpi-card"><div class="kpi-title">Controlling Bottleneck</div><div style="font-size: 20px; font-weight: 700; color: #DC2626;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
             return (
-                banner, k_hw, k_theo, k_plan, k_bot,
+                banner, k_hw, k_theo, k_plan, k_perf, k_bot,
                 empty_fig, empty_fig, empty_fig, [],
                 empty_fig, empty_fig, [],
                 empty_fig, empty_fig,
@@ -182,6 +190,7 @@ def create_results_tab() -> Dict[str, Any]:
         k_hw = f"""<div class="kpi-card"><div class="kpi-title">Technical Min Headway</div><div style="font-size: 22px; font-weight: 700; color: #1B365D;">{kpis.technical_headway_s:.1f} s</div><div style="font-size: 11px; color: #94a3b8;">Direction: {direction.value}</div></div>"""
         k_theo = f"""<div class="kpi-card"><div class="kpi-title">Theoretical Line Capacity</div><div style="font-size: 22px; font-weight: 700; color: #1B365D;">{kpis.theoretical_capacity_tph:.1f} tph</div><div style="font-size: 11px; color: #94a3b8;">C = 3600 / H</div></div>"""
         k_plan = f"""<div class="kpi-card"><div class="kpi-title">Planning Operational Capacity</div><div style="font-size: 22px; font-weight: 700; color: #1B365D;">{kpis.planning_capacity_tph:.1f} tph</div><div style="font-size: 11px; color: #94a3b8;">Margin: {kpis.planning_margin_s:.0f} s</div></div>"""
+        k_perf = f"""<div class="kpi-card"><div class="kpi-title">Performance Factor</div><div style="font-size: 22px; font-weight: 700; color: #1B365D;">{kpis.performance_factor_str}</div><div style="font-size: 11px; color: #94a3b8;">Source: {kpis.performance_factor_source}</div></div>"""
         k_bot = f"""<div class="kpi-card"><div class="kpi-title">Controlling Bottleneck</div><div style="font-size: 20px; font-weight: 700; color: #DC2626;">{kpis.controlling_bottleneck_id}</div><div style="font-size: 11px; color: #94a3b8;">{kpis.controlling_bottleneck_type}</div></div>"""
 
         # Figures from doc or visualizers
@@ -272,6 +281,7 @@ def create_results_tab() -> Dict[str, Any]:
             components["res_kpi_headway"],
             components["res_kpi_theo_cap"],
             components["res_kpi_plan_cap"],
+            components["res_kpi_perf_factor"],
             components["res_kpi_bottleneck"],
             components["plot_speed_dynamics"],
             components["plot_blocking_stairway"],

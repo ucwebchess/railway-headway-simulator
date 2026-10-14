@@ -45,11 +45,13 @@ class MicroscopicSimulator:
         station_views: Optional[List[RoutePlatformStop]] = None,
         tvs_models: Optional[List[TunnelTVSModel]] = None,
         dt_s: float = 0.1,
+        performance_factor: float = 1.0,
     ) -> None:
         self.route = route
         self.params = params
-        self.braking_model = braking_model or create_braking_model(params)
-        self.traction_model = traction_model or create_traction_model(params)
+        self.performance_factor = float(performance_factor)
+        self.braking_model = braking_model or create_braking_model(params, performance_factor=self.performance_factor)
+        self.traction_model = traction_model or create_traction_model(params, performance_factor=self.performance_factor)
         self.speed_profile = speed_profile or RouteSpeedProfile(route)
         self.alignment_profile = alignment_profile or RouteAlignmentProfile(route)
         self.station_views = station_views or []
@@ -252,7 +254,11 @@ class MicroscopicSimulator:
             for t in active_targets:
                 dist_to_target = t.effective_target_position_m - cur_s
                 if dist_to_target > 0:
-                    req_b = self.params.max_service_deceleration_ms2
+                    # Protection/supervised targets use unscaled deceleration; operational targets scale with performance factor
+                    if getattr(t, "target_type", None) == BrakingTargetType.FUTURE_MOVEMENT_AUTHORITY or getattr(t, "braking_category", None) == BrakingCategory.SUPERVISED:
+                        req_b = self.params.max_service_deceleration_ms2
+                    else:
+                        req_b = self.params.max_service_deceleration_ms2 * self.performance_factor
                     max_allowed_sq = (t.target_speed_ms ** 2) + 2.0 * req_b * dist_to_target
                     max_allowed = math.sqrt(max(0.0, max_allowed_sq))
                     if max_allowed < v_brake_limit:
@@ -274,7 +280,7 @@ class MicroscopicSimulator:
                 # Braking needed for downstream target
                 cur_mode = DynamicMode.SERVICE_BRAKING
                 cur_op = OperationalState.RUNNING
-                target_dec = self.params.max_service_deceleration_ms2
+                target_dec = self.params.max_service_deceleration_ms2 * self.performance_factor
             elif cur_v >= v_limit - 0.05:
                 # Cruising at permissible speed limit
                 cur_mode = DynamicMode.CRUISING

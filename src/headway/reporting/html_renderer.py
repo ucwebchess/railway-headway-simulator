@@ -100,6 +100,11 @@ class HtmlReportRenderer:
             <div class='kpi-value'>{kpis.planning_capacity_tph:.1f} <span class='kpi-unit'>tph</span></div>
             <div class='kpi-subtext'>under {kpis.planning_margin_s:.0f}s operational buffer margin</div>
         </div>
+        <div class='kpi-card'>
+            <div class='kpi-label'>Performance Factor</div>
+            <div class='kpi-value'>{kpis.performance_factor_str}</div>
+            <div class='kpi-subtext'>Source: {html.escape(kpis.performance_factor_source)} (Traction & Service Braking)</div>
+        </div>
         {dur_card}
         <div class='kpi-card kpi-card-critical'>
             <div class='kpi-label'>Controlling Bottleneck</div>

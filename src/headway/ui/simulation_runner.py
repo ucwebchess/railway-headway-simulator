@@ -94,10 +94,22 @@ class SimulationRunner:
         simulation_mode: str = "Full Integrated Suite",
         scenario_id: str = "BASELINE",
         tracker: Optional[ProgressTracker] = None,
+        performance_factor: Optional[float] = None,
     ) -> Tuple[SimulationResultPackage, ReportDocument]:
         """Executes microscopic railway simulation and assembles the result package."""
         if tracker:
             tracker.start(stage="Validating Direction & Parameters", total_steps=100)
+
+        # Resolve effective performance factor
+        if performance_factor is not None:
+            eff_pf = float(performance_factor)
+            eff_pf_src = "analysis"
+        elif project.analysis.analyses:
+            eff_pf = float(project.analysis.analyses[0].performance_factor)
+            eff_pf_src = getattr(project.analysis.analyses[0], "performance_factor_source", "analysis")
+        else:
+            eff_pf = 1.0
+            eff_pf_src = "default"
 
         # 1. Direction Compatibility Validation (P15-DIR-004)
         is_valid_dir, err_msg = DirectionSelector.validate_direction(
@@ -194,6 +206,8 @@ class SimulationRunner:
             controlling_conflicts=[conflict],
             conflict_ranking=[conflict],
             blocking_intervals=blocking_intervals,
+            performance_factor=eff_pf,
+            performance_factor_source=eff_pf_src,
         )
 
         if tracker:
@@ -394,6 +408,8 @@ class SimulationRunner:
                 "tvs_events": tvs_events,
                 "permissible_speed_envelope": speed_envelope,
                 "track_links": list(infra.track_links),
+                "performance_factor": eff_pf,
+                "performance_factor_source": eff_pf_src,
             },
         )
 

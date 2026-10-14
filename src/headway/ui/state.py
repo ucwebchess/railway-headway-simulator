@@ -263,6 +263,7 @@ class AppState:
             "Technical Headway": f"{kpis.technical_headway_s:.1f} s ({kpis.technical_headway_min:.2f} min)",
             "Theoretical Capacity": f"{kpis.theoretical_capacity_tph:.1f} tph",
             "Planning Capacity": f"{kpis.planning_capacity_tph:.1f} tph",
+            "Performance Factor": kpis.performance_factor_str,
             "Controlling Bottleneck": f"{kpis.controlling_bottleneck_id} ({kpis.controlling_bottleneck_type})",
             "Running Direction": self.latest_result_package.running_direction.value,
         }

@@ -116,6 +116,12 @@ class ScenarioDefinition(BaseModel):
         default=None,
         description="Explicit direction parameter (FORWARD or REVERSE). If None, inherits from parent or default.",
     )
+    default_performance_factor: Optional[float] = Field(
+        default=None,
+        ge=0.5,
+        le=1.0,
+        description="Optional default performance factor for analyses in this scenario.",
+    )
     overrides: List[ExplicitOverride] = Field(default_factory=list, description="Explicit overrides defined in this scenario")
     creation_date: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),

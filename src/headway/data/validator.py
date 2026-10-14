@@ -580,6 +580,47 @@ class DatasetValidator:
                 id_field="tvs_id",
             )
 
+        # Performance Factor validation [0.5, 1.0]
+        an = raw_workbooks.get("HEADWAY_ANALYSIS")
+        if an:
+            for row in an.get_rows("AnalysisSettings"):
+                pf = row.get("performance_factor")
+                if pf is not None:
+                    try:
+                        v = float(pf)
+                        if v < 0.5 or v > 1.0:
+                            self.report.add_finding(
+                                error_code="ERR_FIELD_RANGE",
+                                severity=Severity.ERROR,
+                                message=f"Analysis '{row.get('analysis_id')}' performance_factor {v} is outside allowed range [0.5, 1.0].",
+                                workbook="HEADWAY_ANALYSIS",
+                                worksheet="AnalysisSettings",
+                                column="PERFORMANCE_FACTOR",
+                                row=row.get("_row"),
+                            )
+                    except (ValueError, TypeError):
+                        pass
+
+        scn = raw_workbooks.get("SCENARIOS")
+        if scn:
+            for row in scn.get_rows("ScenarioDefinitions"):
+                dpf = row.get("default_performance_factor")
+                if dpf is not None:
+                    try:
+                        v = float(dpf)
+                        if v < 0.5 or v > 1.0:
+                            self.report.add_finding(
+                                error_code="ERR_FIELD_RANGE",
+                                severity=Severity.ERROR,
+                                message=f"Scenario '{row.get('scenario_id')}' default_performance_factor {v} is outside allowed range [0.5, 1.0].",
+                                workbook="SCENARIOS",
+                                worksheet="ScenarioDefinitions",
+                                column="DEFAULT_PERFORMANCE_FACTOR",
+                                row=row.get("_row"),
+                            )
+                    except (ValueError, TypeError):
+                        pass
+
         # Signalling blocks
         sig = raw_workbooks.get("SIGNALLING")
         if sig:

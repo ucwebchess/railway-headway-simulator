@@ -68,6 +68,21 @@
             "minimum": 0.0,
             "default": 30.0
           },
+          "performance_factor": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 1.0,
+            "default": 1.0
+          },
+          "performance_factor_source": {
+            "type": "string",
+            "enum": [
+              "analysis",
+              "scenario",
+              "default"
+            ],
+            "default": "default"
+          },
           "reference_link_id": {
             "type": [
               "string",

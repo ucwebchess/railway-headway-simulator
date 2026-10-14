@@ -112,6 +112,7 @@ class TrainServiceInstance:
     stops: List[StationStop] = field(default_factory=list)
     platform_preferences: Dict[str, str] = field(default_factory=dict)
     primary_delay_s: float = 0.0
+    performance_factor: float = 1.0
 
     # Operational Lifecycle Timestamps
     actual_departure_time_s: Optional[float] = None
@@ -154,8 +155,8 @@ class TrainServiceInstance:
     def __post_init__(self) -> None:
         if not self.train_id:
             raise OperationalSimulationError("TrainServiceInstance requires a non-empty train_id.")
-        self.braking_model = create_braking_model(self.params)
-        self.traction_model = create_traction_model(self.params)
+        self.braking_model = create_braking_model(self.params, performance_factor=self.performance_factor)
+        self.traction_model = create_traction_model(self.params, performance_factor=self.performance_factor)
         self.resistance_engine = DistributedResistanceEngine(self.params)
         self.force_engine = ForceBalanceEngine(self.params, self.traction_model)
         self.current_eoa_m = self.route.total_length_m
@@ -223,6 +224,7 @@ class TrainGenerator:
         priority: Optional[int] = None,
         primary_delay_s: float = 0.0,
         platform_preferences: Optional[Dict[str, str]] = None,
+        performance_factor: float = 1.0,
     ) -> TrainServiceInstance:
         """Build a single validated TrainServiceInstance from ServiceType."""
         prio = priority if priority is not None else service_type.priority
@@ -241,6 +243,7 @@ class TrainGenerator:
             stops=list(service_type.stops),
             platform_preferences=prefs,
             primary_delay_s=primary_delay_s,
+            performance_factor=performance_factor,
         )
 
     @classmethod
@@ -250,10 +253,11 @@ class TrainGenerator:
         requested_departure_s: float = 0.0,
         train_id: Optional[str] = None,
         primary_delay_s: float = 0.0,
+        performance_factor: float = 1.0,
     ) -> List[TrainServiceInstance]:
         """P09-GEN-001: Generate single train instance."""
         tid = train_id or f"{service_type.service_id}_001"
-        return [cls.create_instance(service_type, tid, requested_departure_s, primary_delay_s=primary_delay_s)]
+        return [cls.create_instance(service_type, tid, requested_departure_s, primary_delay_s=primary_delay_s, performance_factor=performance_factor)]
 
     @classmethod
     def generate_pairwise(
@@ -264,6 +268,7 @@ class TrainGenerator:
         start_time_s: float = 0.0,
         leader_primary_delay_s: float = 0.0,
         follower_primary_delay_s: float = 0.0,
+        performance_factor: float = 1.0,
     ) -> List[TrainServiceInstance]:
         """P09-GEN-002: Generate leader-follower pair."""
         if interval_s <= 0.0:
@@ -273,12 +278,14 @@ class TrainGenerator:
             train_id=f"{leader_service.service_id}_LEAD",
             requested_departure_s=start_time_s,
             primary_delay_s=leader_primary_delay_s,
+            performance_factor=performance_factor,
         )
         follower = cls.create_instance(
             follower_service,
             train_id=f"{follower_service.service_id}_FOLL",
             requested_departure_s=start_time_s + interval_s,
             primary_delay_s=follower_primary_delay_s,
+            performance_factor=performance_factor,
         )
         return [leader, follower]
 
@@ -290,6 +297,7 @@ class TrainGenerator:
         count: int,
         start_time_s: float = 0.0,
         train_id_prefix: Optional[str] = None,
+        performance_factor: float = 1.0,
     ) -> List[TrainServiceInstance]:
         """P09-GEN-003 & Benchmark A: Generate N trains at constant scheduled departure interval t_n = t_0 + n*H."""
         if count < 1:
@@ -302,7 +310,7 @@ class TrainGenerator:
         for n in range(count):
             t_dep = start_time_s + n * interval_s
             tid = f"{pfx}_{n + 1:03d}"
-            instances.append(cls.create_instance(service_type, tid, t_dep))
+            instances.append(cls.create_instance(service_type, tid, t_dep, performance_factor=performance_factor))
         return instances
 
     @classmethod
@@ -312,9 +320,10 @@ class TrainGenerator:
         count: int,
         interval_s: float,
         start_time_s: float = 0.0,
+        performance_factor: float = 1.0,
     ) -> List[TrainServiceInstance]:
         """P09-GEN-004: Repeated identical train services."""
-        return cls.generate_fixed_interval(service_type, interval_s, count, start_time_s)
+        return cls.generate_fixed_interval(service_type, interval_s, count, start_time_s, performance_factor=performance_factor)
 
     @classmethod
     def generate_repeated_mixed(
@@ -323,6 +332,7 @@ class TrainGenerator:
         repeat_cycles: int,
         interval_s: float,
         start_time_s: float = 0.0,
+        performance_factor: float = 1.0,
     ) -> List[TrainServiceInstance]:
         """P09-GEN-005: Repeated cycle of heterogeneous service types."""
         if not service_sequence:
@@ -336,7 +346,7 @@ class TrainGenerator:
         for _ in range(repeat_cycles):
             for st in service_sequence:
                 tid = f"{st.service_id}_{train_num:03d}"
-                instances.append(cls.create_instance(st, tid, curr_t))
+                instances.append(cls.create_instance(st, tid, curr_t, performance_factor=performance_factor))
                 curr_t += interval_s
                 train_num += 1
         return instances

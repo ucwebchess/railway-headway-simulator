@@ -57,9 +57,21 @@ def _build_instructions_sheet(wb: openpyxl.Workbook, wb_def: WorkbookDef) -> Non
         "5. Cross-references (such as Link IDs, Station IDs, Train Type IDs) must match exact casing.",
         "6. Do not save workbook with Excel macros (.xlsm is prohibited).",
         "7. For multi-link signalling blocks or TVS sections, define spatial geometry intervals in the 'BlockGeometry' or 'TVSGeometry' worksheet with sequential numbering.",
+    ]
+
+    if wb_def.workbook_type == "HEADWAY_ANALYSIS":
+        instructions.append(
+            "8. PERFORMANCE_FACTOR: Fraction of nominal traction and service braking available to the train. 1.0 = 100% (full performance), 0.95 = 95%. Does not affect protection braking. Default 1.0 if blank."
+        )
+    elif wb_def.workbook_type == "SCENARIOS":
+        instructions.append(
+            "8. DEFAULT_PERFORMANCE_FACTOR: Optional scenario-level default performance factor for analyses within this scenario (0.5 to 1.0). Default 1.0 if blank."
+        )
+
+    instructions.extend([
         "",
         "WORKSHEET INVENTORY:",
-    ]
+    ])
 
     for idx, text in enumerate(instructions, start=4):
         ws.cell(row=idx, column=1, value=text).font = Font(size=10, bold=(text.isupper() and len(text) > 5))

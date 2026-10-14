@@ -52,6 +52,8 @@ class TechnicalHeadwaySolver:
         signalling_system: str = "FIXED_BLOCK",
         headway_definition: str = "UNIMPEDED_TECHNICAL_MINIMUM",
         custom_dispatch_min_s: Optional[float] = None,
+        performance_factor: float = 1.0,
+        performance_factor_source: str = "default",
     ) -> HeadwayResult:
         """P08-HW-006 & 007: Solves technical minimum headway H_min = max(H_dispatch, max H_{u,v})."""
         min_dispatch = (
@@ -125,6 +127,8 @@ class TechnicalHeadwaySolver:
                 "controlling_count": len(controlling_conflicts),
                 "is_dispatch_limited": abs(h_min - min_dispatch) <= 1e-4 and len(conflicts) > 0,
             },
+            performance_factor=performance_factor,
+            performance_factor_source=performance_factor_source,
         )
 
     def _generate_stairway_data(

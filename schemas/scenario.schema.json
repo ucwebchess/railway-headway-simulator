@@ -20,6 +20,14 @@
       "type": "boolean",
       "default": false
     },
+    "default_performance_factor": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0.5,
+      "maximum": 1.0
+    },
     "overrides": {
       "type": "array",
       "items": {
