@@ -240,7 +240,7 @@ class ReportMetadata:
     report_type: ReportType
     running_direction: RunningDirection
     generation_time: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    software_version: str = "1.1.0"
+    software_version: str = "1.2.0"
     input_configuration_hash: str = ""
     validation_status: str = "VALID"
     title: str = "Railway Headway & Line Capacity Assessment"

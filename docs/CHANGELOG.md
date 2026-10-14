@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] — Multi-Link Signalling Blocks & Schema Extension
+
+### Added
+
+- **Multi-Link Signalling Blocks**: Formalized spatial decomposition of fixed signalling blocks across multiple contiguous physical track links via dedicated `BlockGeometry` worksheet (`BLOCK_ID`, `SEQUENCE`, `LINK_ID`, `START_OFFSET_M`, `END_OFFSET_M`).
+- **Multi-Link TVS Sections**: Formalized spatial decomposition of Tunnel Ventilation Sections across multiple contiguous physical track links via dedicated `TVSGeometry` worksheet (`TVS_ID`, `SEQUENCE`, `LINK_ID`, `START_OFFSET_M`, `END_OFFSET_M`).
+- **Topological & Geometric Validation**:
+  - Sequence continuity starting at 1 with strict monotonic numbering (`ERR_GEOMETRY_SEQUENCE_DISCONTINUITY`).
+  - Network link continuity verifying consecutive intervals connect at shared topology vertices (`ERR_ENG_LINK_DISCONTINUITY`).
+  - Physical boundary continuity across links and on same link (`ERR_ENG_PHYSICAL_DISCONTINUITY`).
+  - Link bounds clamping and coordinate order verification (`ERR_ENG_BLOCK_BOUNDS_INVALID`, `ERR_ENG_TVS_BOUNDS_INVALID`).
+  - Referential integrity checks for `BLOCK_ID`, `TVS_ID`, and `LINK_ID`.
+- **Dual Geometry Detection**: Emits `WARN_DUAL_GEOMETRY_SPECIFIED` when both geometry worksheets and legacy single-link columns are present, seamlessly giving precedence to geometry worksheets.
+- **Reference Dataset `06_multilink_blocks`**: Reference 4.7 km corridor with 3 multi-link signalling blocks, multi-link TVS section, station platforms, and pairwise headway analysis validating with zero errors.
+- **Template Updates**: Standard Excel templates updated to include `BlockGeometry` and `TVSGeometry` worksheets, omitting deprecated geometry columns from master tables.
+
+### Fixed
+
+- **Multi-Train Simulation Resource Clearance**: Corrected premature resource clearance in `multi_train_engine.py` (`_update_resource_occupations`). The engine now maintains per-train, per-resource active interval tracking; a resource is held whenever the train front intersects any interval and releases only after the train rear has cleared all traversed intervals and post-clearance delay timers expire.
+- **Multi-Link EOA Calculation**: Corrected downstream End of Authority calculation in `_find_downstream_eoa` to accurately evaluate block entry distance for multi-link blocks.
+
+---
+
 ## [1.1.0] — Comprehensive Demonstration Line
 
 ### Added
