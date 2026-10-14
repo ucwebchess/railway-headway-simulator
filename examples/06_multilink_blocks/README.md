@@ -33,9 +33,14 @@ The demonstration corridor consists of 4 contiguous track links spanning 4,700 m
 ### Tunnel & Multi-Link TVS Section
 - **Tunnel `TNL_01`**: Summit Mountain Tunnel between North Portal `ND_03` and South Portal `ND_04`.
 - **TVS Section `TVS_01`**: A multi-link ventilation section spanning 1,100 m across the tunnel entry boundary:
-  - Interval 1: `LNK_02`, offset 600.0 m to 1,200.0 m (600 m length).
-  - Interval 2: `LNK_03`, offset 0.0 m to 500.0 m (500 m length).
-  - Governed by holding signal `SIG_02` on `LNK_02` with 15.0 s ventilation purge delay.
+  - Sequence 1: `LNK_02`, offset 600.0 m to 1,200.0 m (600 m length on open-air approach).
+  - Sequence 2: `LNK_03`, offset 0.0 m to 500.0 m (500 m length inside tunnel `TNL_01`).
+  - Governed by holding signal `SIG_02` on `LNK_02` (at 600.0 m) with 15.0 s ventilation purge delay.
+
+#### Portal Spanning Rationale & `TUNNEL_ID` Foreign Key Handling
+In this dataset, `TVS_01` deliberately spans across the North Tunnel Portal at node `ND_03`:
+1. **Engineering Design Rationale (NFPA 130 / EN 50126)**: In railway tunnel safety engineering, tunnel ventilation zones often encompass the open-air portal approach (the "portal influence zone" or pre-portal holding buffer). Placing holding signal `SIG_02` on open-air link `LNK_02` (600 m before portal `ND_03`) ensures that following trains are held safely back in the open atmosphere rather than queuing directly at the portal threshold during tunnel smoke extraction, emergency purge, or evacuation operations.
+2. **Schema Handling of `TUNNEL_ID`**: In the `TVSSections` worksheet, `TUNNEL_ID` (`TNL_01`) serves as a facility-level foreign key to the `Tunnels` asset registry. It designates the primary tunnel infrastructure and ventilation plant responsible for the zone. The schema intentionally does not constrain constituent track links in `TVSGeometry` to be enclosed tunnel structures, thereby permitting multi-link TVS zones to extend across portal approaches while maintaining clean referential integrity to `TNL_01`.
 
 ---
 
