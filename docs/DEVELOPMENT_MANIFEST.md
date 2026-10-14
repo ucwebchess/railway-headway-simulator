@@ -1,27 +1,27 @@
 # DEVELOPMENT MANIFEST
 ## Railway Headway & Capacity Simulator
 
-**Current Version:** `1.2.0`  
+**Current Version:** `1.3.0`  
 **Current Phase:** `RELEASED`  
 **Release Date:** `2026-10-14`  
 **Status:** `Released`  
-**Test Status:** 790 tests passing  
-**Latest Addition:** Multi-Link Signalling Blocks & TVS Sections (`06_multilink_blocks`)  
+**Test Status:** 803 tests passing  
+**Latest Addition:** Operational Performance Factor (`RHS-FEATURE-PERF-FACTOR-001`)  
 **Reference Examples:** `examples/05_comprehensive_line/`, `examples/06_multilink_blocks/`  
 **License:** `Proprietary — All Rights Reserved`  
 **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)  
-**All Modules:** Complete (P00–P15 + Multi-Link Schema & Clearance Engine)  
+**All Modules:** Complete (P00–P15 + Multi-Link Schema + Operational Performance Factor)  
 **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`  
-**Next Steps:** None for Release 1.2.0. Future enhancements documented separately.  
-**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-EXPAND-EXAMPLES-001; RHS-CORRECTION-MULTILINK-001; RHS-RELEASE-PREP-V1.2.0-001  
+**Next Steps:** None for Release 1.3.0. Future enhancements documented separately.  
+**Authority:** RHS-MASTER-001 § 35; RHS-P15-001 § 32; RHS-EXPAND-EXAMPLES-001; RHS-CORRECTION-MULTILINK-001; RHS-FEATURE-PERF-FACTOR-001  
 
 ---
 
 ### 1. Project Milestone State
 
-- **Current Active Milestone:** RELEASED (Release 1.2.0 — Production Release)
-- **Preceding Milestones:** P00 (Foundation), P01 (Data Architecture), RHS-CI-001 (GitHub Actions CI), P02 (Physical Infrastructure Network), P03 (Rolling Stock Physics), P04 (Microscopic Train Dynamics), P05 (Resource Management & Fixed-Block Signalling), P06 (ETCS L2 & CBTC), P07 (Stations, Junctions & TVS), P08 (Technical Headway & Blocking Time), P09 (Microscopic Multi-Train Operations), P10 (Railway Capacity, UIC 406 & Sensitivity Analysis), P11 (Stochastic Simulation & Operational Reliability), P12 (Scenario Management & Comparative Analytics), P13 (Interactive Visualizations & Diagrams), P14 (Multi-Format Engineering Reporting), P15 (Complete Application & Verification), Release 1.0.3, Release 1.1.0, RHS-CORRECTION-MULTILINK-001
-- **Status:** All planned development milestones completed. Release 1.2.0 prepared for production deployment.
+- **Current Active Milestone:** RELEASED (Release 1.3.0 — Production Release)
+- **Preceding Milestones:** P00 (Foundation), P01 (Data Architecture), RHS-CI-001 (GitHub Actions CI), P02 (Physical Infrastructure Network), P03 (Rolling Stock Physics), P04 (Microscopic Train Dynamics), P05 (Resource Management & Fixed-Block Signalling), P06 (ETCS L2 & CBTC), P07 (Stations, Junctions & TVS), P08 (Technical Headway & Blocking Time), P09 (Microscopic Multi-Train Operations), P10 (Railway Capacity, UIC 406 & Sensitivity Analysis), P11 (Stochastic Simulation & Operational Reliability), P12 (Scenario Management & Comparative Analytics), P13 (Interactive Visualizations & Diagrams), P14 (Multi-Format Engineering Reporting), P15 (Complete Application & Verification), Release 1.0.3, Release 1.1.0, Release 1.2.0, RHS-FEATURE-PERF-FACTOR-001
+- **Status:** All planned development milestones completed. Release 1.3.0 prepared for production deployment.
 
 ---
 
@@ -29,7 +29,7 @@
 
 | Subsystem Module | File Path | Status | Notes |
 |---|---|---|---|
-| Core Version | `src/headway/core/version.py` | Complete | Single source of version (`1.2.0`) |
+| Core Version | `src/headway/core/version.py` | Complete | Single source of version (`1.3.0`) |
 | Core Exceptions | `src/headway/core/exceptions.py` | Complete | Structured base and specialized exception types (`RollingStockError`, `InfrastructureError`, `SignallingError`) |
 | Core Configuration | `src/headway/core/configuration.py` | Complete | Strongly typed config, Colab detection, env overrides |
 | Core Logging | `src/headway/core/logging_config.py` | Complete | Contextual logging, Colab-compatible streams, file log |
@@ -91,18 +91,18 @@
 
 ### 4. Release Status
 
-**Release 1.2.0 — Production Released.**  
-- **Current Version:** `1.2.0`
+**Release 1.3.0 — Production Released.**  
+- **Current Version:** `1.3.0`
 - **Current Phase:** `RELEASED`
 - **Release Date:** `2026-10-14`
 - **Status:** `Released`
-- **Test Status:** 790 tests passing (100% pass rate: 790 passed, 0 failed, 0 skipped)
-- **Latest Addition:** Multi-Link Signalling Blocks & TVS Sections (`06_multilink_blocks`)
+- **Test Status:** 803 tests passing (100% pass rate: 803 passed, 0 failed, 0 skipped)
+- **Latest Addition:** Operational Performance Factor (`RHS-FEATURE-PERF-FACTOR-001`)
 - **Reference Examples:** `examples/05_comprehensive_line/`, `examples/06_multilink_blocks/`
-- **All Modules:** Complete (All 16 milestone increments P00 through P15 + Multi-Link Schema & Clearance Engine verified)
+- **All Modules:** Complete (All 16 milestone increments P00 through P15 + Multi-Link Schema & Clearance Engine + Operational Performance Factor verified)
 - **CI Status:** Passing on `main` (`.github/workflows/python-tests.yml`)
 - **License:** Proprietary — All Rights Reserved
 - **Known Limitations:** Reference `docs/KNOWN_LIMITATIONS.md`
-- **Next Steps:** None for Release 1.2.0. Future enhancements documented separately.
+- **Next Steps:** None for Release 1.3.0. Future enhancements documented separately.
 - The complete microscopic railway headway simulation application is ready for final delivery and operational deployment.
 

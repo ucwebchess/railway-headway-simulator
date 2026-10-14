@@ -2,7 +2,7 @@
 ## Railway Headway & Capacity Simulator
 
 **Document ID:** RHS-ARCH-001  
-**Version:** 1.2.0  
+**Version:** 1.3.0  
 **Status:** UPDATED (Milestone P02 Infrastructure Engine Integrated)  
 **Governing Prompt:** RHS-MASTER-001 § 4; RHS-P01-001; RHS-P02-001  
 
@@ -31,7 +31,7 @@ src/headway/
 │   ├── identifiers.py      # Identifier normalization, syntax checks, duplicate detection
 │   ├── logging_config.py   # Centralized contextual logging
 │   ├── units.py            # Centralized unit normalization (SI) and Davis coefficient conversion
-│   └── version.py          # Single authoritative version source (1.2.0)
+│   └── version.py          # Single authoritative version source (1.3.0)
 │
 ├── data/               # Excel ingestion, validation, canonical contracts, packaging (P01)
 │   ├── canonical.py        # Strongly typed Pydantic models with SI internal units
