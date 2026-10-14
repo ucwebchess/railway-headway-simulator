@@ -115,10 +115,50 @@ def _parse_cell_value(
 
         elif col_def.field_type == FieldType.FLOAT:
             f_val = float(raw_val)
+            if col_def.min_value is not None and f_val < col_def.min_value:
+                report.add_finding(
+                    error_code="ERR_FIELD_RANGE",
+                    severity=Severity.ERROR,
+                    message=f"Value {f_val} for column '{col_def.name}' is below minimum allowed value {col_def.min_value}.",
+                    column=col_def.name,
+                    recommendation=f"Provide a value >= {col_def.min_value}.",
+                    **loc_ctx,
+                )
+                return None, False
+            if col_def.max_value is not None and f_val > col_def.max_value:
+                report.add_finding(
+                    error_code="ERR_FIELD_RANGE",
+                    severity=Severity.ERROR,
+                    message=f"Value {f_val} for column '{col_def.name}' is above maximum allowed value {col_def.max_value}.",
+                    column=col_def.name,
+                    recommendation=f"Provide a value <= {col_def.max_value}.",
+                    **loc_ctx,
+                )
+                return None, False
             return f_val, True
 
         elif col_def.field_type == FieldType.INTEGER:
             i_val = int(round(float(raw_val)))
+            if col_def.min_value is not None and i_val < col_def.min_value:
+                report.add_finding(
+                    error_code="ERR_FIELD_RANGE",
+                    severity=Severity.ERROR,
+                    message=f"Value {i_val} for column '{col_def.name}' is below minimum allowed value {col_def.min_value}.",
+                    column=col_def.name,
+                    recommendation=f"Provide a value >= {col_def.min_value}.",
+                    **loc_ctx,
+                )
+                return None, False
+            if col_def.max_value is not None and i_val > col_def.max_value:
+                report.add_finding(
+                    error_code="ERR_FIELD_RANGE",
+                    severity=Severity.ERROR,
+                    message=f"Value {i_val} for column '{col_def.name}' is above maximum allowed value {col_def.max_value}.",
+                    column=col_def.name,
+                    recommendation=f"Provide a value <= {col_def.max_value}.",
+                    **loc_ctx,
+                )
+                return None, False
             return i_val, True
 
         elif col_def.field_type == FieldType.BOOLEAN:

@@ -86,11 +86,20 @@ def convert_raw_to_canonical(
     # 4. Convert Operations
     ops_model = _build_operations_model(raw_workbooks.get("OPERATIONS"))
 
-    # 5. Convert Analysis
-    an_model = _build_analysis_model(raw_workbooks.get("HEADWAY_ANALYSIS"))
-
-    # 6. Convert Scenarios
+    # 5. Convert Scenarios
     scenarios = _build_scenarios(raw_workbooks.get("SCENARIOS"))
+
+    # Extract scenario-level default performance factor
+    scenario_default_pf: Optional[float] = None
+    for scn in scenarios:
+        if scn.is_baseline and scn.default_performance_factor is not None:
+            scenario_default_pf = scn.default_performance_factor
+            break
+        elif scenario_default_pf is None and scn.default_performance_factor is not None:
+            scenario_default_pf = scn.default_performance_factor
+
+    # 6. Convert Analysis
+    an_model = _build_analysis_model(raw_workbooks.get("HEADWAY_ANALYSIS"), default_pf=scenario_default_pf)
 
     return CanonicalProject(
         project_id=prj_id,
@@ -440,25 +449,39 @@ def _build_operations_model(ops_wb: Optional[RawWorkbookData]) -> OperationsMode
     )
 
 
-def _build_analysis_model(an_wb: Optional[RawWorkbookData]) -> AnalysisModel:
+def _build_analysis_model(an_wb: Optional[RawWorkbookData], default_pf: Optional[float] = None) -> AnalysisModel:
     if not an_wb:
         return AnalysisModel()
 
-    analyses = [
-        AnalysisConfig(
-            analysis_id=r["analysis_id"],
-            analysis_type=AnalysisType(r.get("analysis_type", "PAIRWISE_HEADWAY")),
-            leader_service_id=r.get("leader_service_id"),
-            follower_service_id=r.get("follower_service_id"),
-            integration_step_s=float(r.get("integration_step_s", 0.1)),
-            headway_tolerance_s=float(r.get("headway_tolerance_s", 0.1)),
-            search_time_window_s=float(r.get("search_time_window_s", 600.0)),
-            planning_margin_s=float(r.get("planning_margin_s", 30.0)),
-            reference_link_id=r.get("reference_link_id"),
-            reference_offset_m=float(r["reference_offset_m"]) if r.get("reference_offset_m") is not None else None,
+    analyses = []
+    for r in an_wb.get_rows("AnalysisSettings"):
+        raw_pf = r.get("performance_factor")
+        if raw_pf is not None and str(raw_pf).strip() != "":
+            pf = float(raw_pf)
+            source = "analysis"
+        elif default_pf is not None:
+            pf = float(default_pf)
+            source = "scenario"
+        else:
+            pf = 1.0
+            source = "default"
+
+        analyses.append(
+            AnalysisConfig(
+                analysis_id=r["analysis_id"],
+                analysis_type=AnalysisType(r.get("analysis_type", "PAIRWISE_HEADWAY")),
+                leader_service_id=r.get("leader_service_id"),
+                follower_service_id=r.get("follower_service_id"),
+                integration_step_s=float(r.get("integration_step_s", 0.1)),
+                headway_tolerance_s=float(r.get("headway_tolerance_s", 0.1)),
+                search_time_window_s=float(r.get("search_time_window_s", 600.0)),
+                planning_margin_s=float(r.get("planning_margin_s", 30.0)),
+                performance_factor=pf,
+                performance_factor_source=source,
+                reference_link_id=r.get("reference_link_id"),
+                reference_offset_m=float(r["reference_offset_m"]) if r.get("reference_offset_m") is not None else None,
+            )
         )
-        for r in an_wb.get_rows("AnalysisSettings")
-    ]
 
     return AnalysisModel(
         dataset_id=an_wb.metadata.get("DATASET_ID", "AN_DATASET_01"),
@@ -486,10 +509,13 @@ def _build_scenarios(scn_wb: Optional[RawWorkbookData]) -> List[Scenario]:
     scenarios = []
     for r in scn_wb.get_rows("ScenarioDefinitions"):
         sid = r["scenario_id"]
+        raw_dpf = r.get("default_performance_factor")
+        dpf = float(raw_dpf) if raw_dpf is not None and str(raw_dpf).strip() != "" else None
         scn = Scenario(
             scenario_id=sid,
             description=r["description"],
             is_baseline=bool(r.get("is_baseline", False)),
+            default_performance_factor=dpf,
             overrides=overrides_map.get(sid, []),
         )
         scenarios.append(scn)

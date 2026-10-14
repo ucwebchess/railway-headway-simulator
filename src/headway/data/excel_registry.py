@@ -34,6 +34,8 @@ class ColumnDef:
     description: str = ""
     example_value: Optional[Any] = None
     deprecated: bool = False
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -444,6 +446,7 @@ HEADWAY_ANALYSIS_WORKBOOK = WorkbookDef(
                 ColumnDef("HEADWAY_TOLERANCE_S", "headway_tolerance_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=0.1, description="Headway search tolerance in seconds", example_value=0.1),
                 ColumnDef("SEARCH_WINDOW_S", "search_time_window_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=600.0, description="Max follower search window in seconds", example_value=600.0),
                 ColumnDef("PLANNING_MARGIN_S", "planning_margin_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=30.0, description="Planning operational margin buffer in seconds", example_value=30.0),
+                ColumnDef("PERFORMANCE_FACTOR", "performance_factor", FieldType.FLOAT, required=False, min_value=0.5, max_value=1.0, default_value=None, description="Operational performance factor applied to traction and service braking (0.5 <= value <= 1.0)", example_value=1.0),
                 ColumnDef("REF_LINK_ID", "reference_link_id", FieldType.STRING, required=False, description="Spatial reference measurement line link ID", example_value="LNK_01"),
                 ColumnDef("REF_OFFSET_M", "reference_offset_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", description="Spatial reference measurement line offset", example_value=0.0),
             ],
@@ -467,12 +470,13 @@ SCENARIOS_WORKBOOK = WorkbookDef(
                 ColumnDef("SCENARIO_ID", "scenario_id", FieldType.STRING, required=True, description="Unique scenario identifier", example_value="SCN_BASELINE"),
                 ColumnDef("DESCRIPTION", "description", FieldType.STRING, required=True, description="Scenario description", example_value="Baseline 3-Aspect signalling"),
                 ColumnDef("IS_BASELINE", "is_baseline", FieldType.BOOLEAN, required=False, default_value=False, description="Whether this scenario is the immutable baseline", example_value=True),
+                ColumnDef("DEFAULT_PERFORMANCE_FACTOR", "default_performance_factor", FieldType.FLOAT, required=False, min_value=0.5, max_value=1.0, default_value=None, description="Optional default performance factor for analyses in this scenario (0.5 <= value <= 1.0)", example_value=1.0),
             ],
             required=True,
             min_rows=1,
             example_rows=[
-                ["SCN_BASELINE", "Baseline 3-Aspect signalling", True],
-                ["SCN_ALT_01", "Alternative headway sensitivity with extended overlap", False],
+                ["SCN_BASELINE", "Baseline 3-Aspect signalling", True, 1.0],
+                ["SCN_ALT_01", "Alternative headway sensitivity with extended overlap", False, None],
             ],
         ),
         WorksheetDef(

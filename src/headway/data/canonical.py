@@ -521,6 +521,20 @@ class AnalysisConfig(BaseCanonicalModel):
     headway_tolerance_s: float = Field(default=0.1, gt=0.0, description="Headway convergence search tolerance")
     search_time_window_s: float = Field(default=600.0, gt=0.0, description="Maximum follower search interval")
     planning_margin_s: float = Field(default=30.0, ge=0.0, description="Operational planning margin buffer seconds")
+    performance_factor: float = Field(
+        1.0,
+        ge=0.5,
+        le=1.0,
+        description=(
+            "Operational performance factor applied to traction and service "
+            "braking. 1.0 = full performance, 0.95 = 95%. Does not affect "
+            "supervised or emergency braking."
+        ),
+    )
+    performance_factor_source: str = Field(
+        default="default",
+        description="Source of the effective performance factor ('analysis', 'scenario', or 'default').",
+    )
     reference_link_id: Optional[str] = Field(default=None, description="Spatial reference measurement line link ID")
     reference_offset_m: Optional[float] = Field(default=None, ge=0.0, description="Spatial reference offset in meters")
 
@@ -557,6 +571,12 @@ class Scenario(BaseCanonicalModel):
     scenario_id: str = Field(..., description="Unique scenario identifier")
     description: str = Field(..., description="Scenario description")
     is_baseline: bool = Field(default=False, description="Whether this scenario represents the baseline")
+    default_performance_factor: Optional[float] = Field(
+        None,
+        ge=0.5,
+        le=1.0,
+        description="Optional default performance factor for analyses in this scenario.",
+    )
     overrides: List[ScenarioOverride] = Field(default_factory=list, description="Scalar parameter overrides")
 
     @field_validator("scenario_id")
