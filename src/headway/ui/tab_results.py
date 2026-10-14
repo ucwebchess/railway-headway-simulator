@@ -164,16 +164,29 @@ def create_results_tab() -> Dict[str, Any]:
         pkg = session_state.latest_result_package
         doc = session_state.latest_report_doc
 
+        # If report doc is missing but result package exists, assemble it using standard pipeline (same as Tab 10)
+        if not doc and pkg:
+            try:
+                from headway.reporting.report_assembly import ReportAssembler
+                doc = ReportAssembler.assemble_report(package=pkg)
+                session_state.latest_report_doc = doc
+            except Exception:
+                doc = None
+
         empty_fig = go.Figure()
         empty_fig.add_annotation(text="No Simulation Results Available — Run in Tab 8", showarrow=False)
 
         if not pkg or not doc:
             banner = DirectionSelector.render_banner(session_state.selected_running_direction)
-            k_hw = """<div class="kpi-card"><div class="kpi-title">Technical Min Headway</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_theo = """<div class="kpi-card"><div class="kpi-title">Theoretical Line Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_plan = """<div class="kpi-card"><div class="kpi-title">Planning Operational Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_perf = """<div class="kpi-card"><div class="kpi-title">Performance Factor</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_bot = """<div class="kpi-card"><div class="kpi-title">Controlling Bottleneck</div><div style="font-size: 20px; font-weight: 700; color: #DC2626;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
+            msg = "No simulation results available. Run a simulation in Tab 8 first."
+            empty_fig = go.Figure()
+            empty_fig.add_annotation(text=msg, showarrow=False)
+
+            k_hw = f"""<div class="kpi-card"><div class="kpi-title">Technical Min Headway</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_theo = f"""<div class="kpi-card"><div class="kpi-title">Theoretical Line Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_plan = f"""<div class="kpi-card"><div class="kpi-title">Planning Operational Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_perf = f"""<div class="kpi-card"><div class="kpi-title">Performance Factor</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_bot = f"""<div class="kpi-card"><div class="kpi-title">Controlling Bottleneck</div><div style="font-size: 20px; font-weight: 700; color: #DC2626;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
             return (
                 banner, k_hw, k_theo, k_plan, k_perf, k_bot,
                 empty_fig, empty_fig, empty_fig, [],
@@ -265,7 +278,7 @@ def create_results_tab() -> Dict[str, Any]:
                     ])
 
         return (
-            banner, k_hw, k_theo, k_plan, k_bot,
+            banner, k_hw, k_theo, k_plan, k_perf, k_bot,
             fig_speed, fig_stair, fig_seven, conf_rows,
             fig_plat, fig_mt, mt_rows,
             fig_td, fig_tvs,

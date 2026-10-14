@@ -119,8 +119,8 @@ class MultiTrainSimulator:
         self.all_trains: List[TrainServiceInstance] = []
         self.time_distance_dataset = MultiTrainTimeDistanceDataset()
 
-        # Cached unconstrained journey times: service_id -> (unconstrained_jt, planned_dwell)
-        self._unconstrained_cache: Dict[str, Tuple[float, float]] = {}
+        # Cached unconstrained journey times: (service_id, performance_factor) -> (unconstrained_jt, planned_dwell)
+        self._unconstrained_cache: Dict[Tuple[str, float], Tuple[float, float]] = {}
         # Track occupied resources by train: train_id -> set of resource_ids
         self._train_occupied_resources: Dict[str, Set[str]] = {}
         self._train_entered_resources: Dict[str, Set[Any]] = {}
@@ -145,16 +145,22 @@ class MultiTrainSimulator:
         for t in trains:
             self.register_train(t)
 
-    def _get_unconstrained_journey_time(self, service: ServiceType) -> Tuple[float, float]:
+    def _get_unconstrained_journey_time(
+        self,
+        service: ServiceType,
+        performance_factor: float = 1.0,
+    ) -> Tuple[float, float]:
         """Compute and cache standalone unconstrained journey time for a service type."""
-        if service.service_id in self._unconstrained_cache:
-            return self._unconstrained_cache[service.service_id]
+        cache_key = (service.service_id, round(float(performance_factor), 4))
+        if cache_key in self._unconstrained_cache:
+            return self._unconstrained_cache[cache_key]
 
         sim = MicroscopicSimulator(
             route=service.route,
             params=service.params,
             station_views=[],
             dt_s=self.dt_s,
+            performance_factor=performance_factor,
         )
         traj = sim.simulate(
             train_id=f"REF_{service.service_id}",
@@ -164,7 +170,7 @@ class MultiTrainSimulator:
         jt = traj.journey_time_s
         # Calculate planned dwell time
         planned_dwell = sum(st.dwell_time_s for st in service.stops)
-        self._unconstrained_cache[service.service_id] = (jt, planned_dwell)
+        self._unconstrained_cache[cache_key] = (jt, planned_dwell)
         return jt, planned_dwell
 
     def _find_downstream_eoa(
@@ -784,7 +790,10 @@ class MultiTrainSimulator:
                 priority=train.priority,
                 running_direction=train.running_direction,
             )
-            unconstrained_jt, planned_dwell = self._get_unconstrained_journey_time(st)
+            unconstrained_jt, planned_dwell = self._get_unconstrained_journey_time(
+                st,
+                performance_factor=getattr(train, "performance_factor", 1.0),
+            )
             scheduled_arr = train.requested_departure_time_s + unconstrained_jt
 
             delays_by_cause = {DelayCause[c] if c in DelayCause.__members__ else DelayCause.OTHER: dur for c, dur in train.accumulated_delay_by_cause.items()}

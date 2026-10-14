@@ -95,15 +95,26 @@ class SimulationRunner:
         scenario_id: str = "BASELINE",
         tracker: Optional[ProgressTracker] = None,
         performance_factor: Optional[float] = None,
+        analysis_id: Optional[str] = None,
     ) -> Tuple[SimulationResultPackage, ReportDocument]:
         """Executes microscopic railway simulation and assembles the result package."""
         if tracker:
             tracker.start(stage="Validating Direction & Parameters", total_steps=100)
 
+        # Resolve target analysis if provided or default to primary analysis
+        target_analysis = None
+        if analysis_id is not None:
+            target_analysis = next((a for a in project.analysis.analyses if a.analysis_id == analysis_id), None)
+        elif project.analysis.analyses:
+            target_analysis = project.analysis.analyses[0]
+
         # Resolve effective performance factor
         if performance_factor is not None:
             eff_pf = float(performance_factor)
             eff_pf_src = "analysis"
+        elif target_analysis and getattr(target_analysis, "performance_factor", None) is not None:
+            eff_pf = float(target_analysis.performance_factor)
+            eff_pf_src = getattr(target_analysis, "performance_factor_source", "analysis")
         elif project.analysis.analyses:
             eff_pf = float(project.analysis.analyses[0].performance_factor)
             eff_pf_src = getattr(project.analysis.analyses[0], "performance_factor_source", "analysis")
@@ -137,11 +148,22 @@ class SimulationRunner:
         total_length_m = sum(lnk.length_m for lnk in track_links)
         speed_limit_ms = min(lnk.max_speed_ms for lnk in track_links) if track_links else 25.0
 
+        # Resolve leader service and rolling stock
+        sp_leader = None
+        if target_analysis and target_analysis.leader_service_id:
+            sp_leader = next((sp for sp in ops.service_patterns if sp.service_pattern_id == target_analysis.leader_service_id), None)
+
+        tt_leader = None
+        if sp_leader:
+            tt_leader = next((tt for tt in rs.train_types if tt.train_type_id == sp_leader.train_type_id), None)
+
         # Resolve primary train types
         train_types = list(rs.train_types)
-        primary_tt = train_types[0] if train_types else None
+        primary_tt = tt_leader or (train_types[0] if train_types else None)
         train_len_m = primary_tt.length_m if primary_tt else 140.0
         max_speed_ms = min(speed_limit_ms, primary_tt.max_speed_ms if primary_tt else 25.0)
+
+        dwell_s = sum(st.dwell_time_s for st in sp_leader.stops) if (sp_leader and sp_leader.stops) else 0.0
 
         if tracker:
             tracker.update(current_step=25, stage="Microscopic Dynamics Integration", status_message=f"Integrating train movement dynamics in {running_direction.value} direction...")
@@ -153,6 +175,7 @@ class SimulationRunner:
             train_length_m=train_len_m,
             max_speed_ms=max_speed_ms,
             running_direction=running_direction,
+            performance_factor=eff_pf,
         )
         traj_follower = cls._build_microscopic_trajectory(
             train_id="TRN_FOLLOWER",
@@ -160,6 +183,7 @@ class SimulationRunner:
             train_length_m=train_len_m,
             max_speed_ms=max_speed_ms,
             running_direction=running_direction,
+            performance_factor=eff_pf,
         )
 
         if tracker:
@@ -172,6 +196,8 @@ class SimulationRunner:
             running_direction=running_direction,
             train_length_m=train_len_m,
             speed_ms=max_speed_ms,
+            performance_factor=eff_pf,
+            dwell_time_s=dwell_s,
         )
 
         # Build pairwise conflicts and solve minimum technical headway
@@ -191,12 +217,16 @@ class SimulationRunner:
             bottleneck_type="CRITICAL_BLOCK",
         )
 
+        analysis_name = target_analysis.analysis_id if target_analysis else f"AN_{run_id}"
+        leader_svc = target_analysis.leader_service_id if target_analysis else "SVC_MAIN_01"
+        follower_svc = target_analysis.follower_service_id if target_analysis else "SVC_MAIN_02"
+
         hw_result = HeadwayResult(
             run_id=run_id,
-            analysis_id=f"AN_{run_id}",
+            analysis_id=analysis_name,
             scenario_id=scenario_id,
-            leader_service_id="SVC_MAIN_01",
-            follower_service_id="SVC_MAIN_02",
+            leader_service_id=leader_svc,
+            follower_service_id=follower_svc,
             reference_point_id=bottleneck_id,
             running_direction=running_direction,
             signalling_system="FIXED_BLOCK_3ASPECT",
@@ -441,8 +471,9 @@ class SimulationRunner:
         train_length_m: float,
         max_speed_ms: float,
         running_direction: RunningDirection,
+        performance_factor: float = 1.0,
     ) -> TrainTrajectory:
-        """Constructs a physically continuous microscopic train trajectory."""
+        """Constructs a physically continuous microscopic train trajectory scaled by performance factor."""
         samples: List[TrajectorySample] = []
         t = 0.0
         v = 0.0
@@ -450,15 +481,21 @@ class SimulationRunner:
         dt = 2.0
         num_steps = 35
 
+        pf = max(0.1, min(1.0, float(performance_factor)))
+        nominal_accel = 1.0
+        nominal_service_brake = 1.2
+        accel = nominal_accel * pf
+        service_brake = nominal_service_brake * pf
+
         for i in range(num_steps):
             if i < 10:
-                v = min(max_speed_ms, v + 1.0 * dt)
+                v = min(max_speed_ms, v + accel * dt)
                 mode = DynamicMode.ACCELERATING
             elif i < 25:
                 v = max_speed_ms
                 mode = DynamicMode.CRUISING
             else:
-                v = max(0.0, v - 1.2 * dt)
+                v = max(0.0, v - service_brake * dt)
                 mode = DynamicMode.SERVICE_BRAKING
 
             step_dist = v * dt
@@ -478,9 +515,9 @@ class SimulationRunner:
                     front_distance_m=front_d,
                     rear_distance_m=rear_d,
                     speed_ms=v,
-                    acceleration_ms2=1.0 if mode == DynamicMode.ACCELERATING else (-1.2 if mode == DynamicMode.SERVICE_BRAKING else 0.0),
-                    traction_force_n=120000.0 if mode == DynamicMode.ACCELERATING else 0.0,
-                    braking_force_n=150000.0 if mode == DynamicMode.SERVICE_BRAKING else 0.0,
+                    acceleration_ms2=accel if mode == DynamicMode.ACCELERATING else (-service_brake if mode == DynamicMode.SERVICE_BRAKING else 0.0),
+                    traction_force_n=120000.0 * pf if mode == DynamicMode.ACCELERATING else 0.0,
+                    braking_force_n=150000.0 * pf if mode == DynamicMode.SERVICE_BRAKING else 0.0,
                     davis_resistance_n=2500.0,
                     gradient_resistance_n=0.0,
                     curvature_resistance_n=0.0,
@@ -507,21 +544,34 @@ class SimulationRunner:
         running_direction: RunningDirection,
         train_length_m: float,
         speed_ms: float,
+        performance_factor: float = 1.0,
+        dwell_time_s: float = 0.0,
     ) -> List[ResourceBlockingInterval]:
-        """Constructs sequenced 7-component blocking intervals for all corridor blocks."""
+        """Constructs sequenced 7-component blocking intervals for all corridor blocks derated by performance factor."""
         intervals: List[ResourceBlockingInterval] = []
         ordered_links = list(track_links)
         if running_direction == RunningDirection.REVERSE:
             ordered_links.reverse()
 
+        pf = max(0.1, min(1.0, float(performance_factor)))
+
+        # Derate effective running speed:
+        # Lower tractive effort reduces achievable cruising speed across blocks:
+        effective_speed = max(5.0, speed_ms * (0.8 + 0.2 * pf))
+
+        # Derate approach time:
+        # Operational service braking distance and braking time are inversely proportional to performance_factor:
+        # t_approach = t_approach_nominal / pf
+        nominal_approach = 12.0
+        approach_time = round(nominal_approach / pf, 1)
+
         t_cursor = 10.0
         for idx, lnk in enumerate(ordered_links[:6], start=1):
-            run_time = round(lnk.length_m / max(5.0, speed_ms), 1)
-            clearance_time = round(train_length_m / max(5.0, speed_ms), 1)
+            run_time = round(lnk.length_m / effective_speed, 1)
+            clearance_time = round(train_length_m / effective_speed, 1)
             setup_time = 3.0
-            approach_time = 12.0
             release_time = 4.0
-            dwell_time = 0.0
+            dwell_time = dwell_time_s if idx == 3 else 0.0
             residual_rear = 0.0
 
             decomp = BlockingTimeDecomposition(
@@ -549,6 +599,6 @@ class SimulationRunner:
                     decomposition=decomp,
                 )
             )
-            t_cursor += run_time
+            t_cursor += run_time + dwell_time
 
         return intervals

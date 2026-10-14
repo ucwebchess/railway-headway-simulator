@@ -478,3 +478,36 @@ class TestPerformanceFactorReporting:
         xlsx_path = tmp_path / "report.xlsx"
         ExcelReportExporter.export(doc, str(xlsx_path))
         assert xlsx_path.exists() and xlsx_path.stat().st_size > 1000
+
+
+# ---------------------------------------------------------------------------
+# 8. End-to-End Headway Difference (Task 1.3)
+# ---------------------------------------------------------------------------
+
+class TestPerformanceFactorHeadwayImpact:
+    """Verifies operational performance factor strictly affects pairwise headway."""
+
+    def test_e2e_headway_difference_at_different_factors(self):
+        """Task 1.3: Headway at PF 0.50 is strictly greater than at 1.00 by > 1.0 s."""
+        project, report, _ = FileManager.load_example_project("01_single_track")
+        assert report.is_simulation_ready
+
+        pkg_100, doc_100 = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            performance_factor=1.00,
+        )
+        pkg_050, doc_050 = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            performance_factor=0.50,
+        )
+
+        h_100 = doc_100.executive_kpis.technical_headway_s
+        h_050 = doc_050.executive_kpis.technical_headway_s
+
+        assert h_050 > h_100, (
+            f"Headway at 0.50 ({h_050}s) must be strictly greater than at 1.00 ({h_100}s)"
+        )
+        assert (h_050 - h_100) > 1.0, (
+            f"Headway delta ({h_050 - h_100:.1f}s) must exceed 1.0s margin"
+        )
+
