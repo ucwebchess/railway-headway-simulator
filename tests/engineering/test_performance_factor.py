@@ -24,6 +24,7 @@ from headway.data.canonical import (
     AnalysisType,
     CanonicalProject,
     Scenario,
+    TrackLink,
 )
 from headway.data.converter import _build_analysis_model
 from headway.data.importer import ExcelImporter, RawWorkbookData
@@ -31,7 +32,7 @@ from headway.data.validation import Severity, ValidationReport
 from headway.data.validator import DatasetValidator
 from headway.infrastructure.direction import RunningDirection
 from headway.infrastructure.graph import PhysicalNetworkGraph
-from headway.infrastructure.route import RouteEngine
+from headway.infrastructure.route import LinkTraversal, Route, RouteEngine
 from headway.reporting.excel_export import ExcelReportExporter
 from headway.reporting.html_renderer import HtmlReportRenderer
 from headway.reporting.pdf_renderer import PdfReportRenderer
@@ -45,9 +46,11 @@ from headway.rolling_stock.braking import (
 from headway.rolling_stock.train import MassCondition, RollingStockParameters
 from headway.rolling_stock.traction import SimplifiedTractionModel, create_traction_model
 from headway.scenarios.scenario_models import ScenarioDefinition
+from headway.signalling.coordinator import SignallingCoordinator
+from headway.signalling.resources import ManagedResource, ResourceCategory, ResourceInterval
 from headway.simulation.integrator import MicroscopicSimulator
 from headway.simulation.multi_train_engine import MultiTrainSimulator
-from headway.simulation.service_instance import TrainGenerator, TrainServiceInstance
+from headway.simulation.service_instance import ServiceType, TrainGenerator, TrainServiceInstance
 from headway.simulation.state import DynamicMode
 from headway.ui.file_manager import FileManager
 from headway.ui.simulation_runner import SimulationRunner
@@ -342,6 +345,60 @@ class TestMicroscopicSimulatorDynamics:
 
         # Lower performance factor requires more time to traverse identical distance
         assert res_derated.journey_time_s > res_full.journey_time_s
+
+
+# ---------------------------------------------------------------------------
+# 6. Pairwise Analysis: Both Leader and Follower Derating Verification
+# ---------------------------------------------------------------------------
+
+class TestPairwiseBothTrainsDerated:
+    """Explicit verification that performance factor derates BOTH leader and follower in pairwise operations."""
+
+    def test_pairwise_both_leader_and_follower_derated(self):
+        """Runs pairwise simulation at 1.0 and 0.95; asserts BOTH leader and follower clearance times are longer at 0.95."""
+        def run_pairwise_sim(pf: float):
+            params = _make_test_train_params()
+            links = [
+                TrackLink(link_id="L1", track_id="TRK1", start_node_id="N0", end_node_id="N1", length_m=1500.0, max_speed_ms=40.0),
+                TrackLink(link_id="L2", track_id="TRK1", start_node_id="N1", end_node_id="N2", length_m=1500.0, max_speed_ms=40.0),
+                TrackLink(link_id="L3", track_id="TRK1", start_node_id="N2", end_node_id="N3", length_m=1500.0, max_speed_ms=40.0),
+            ]
+            travs = [
+                LinkTraversal(link=links[0], direction=RunningDirection.FORWARD, sequence_index=0, start_distance_m=0.0, end_distance_m=1500.0),
+                LinkTraversal(link=links[1], direction=RunningDirection.FORWARD, sequence_index=1, start_distance_m=1500.0, end_distance_m=3000.0),
+                LinkTraversal(link=links[2], direction=RunningDirection.FORWARD, sequence_index=2, start_distance_m=3000.0, end_distance_m=4500.0),
+            ]
+            route = Route(route_id="RT_MAIN", traversals=travs)
+            st = ServiceType("SVC_P", "TT_TEST", params, route)
+
+            coord = SignallingCoordinator()
+            coord.resource_controller.register_resource(
+                ManagedResource("BLK_1", ResourceCategory.TRACK_BLOCK, intervals=[ResourceInterval(link_id="L1", start_offset_m=0.0, end_offset_m=1500.0)])
+            )
+            coord.resource_controller.register_resource(
+                ManagedResource("BLK_2", ResourceCategory.TRACK_BLOCK, intervals=[ResourceInterval(link_id="L2", start_offset_m=0.0, end_offset_m=1500.0)])
+            )
+            coord.resource_controller.register_resource(
+                ManagedResource("BLK_3", ResourceCategory.TRACK_BLOCK, intervals=[ResourceInterval(link_id="L3", start_offset_m=0.0, end_offset_m=1500.0)])
+            )
+
+            mt_sim = MultiTrainSimulator(coordinator=coord, dt_s=0.2, storage_interval_s=0.5)
+            trains = TrainGenerator.generate_pairwise(st, st, interval_s=60.0, start_time_s=0.0, performance_factor=pf)
+            mt_sim.register_trains(trains)
+            mt_sim.run_simulation(max_duration_s=600.0)
+
+            rec_lead = coord.resource_controller._usage_records.get(("SVC_P_LEAD", "BLK_1"))
+            rec_foll = coord.resource_controller._usage_records.get(("SVC_P_FOLL", "BLK_1"))
+            return rec_lead.rear_clearance_s, rec_foll.rear_clearance_s
+
+        t_lead_100, t_foll_100 = run_pairwise_sim(1.0)
+        t_lead_95, t_foll_95 = run_pairwise_sim(0.95)
+
+        # Assert BOTH leader and follower clearance times are measurably longer at 0.95 than at 1.0
+        assert t_lead_95 > t_lead_100, f"Leader clearance at 0.95 ({t_lead_95}s) must be longer than at 1.0 ({t_lead_100}s)"
+        assert t_foll_95 > t_foll_100, f"Follower clearance at 0.95 ({t_foll_95}s) must be longer than at 1.0 ({t_foll_100}s)"
+        assert (t_lead_95 - t_lead_100) > 0.1
+        assert (t_foll_95 - t_foll_100) > 0.1
 
 
 # ---------------------------------------------------------------------------
