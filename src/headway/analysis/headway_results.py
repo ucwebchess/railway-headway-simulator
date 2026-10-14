@@ -74,6 +74,8 @@ class HeadwayResult:
     numerical_tolerance_s: float = 0.1
     input_configuration_hash: Optional[str] = None
     details: Dict[str, Any] = field(default_factory=dict)
+    performance_factor: float = 1.0
+    performance_factor_source: str = "default"
 
     @property
     def controlling_bottleneck_description(self) -> str:
@@ -100,6 +102,8 @@ class HeadwayResult:
             "controlling_bottleneck": self.controlling_bottleneck_description,
             "controlling_conflicts_count": len(self.controlling_conflicts),
             "total_conflicts_count": len(self.conflict_ranking),
+            "performance_factor": self.performance_factor,
+            "performance_factor_source": self.performance_factor_source,
         }
 
 

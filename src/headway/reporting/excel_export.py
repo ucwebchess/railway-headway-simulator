@@ -105,6 +105,7 @@ class ExcelReportExporter:
         ws.append(["Technical Headway (minutes)", kpis.technical_headway_min, "min", ""])
         ws.append(["Theoretical Capacity", kpis.theoretical_capacity_tph, "tph", "trains/hour/direction (zero buffer)"])
         ws.append(["Planning Operational Capacity", kpis.planning_capacity_tph, "tph", f"under {kpis.planning_margin_s}s planning margin"])
+        ws.append(["Operational Performance Factor", kpis.performance_factor_str, "%", f"Source: {kpis.performance_factor_source} (Traction & Service Braking scaled)"])
         if kpis.total_service_duration_s is not None:
             ws.append(["Total Service Duration (End-to-End)", kpis.total_service_duration_str, "HH:MM:SS", f"{kpis.total_service_duration_s:.1f}s journey time"])
         ws.append(["Controlling Bottleneck Resource", kpis.controlling_bottleneck_id, "ID", f"{kpis.controlling_bottleneck_type} at km {kpis.controlling_bottleneck_chainage_km:.2f}"])
