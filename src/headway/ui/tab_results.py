@@ -5,6 +5,7 @@ Consumes P13 visualizers and result tables without recalculation.
 """
 
 from pathlib import Path
+import logging
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 import gradio as gr
@@ -21,6 +22,7 @@ from headway.reporting.charts_tvs import create_tvs_occupation_figure
 from headway.reporting.csv_export import CsvReportExporter
 from headway.reporting.excel_export import ExcelReportExporter
 from headway.reporting.json_export import JsonReportExporter
+from headway.reporting.report_assembly import ReportAssembler
 from headway.reporting.tables import (
     create_conflict_ranking_table,
     create_headway_matrix_table,
@@ -32,6 +34,8 @@ from headway.ui.direction_selector import DirectionSelector
 from headway.ui.error_handling import create_error_html, create_success_html
 from headway.ui.file_manager import FileManager
 from headway.ui.state import session_state
+
+logger = logging.getLogger(__name__)
 
 
 def create_results_tab() -> Dict[str, Any]:
@@ -161,20 +165,34 @@ def create_results_tab() -> Dict[str, Any]:
                 )
 
     def refresh_results_view() -> Tuple[Any, ...]:
+        expected_outputs = 20
         pkg = session_state.latest_result_package
         doc = session_state.latest_report_doc
+
+        if not doc and pkg:
+            try:
+                from headway.reporting.report_assembly import ReportAssembler
+                doc = ReportAssembler.assemble_report(package=pkg)
+                session_state.latest_report_doc = doc
+            except Exception as exc:
+                logger.exception("Failed to assemble report document: %s", exc)
+                doc = None
 
         empty_fig = go.Figure()
         empty_fig.add_annotation(text="No Simulation Results Available — Run in Tab 8", showarrow=False)
 
         if not pkg or not doc:
             banner = DirectionSelector.render_banner(session_state.selected_running_direction)
-            k_hw = """<div class="kpi-card"><div class="kpi-title">Technical Min Headway</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_theo = """<div class="kpi-card"><div class="kpi-title">Theoretical Line Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_plan = """<div class="kpi-card"><div class="kpi-title">Planning Operational Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_perf = """<div class="kpi-card"><div class="kpi-title">Performance Factor</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            k_bot = """<div class="kpi-card"><div class="kpi-title">Controlling Bottleneck</div><div style="font-size: 20px; font-weight: 700; color: #DC2626;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">Run simulation first</div></div>"""
-            return (
+            msg = "No simulation results available. Run a simulation in Tab 8 first."
+            empty_fig = go.Figure()
+            empty_fig.add_annotation(text=msg, showarrow=False)
+
+            k_hw = f"""<div class="kpi-card"><div class="kpi-title">Technical Min Headway</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_theo = f"""<div class="kpi-card"><div class="kpi-title">Theoretical Line Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_plan = f"""<div class="kpi-card"><div class="kpi-title">Planning Operational Capacity</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_perf = f"""<div class="kpi-card"><div class="kpi-title">Performance Factor</div><div style="font-size: 20px; font-weight: 700; color: #1B365D;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            k_bot = f"""<div class="kpi-card"><div class="kpi-title">Controlling Bottleneck</div><div style="font-size: 20px; font-weight: 700; color: #DC2626;">Not Available</div><div style="font-size: 11px; color: #94a3b8;">{msg}</div></div>"""
+            result = (
                 banner, k_hw, k_theo, k_plan, k_perf, k_bot,
                 empty_fig, empty_fig, empty_fig, [],
                 empty_fig, empty_fig, [],
@@ -182,6 +200,11 @@ def create_results_tab() -> Dict[str, Any]:
                 empty_fig, empty_fig,
                 empty_fig, empty_fig, [],
             )
+            assert len(result) == expected_outputs, (
+                f"refresh_results_view returned {len(result)} values, "
+                f"but {expected_outputs} outputs are registered."
+            )
+            return result
 
         kpis = doc.executive_kpis
         direction = pkg.running_direction
@@ -264,14 +287,19 @@ def create_results_tab() -> Dict[str, Any]:
                         f"{d.percentage_change:+.1f}%",
                     ])
 
-        return (
-            banner, k_hw, k_theo, k_plan, k_bot,
+        result = (
+            banner, k_hw, k_theo, k_plan, k_perf, k_bot,
             fig_speed, fig_stair, fig_seven, conf_rows,
             fig_plat, fig_mt, mt_rows,
             fig_td, fig_tvs,
             fig_sens, fig_stoch,
             fig_cmp, fig_mig, cmp_rows,
         )
+        assert len(result) == expected_outputs, (
+            f"refresh_results_view returned {len(result)} values, "
+            f"but {expected_outputs} outputs are registered."
+        )
+        return result
 
     components["btn_refresh_results"].click(
         fn=refresh_results_view,
