@@ -6,6 +6,7 @@ Strictly satisfies RHS-P01-001 § 4, § 5, and § 11:
 """
 
 from typing import Any, Dict, List, Optional
+from headway.data.importer import _parse_list_cell
 from headway.core.units import (
     normalize_davis_coefficients,
     normalize_force,
@@ -238,7 +239,7 @@ def _build_infrastructure_model(infra_wb: Optional[RawWorkbookData]) -> Infrastr
         SharedResourceGroup(
             group_id=r["group_id"],
             description=r.get("description"),
-            resource_ids=r["resource_ids"] if isinstance(r["resource_ids"], list) else [r["resource_ids"]],
+            resource_ids=_parse_list_cell(r.get("resource_ids")),
         )
         for r in infra_wb.get_rows("SharedResourceGroups")
     ]
@@ -398,9 +399,9 @@ def _build_signalling_model(sig_wb: Optional[RawWorkbookData]) -> SignallingMode
             route_id=r["route_id"],
             entry_signal_id=r["entry_signal_id"],
             exit_signal_id=r["exit_signal_id"],
-            link_sequence=r["link_sequence"] if isinstance(r["link_sequence"], list) else [r["link_sequence"]],
-            protected_blocks=r.get("protected_blocks", []) if isinstance(r.get("protected_blocks"), list) else ([r["protected_blocks"]] if r.get("protected_blocks") else []),
-            conflicting_route_ids=r.get("conflicting_routes", []) if isinstance(r.get("conflicting_routes"), list) else ([r["conflicting_routes"]] if r.get("conflicting_routes") else []),
+            link_sequence=_parse_list_cell(r.get("link_sequence")),
+            protected_blocks=_parse_list_cell(r.get("protected_blocks")),
+            conflicting_route_ids=_parse_list_cell(r.get("conflicting_routes")),
         )
         for r in sig_wb.get_rows("InterlockingRoutes")
     ]
@@ -435,7 +436,7 @@ def _build_operations_model(ops_wb: Optional[RawWorkbookData]) -> OperationsMode
         ServicePattern(
             service_pattern_id=r["service_pattern_id"],
             train_type_id=r["train_type_id"],
-            route_link_sequence=r["route_link_sequence"] if isinstance(r["route_link_sequence"], list) else [r["route_link_sequence"]],
+            route_link_sequence=_parse_list_cell(r.get("route_link_sequence")),
             priority=int(r.get("priority", 1)),
             planned_headway_s=normalize_time(r.get("planned_headway_s", 3.0), "min"),
             stops=stops_map.get(r["service_pattern_id"], []),
