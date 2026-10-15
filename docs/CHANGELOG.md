@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.0] — Operational Performance Factor
 
+### Fixed
+
+- The dataset validator now uses a millimetre-scale tolerance when
+  comparing interval endpoints to link lengths. Previously, floating-
+  point noise at the 10⁻¹⁴ m scale could cause physically continuous
+  multi-link blocks to be rejected as discontinuous.
+
 ### Added
 
 - **Operational Performance Factor (`performance_factor`)**:
