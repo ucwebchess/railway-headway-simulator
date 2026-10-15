@@ -94,6 +94,7 @@ def create_operations_tab() -> Dict[str, Any]:
         # Service Card (running_direction probed with default FORWARD per Task 2 investigation)
         dir_val = getattr(cur_svc, "running_direction", RunningDirection.FORWARD)
         dir_str = dir_val.value if isinstance(dir_val, RunningDirection) else str(dir_val)
+        is_rev = "REVERSE" in str(dir_str).upper()
         target_hw = cur_svc.planned_headway_s
         svc_desc = cur_id
 
@@ -113,7 +114,19 @@ def create_operations_tab() -> Dict[str, Any]:
 
         # Plot route alignment with station markers
         infra = proj.infrastructure
-        total_len = sum(lnk.length_m for lnk in infra.track_links)
+        ordered_links = list(infra.track_links)
+        if is_rev:
+            ordered_links.reverse()
+
+        link_cum_offsets: Dict[str, float] = {}
+        link_lengths_by_id: Dict[str, float] = {}
+        cum_dist = 0.0
+        for lnk in ordered_links:
+            link_cum_offsets[lnk.link_id] = cum_dist
+            link_lengths_by_id[lnk.link_id] = lnk.length_m
+            cum_dist += lnk.length_m
+
+        total_len = cum_dist
         fig_route.add_trace(go.Scatter(
             x=[0, total_len],
             y=[0, 0],
@@ -126,7 +139,22 @@ def create_operations_tab() -> Dict[str, Any]:
             # Locate station
             for plat in infra.platforms:
                 if plat.station_id == stp.station_id:
-                    mid_x = (plat.start_offset_m + plat.end_offset_m) / 2.0
+                    plat_mid_local = (plat.start_offset_m + plat.end_offset_m) / 2.0
+                    if plat.link_id in link_cum_offsets:
+                        link_len = link_lengths_by_id.get(plat.link_id, 0.0)
+                        if is_rev:
+                            plat_mid_in_view = link_len - plat_mid_local
+                        else:
+                            plat_mid_in_view = plat_mid_local
+                        mid_x = link_cum_offsets[plat.link_id] + plat_mid_in_view
+                    else:
+                        stn_obj = next((s for s in infra.stations if s.station_id == stp.station_id), None)
+                        if stn_obj and stn_obj.chainage_km is not None:
+                            station_x_forward = stn_obj.chainage_km * 1000.0
+                            mid_x = (cum_dist - station_x_forward) if is_rev else station_x_forward
+                        else:
+                            mid_x = plat_mid_local
+
                     fig_route.add_trace(go.Scatter(
                         x=[mid_x],
                         y=[0],

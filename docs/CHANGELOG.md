@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Network Schematic in the Infrastructure Explorer tab now places
+  station labels at their correct cumulative positions along the
+  corridor. Previously, all stations were plotted at the same
+  link-local offset (typically 100 m), causing them to stack on top of
+  one another. The same fix is applied to service route platforms in
+  the Operations tab.
 - The Excel importer now handles empty cells in comma-separated list
   fields (such as `PROTECTED_BLOCKS` and `CONFLICTING_ROUTES` in the
   `InterlockingRoutes` worksheet). Previously, an empty cell caused
