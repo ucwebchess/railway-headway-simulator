@@ -9,6 +9,15 @@ from headway.core.identifiers import IdentifierRegistry, normalize_identifier
 from headway.data.importer import RawWorkbookData
 from headway.data.validation import Severity, ValidationReport
 
+# Tolerance for geometric continuity checks.
+# Real railway geometry is not accurate below the millimetre scale.
+GEOMETRY_TOLERANCE_M: float = 0.001  # 1 mm
+
+
+def _within_tolerance(a: float, b: float) -> bool:
+    """Return True if |a - b| <= GEOMETRY_TOLERANCE_M."""
+    return abs(a - b) <= GEOMETRY_TOLERANCE_M
+
 
 class DatasetValidator:
     """Multi-level validator verifying relational, geometric, and configuration consistency."""
@@ -379,7 +388,7 @@ class DatasetValidator:
                     if start is None or end is None:
                         continue
 
-                    if start < 0.0 or start >= end:
+                    if start < -GEOMETRY_TOLERANCE_M or start >= end:
                         self.report.add_finding(
                             error_code=err_bounds_code,
                             severity=Severity.ERROR,
@@ -391,7 +400,7 @@ class DatasetValidator:
 
                     if lid in link_lengths:
                         max_len = link_lengths[lid]
-                        if end > max_len + 1e-3:
+                        if end > max_len + GEOMETRY_TOLERANCE_M:
                             self.report.add_finding(
                                 error_code=err_bounds_code,
                                 severity=Severity.ERROR,
@@ -414,7 +423,7 @@ class DatasetValidator:
 
                     if curr_lid == nxt_lid:
                         # Same link: offsets must be contiguous
-                        if curr_end is not None and nxt_start is not None and abs(curr_end - nxt_start) > 1e-3:
+                        if curr_end is not None and nxt_start is not None and not _within_tolerance(curr_end, nxt_start):
                             self.report.add_finding(
                                 error_code="ERR_ENG_PHYSICAL_DISCONTINUITY",
                                 severity=Severity.ERROR,
@@ -448,16 +457,16 @@ class DatasetValidator:
                                 is_continuous = False
 
                                 if curr_e_node == nxt_s_node:
-                                    if curr_len is not None and abs(curr_end - curr_len) <= 1e-3 and abs(nxt_start - 0.0) <= 1e-3:
+                                    if curr_len is not None and _within_tolerance(curr_end, curr_len) and _within_tolerance(nxt_start, 0.0):
                                         is_continuous = True
                                 elif curr_e_node == nxt_e_node:
-                                    if curr_len is not None and nxt_len is not None and abs(curr_end - curr_len) <= 1e-3 and abs(nxt_start - nxt_len) <= 1e-3:
+                                    if curr_len is not None and nxt_len is not None and _within_tolerance(curr_end, curr_len) and _within_tolerance(nxt_start, nxt_len):
                                         is_continuous = True
                                 elif curr_s_node == nxt_s_node:
-                                    if abs(curr_end - 0.0) <= 1e-3 and abs(nxt_start - 0.0) <= 1e-3:
+                                    if _within_tolerance(curr_end, 0.0) and _within_tolerance(nxt_start, 0.0):
                                         is_continuous = True
                                 elif curr_s_node == nxt_e_node:
-                                    if nxt_len is not None and abs(curr_end - 0.0) <= 1e-3 and abs(nxt_start - nxt_len) <= 1e-3:
+                                    if nxt_len is not None and _within_tolerance(curr_end, 0.0) and _within_tolerance(nxt_start, nxt_len):
                                         is_continuous = True
 
                                 if not is_continuous:
@@ -486,7 +495,13 @@ class DatasetValidator:
                 else:
                     if lid in link_lengths:
                         max_len = link_lengths[lid]
-                        if start < 0.0 or end > max_len or start >= end:
+                        if (
+                            start < -GEOMETRY_TOLERANCE_M
+                            or start > max_len + GEOMETRY_TOLERANCE_M
+                            or end < -GEOMETRY_TOLERANCE_M
+                            or end > max_len + GEOMETRY_TOLERANCE_M
+                            or start >= end
+                        ):
                             self.report.add_finding(
                                 error_code=err_bounds_code,
                                 severity=Severity.ERROR,
@@ -535,7 +550,13 @@ class DatasetValidator:
                 end = row.get("end_offset_m")
                 if lid in link_lengths and start is not None and end is not None:
                     max_len = link_lengths[lid]
-                    if start < 0.0 or start > max_len or end < 0.0 or end > max_len or start >= end:
+                    if (
+                        start < -GEOMETRY_TOLERANCE_M
+                        or start > max_len + GEOMETRY_TOLERANCE_M
+                        or end < -GEOMETRY_TOLERANCE_M
+                        or end > max_len + GEOMETRY_TOLERANCE_M
+                        or start >= end
+                    ):
                         self.report.add_finding(
                             error_code="ERR_ENG_OFFSET_OUT_OF_BOUNDS",
                             severity=Severity.ERROR,
