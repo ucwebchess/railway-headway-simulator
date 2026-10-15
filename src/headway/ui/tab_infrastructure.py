@@ -90,6 +90,8 @@ def create_infrastructure_tab() -> Dict[str, Any]:
         if is_rev:
             ordered_links.reverse()
 
+        link_cum_offsets: Dict[str, float] = {}
+        link_lengths_by_id: Dict[str, float] = {}
         cum_dist = 0.0
         x_coords = [0.0]
         y_coords = [0.0]
@@ -97,6 +99,8 @@ def create_infrastructure_tab() -> Dict[str, Any]:
         grad_y = []
 
         for lnk in ordered_links:
+            link_cum_offsets[lnk.link_id] = cum_dist
+            link_lengths_by_id[lnk.link_id] = lnk.length_m
             track_dir = track_map.get(lnk.track_id, "BIDIRECTIONAL")
             links_data.append([
                 lnk.link_id,
@@ -142,9 +146,31 @@ def create_infrastructure_tab() -> Dict[str, Any]:
                         plat.end_offset_m,
                         plat.length_m,
                     ])
+                    # Compute the platform midpoint in link-local coordinates.
+                    plat_mid_local = (plat.start_offset_m + plat.end_offset_m) / 2.0
+
+                    # When the schematic is drawn in FORWARD, the platform's local offset
+                    # matches the traversal direction. When drawn in REVERSE, the link is
+                    # traversed from its end node to its start node, so we must mirror the
+                    # local offset within the link.
+                    if plat.link_id in link_cum_offsets:
+                        link_len = link_lengths_by_id.get(plat.link_id, 0.0)
+                        if is_rev:
+                            plat_mid_in_view = link_len - plat_mid_local
+                        else:
+                            plat_mid_in_view = plat_mid_local
+                        station_x = link_cum_offsets[plat.link_id] + plat_mid_in_view
+                    elif stn.chainage_km is not None:
+                        # Fallback to engineering chainage
+                        station_x_forward = stn.chainage_km * 1000.0
+                        station_x = (cum_dist - station_x_forward) if is_rev else station_x_forward
+                    else:
+                        # Last-resort fallback
+                        station_x = plat_mid_local
+
                     # Place platform on schematic
                     fig_net.add_annotation(
-                        x=(plat.start_offset_m + plat.end_offset_m) / 2.0,
+                        x=station_x,
                         y=0.0,
                         text=f"🚉 {stn.name or stn.station_id}",
                         showarrow=True,
