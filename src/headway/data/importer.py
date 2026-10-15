@@ -12,6 +12,7 @@ Strictly satisfies P01-IMP-001 through P01-IMP-009:
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import openpyxl
+import pandas as pd
 
 from headway.core.exceptions import DataValidationError
 from headway.data.excel_registry import (
@@ -50,6 +51,30 @@ def _parse_metadata(sheet: openpyxl.worksheet.worksheet.Worksheet) -> Dict[str, 
     return meta
 
 
+def _parse_list_cell(value: Any) -> List[str]:
+    """Convert a comma-separated cell value into a list of tokens.
+    Handles None, NaN, empty strings, and whitespace.
+    """
+    if value is None:
+        return []
+    if isinstance(value, float) and pd.isna(value):
+        return []
+    try:
+        if pd.isna(value) is True:
+            return []
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (list, tuple)):
+        tokens: List[str] = []
+        for item in value:
+            tokens.extend(_parse_list_cell(item))
+        return tokens
+    text = str(value).strip()
+    if not text:
+        return []
+    return [token.strip() for token in text.replace(";", ",").split(",") if token.strip()]
+
+
 def _is_example_or_subheader_row(row_idx: int, row_values: List[Any], columns: List[ColumnDef]) -> bool:
     """Determine whether a row is a unit subheader or instructional example row."""
     if not any(row_values):
@@ -74,7 +99,31 @@ def _parse_cell_value(
     loc_ctx: Dict[str, Any],
 ) -> Tuple[Any, bool]:
     """Parse and validate a single cell value according to ColumnDef."""
-    if raw_val is None or str(raw_val).strip() == "":
+    # Special handling for STRING_LIST fields
+    if col_def.field_type == FieldType.STRING_LIST:
+        parts = _parse_list_cell(raw_val)
+        if not parts:
+            if col_def.required:
+                report.add_finding(
+                    error_code="ERR_FIELD_REQUIRED_MISSING",
+                    severity=Severity.ERROR,
+                    message=f"Mandatory column '{col_def.name}' is blank.",
+                    column=col_def.name,
+                    recommendation=f"Provide a valid {col_def.field_type.value} value.",
+                    **loc_ctx,
+                )
+                return None, False
+            return [], True
+        return parts, True
+
+    is_blank = raw_val is None or (isinstance(raw_val, float) and pd.isna(raw_val)) or str(raw_val).strip() == ""
+    try:
+        if not is_blank and pd.isna(raw_val) is True:
+            is_blank = True
+    except (TypeError, ValueError):
+        pass
+
+    if is_blank:
         if col_def.required:
             report.add_finding(
                 error_code="ERR_FIELD_REQUIRED_MISSING",
@@ -179,9 +228,7 @@ def _parse_cell_value(
             return None, False
 
         elif col_def.field_type == FieldType.STRING_LIST:
-            # Comma or semicolon separated list
-            parts = [p.strip() for p in s_val.replace(";", ",").split(",") if p.strip()]
-            return parts, True
+            return _parse_list_cell(raw_val), True
 
     except (ValueError, TypeError) as err:
         report.add_finding(
@@ -401,7 +448,10 @@ class ExcelImporter:
                         if def_col.required:
                             row_valid = False
                         else:
-                            row_dict[def_col.canonical_name] = def_col.default_value
+                            row_dict[def_col.canonical_name] = (
+                                [] if def_col.field_type == FieldType.STRING_LIST and def_col.default_value is None
+                                else def_col.default_value
+                            )
 
                 if row_valid and any(v is not None for v in row_dict.values()):
                     parsed_rows.append(row_dict)

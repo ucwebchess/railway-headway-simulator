@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Excel importer now handles empty cells in comma-separated list
+  fields (such as `PROTECTED_BLOCKS` and `CONFLICTING_ROUTES` in the
+  `InterlockingRoutes` worksheet). Previously, an empty cell caused
+  `'NoneType' object is not iterable` during ingestion.
 - The dataset validator now uses a millimetre-scale tolerance when
   comparing interval endpoints to link lengths. Previously, floating-
   point noise at the 10⁻¹⁴ m scale could cause physically continuous

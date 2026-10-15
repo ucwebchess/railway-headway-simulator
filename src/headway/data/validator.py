@@ -6,7 +6,7 @@ Enforces physical and relational integrity without executing microscopic train d
 
 from typing import Any, Dict, List, Optional, Tuple
 from headway.core.identifiers import IdentifierRegistry, normalize_identifier
-from headway.data.importer import RawWorkbookData
+from headway.data.importer import RawWorkbookData, _parse_list_cell
 from headway.data.validation import Severity, ValidationReport
 
 # Tolerance for geometric continuity checks.
@@ -204,7 +204,7 @@ class DatasetValidator:
             for row in infra.get_rows("SharedResourceGroups"):
                 gid = row.get("group_id")
                 raw_res = row.get("resource_ids")
-                res_list = raw_res if isinstance(raw_res, list) else ([raw_res] if raw_res else [])
+                res_list = _parse_list_cell(raw_res)
                 for res_id in res_list:
                     if not res_id:
                         continue
@@ -253,9 +253,9 @@ class DatasetValidator:
                 rid = row.get("route_id")
                 self._check_ref("SIGNAL", row.get("entry_signal_id"), "InterlockingRoutes.entry_signal_id", "SIGNALLING", "InterlockingRoutes", rid)
                 self._check_ref("SIGNAL", row.get("exit_signal_id"), "InterlockingRoutes.exit_signal_id", "SIGNALLING", "InterlockingRoutes", rid)
-                for l in row.get("link_sequence", []):
+                for l in _parse_list_cell(row.get("link_sequence")):
                     self._check_ref("LINK", l, f"InterlockingRoutes.link_sequence[{l}]", "SIGNALLING", "InterlockingRoutes", rid)
-                for b in row.get("protected_blocks", []):
+                for b in _parse_list_cell(row.get("protected_blocks")):
                     self._check_ref("BLOCK", b, f"InterlockingRoutes.protected_blocks[{b}]", "SIGNALLING", "InterlockingRoutes", rid)
 
         ops = raw_workbooks.get("OPERATIONS")
@@ -263,7 +263,7 @@ class DatasetValidator:
             for row in ops.get_rows("ServicePatterns"):
                 spid = row.get("service_pattern_id")
                 self._check_ref("TRAIN_TYPE", row.get("train_type_id"), "ServicePatterns.train_type_id", "OPERATIONS", "ServicePatterns", spid)
-                for l in row.get("route_link_sequence", []):
+                for l in _parse_list_cell(row.get("route_link_sequence")):
                     self._check_ref("LINK", l, f"ServicePatterns.route_link_sequence[{l}]", "OPERATIONS", "ServicePatterns", spid)
 
             for row in ops.get_rows("StoppingPatterns"):
