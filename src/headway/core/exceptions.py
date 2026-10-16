@@ -95,6 +95,12 @@ class SignallingError(HeadwayError):
     DEFAULT_ERROR_CODE = "ERR_SIGNALLING"
 
 
+class SignallingBlocksMissingError(SignallingError):
+    """Raised when the Signalling workbook contains zero valid blocks."""
+
+    DEFAULT_ERROR_CODE = "ERR_SIG_BLOCKS_MISSING"
+
+
 class SimulationError(HeadwayError):
     """Raised during microscopic numerical integration or discrete-event simulation failures."""
 

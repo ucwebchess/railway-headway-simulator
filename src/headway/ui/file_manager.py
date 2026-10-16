@@ -15,7 +15,7 @@ from headway.data.converter import convert_raw_to_canonical
 from headway.data.importer import ExcelImporter, RawWorkbookData
 from headway.data.package import ProjectPackage
 from headway.data.template_generator import generate_all_templates
-from headway.data.validation import ValidationReport
+from headway.data.validation import Severity, ValidationReport
 from headway.data.validator import DatasetValidator
 
 
