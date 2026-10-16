@@ -39,6 +39,7 @@ from headway.data.canonical import (
     TVSSection,
 )
 from headway.infrastructure.direction import RunningDirection
+from headway.infrastructure.route import LinkTraversal, Route
 from headway.reporting.charts_speed import compute_permissible_speed_envelope
 from headway.reporting.report_assembly import ReportAssembler
 from headway.reporting.report_models import ReportDocument
@@ -49,11 +50,13 @@ from headway.reporting.result_models import (
     SimulationResultPackage,
 )
 from headway.reporting.result_validation import ResultValidator
+from headway.rolling_stock.train import RollingStockParameters
 from headway.scenarios.scenario_comparison import (
     BottleneckShiftReport,
     MetricDifference,
     ScenarioComparisonReport,
 )
+from headway.signalling.coordinator import SignallingCoordinator
 from headway.simulation.dispatching import DispatchPolicy
 from headway.simulation.integrator import MicroscopicSimulator
 from headway.simulation.multi_train_engine import (
@@ -134,7 +137,10 @@ class SimulationRunner:
         # Resolve primary track links and total corridor length
         track_links = list(infra.track_links)
         if not track_links:
-            raise ValueError("Infrastructure model contains no track links.")
+            err_msg = "ERR_INFRA_NO_TRACK_LINKS: Infrastructure model contains no track links."
+            if tracker:
+                tracker.fail(err_msg)
+            raise ValueError(err_msg)
 
         # Validate that signalling blocks are defined (RHS-CORRECTION-BLOCK-LOAD-FALLBACK-001)
         sig = project.signalling
@@ -155,35 +161,36 @@ class SimulationRunner:
         speed_limit_ms = min(lnk.max_speed_ms for lnk in track_links) if track_links else 25.0
 
         # Resolve primary train types
-        train_types = list(rs.train_types)
-        primary_tt = train_types[0] if train_types else None
-        train_len_m = primary_tt.length_m if primary_tt else 140.0
-        max_speed_ms = min(speed_limit_ms, primary_tt.max_speed_ms if primary_tt else 25.0)
-
-        if tracker:
-            tracker.update(current_step=25, stage="Microscopic Dynamics Integration", status_message=f"Integrating train movement dynamics in {running_direction.value} direction...")
-
-        # 2. Integrate Train Trajectories (P04)
-        traj_leader = cls._build_microscopic_trajectory(
-            train_id="TRN_LEADER",
-            corridor_length_m=total_length_m,
-            train_length_m=train_len_m,
-            max_speed_ms=max_speed_ms,
-            running_direction=running_direction,
-        )
-        traj_follower = cls._build_microscopic_trajectory(
-            train_id="TRN_FOLLOWER",
-            corridor_length_m=total_length_m,
-            train_length_m=train_len_m,
-            max_speed_ms=max_speed_ms,
-            running_direction=running_direction,
-        )
+        train_types = list(rs.train_types) if rs and getattr(rs, "train_types", None) else []
+        if train_types:
+            primary_tt = train_types[0]
+            train_len_m = primary_tt.length_m
+            max_speed_ms = min(speed_limit_ms, primary_tt.max_speed_ms)
+        else:
+            train_len_m = 120.0
+            max_speed_ms = speed_limit_ms
+            primary_tt = TrainType(
+                train_type_id="TT_STANDARD",
+                description="Default Passenger Train",
+                length_m=train_len_m,
+                mass_empty_kg=180000.0,
+                mass_loaded_kg=220000.0,
+                max_speed_ms=max_speed_ms,
+                max_acceleration_ms2=1.0,
+                max_service_deceleration_ms2=0.9,
+                emergency_deceleration_ms2=1.2,
+                power_w=3000000.0,
+                max_tractive_effort_n=200000.0,
+                davis_a_n=1500.0,
+                davis_b_ns_m=25.0,
+                davis_c_ns2_m2=0.35,
+            )
 
         if tracker:
             tracker.check_cancellation()
-            tracker.update(current_step=45, stage="Blocking Time & Headway Solving", status_message="Calculating 7-component blocking stairways...")
+            tracker.update(current_step=25, stage="Blocking Time & Headway Solving", status_message="Calculating 7-component blocking stairways...")
 
-        # 3. Blocking Intervals & Technical Headway (P08)
+        # 2. Blocking Intervals & Technical Headway (P08)
         blocking_intervals = cls._build_blocking_intervals(
             blocks=blocks,
             track_links=track_links,
@@ -197,6 +204,21 @@ class SimulationRunner:
         controlling_interval = max(blocking_intervals, key=lambda b: b.duration_s) if blocking_intervals else None
         required_hw_s = controlling_interval.duration_s + 15.0 if controlling_interval else 85.0
         bottleneck_id = controlling_interval.resource_id if controlling_interval else (blocks[0].block_id if blocks else "BLK_01")
+
+        if tracker:
+            tracker.check_cancellation()
+            tracker.update(current_step=45, stage="Microscopic Dynamics Integration", status_message=f"Integrating train movement dynamics with MultiTrainSimulator in {running_direction.value} direction...")
+
+        # 3. Integrate Train Trajectories via MultiTrainSimulator (P04 & P09)
+        traj_leader, traj_follower, simulated_route, train_leader = cls._run_multitrain_simulation(
+            track_links=track_links,
+            primary_tt=primary_tt,
+            running_direction=running_direction,
+            eff_pf=eff_pf,
+            required_hw_s=required_hw_s,
+            total_length_m=total_length_m,
+            max_speed_ms=max_speed_ms,
+        )
 
         conflict = ResourceConflict(
             conflict_id="CONF_CTRL_01",
@@ -319,26 +341,65 @@ class SimulationRunner:
 
         # 7. Metadata Records (Stations, TVS, Provenance)
         platform_records = []
-        for p in infra.platforms:
-            platform_records.append(
-                PlatformOccupationRecord(
-                    train_id="TRN_LEADER",
-                    station_id=p.station_id,
-                    station_name=p.station_id,
-                    platform_id=p.platform_id,
-                    track_id="TRK_01",
-                    link_id=p.link_id,
-                    arrival_time_s=30.0,
-                    dwell_start_time_s=32.0,
-                    dwell_end_time_s=52.0,
-                    departure_time_s=55.0,
-                    clearance_time_s=65.0,
-                    running_direction=running_direction,
-                    is_residual_rear_active=True,
-                    residual_rear_duration_s=12.0,
-                    upstream_infringing_resource_ids=("BLK_01",),
+        if infra.platforms:
+            plat_positions = []
+            for p in infra.platforms:
+                trav = next((t for t in simulated_route.traversals if t.link_id == p.link_id), None)
+                if trav:
+                    p_offset = max(0.0, min(p.start_offset_m, trav.length_m))
+                    if running_direction == RunningDirection.FORWARD:
+                        p_route_dist = trav.start_distance_m + p_offset
+                    else:
+                        p_route_dist = trav.start_distance_m + (trav.link.length_m - p_offset)
+                else:
+                    p_route_dist = 0.0
+                plat_positions.append((p_route_dist, p))
+
+            plat_positions.sort(key=lambda item: item[0])
+
+            last_dep_t = 0.0
+            for p_route_dist, p in plat_positions:
+                matching_s = next(
+                    (s for s in train_leader.trajectory_samples if s.front_distance_m >= p_route_dist),
+                    train_leader.trajectory_samples[-1] if train_leader.trajectory_samples else None,
                 )
-            )
+                arr_t = matching_s.time_s if matching_s else 30.0
+                if arr_t < last_dep_t:
+                    arr_t = round(last_dep_t + 2.0, 1)
+
+                dwell_s = 30.0
+                if ops and getattr(ops, "service_patterns", None):
+                    for sp in ops.service_patterns:
+                        for st_stop in getattr(sp, "stops", []):
+                            if getattr(st_stop, "platform_id", None) == p.platform_id or getattr(st_stop, "station_id", None) == p.station_id:
+                                dwell_s = float(st_stop.dwell_time_s)
+                                break
+
+                dwell_start_t = round(arr_t + 2.0, 1)
+                dwell_end_t = round(dwell_start_t + dwell_s, 1)
+                dep_t = round(dwell_end_t + 3.0, 1)
+                clear_t = round(dep_t + 10.0, 1)
+                last_dep_t = dep_t
+
+                platform_records.append(
+                    PlatformOccupationRecord(
+                        train_id="TRN_LEADER",
+                        station_id=p.station_id,
+                        station_name=p.station_id,
+                        platform_id=p.platform_id,
+                        track_id="TRK_01",
+                        link_id=p.link_id,
+                        arrival_time_s=arr_t,
+                        dwell_start_time_s=dwell_start_t,
+                        dwell_end_time_s=dwell_end_t,
+                        departure_time_s=dep_t,
+                        clearance_time_s=clear_t,
+                        running_direction=running_direction,
+                        is_residual_rear_active=True,
+                        residual_rear_duration_s=12.0,
+                        upstream_infringing_resource_ids=("BLK_01",),
+                    )
+                )
 
         tvs_events = []
         for tvs in infra.tvs_sections:
@@ -427,6 +488,8 @@ class SimulationRunner:
             scenario_comparison_report=report_cmp,
             metadata={
                 "project": project,
+                "project_name": project.name,
+                "service_duration_s": traj_leader.journey_time_s,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
                 "stochastic_headway_samples": [required_hw_s + k * 0.3 for k in range(30)],
@@ -459,6 +522,150 @@ class SimulationRunner:
         return package, report_doc
 
     @classmethod
+    def _run_multitrain_simulation(
+        cls,
+        track_links: List[TrackLink],
+        primary_tt: TrainType,
+        running_direction: RunningDirection,
+        eff_pf: float,
+        required_hw_s: float,
+        total_length_m: float,
+        max_speed_ms: float,
+    ) -> Tuple[TrainTrajectory, TrainTrajectory, Route, TrainServiceInstance]:
+        """Execute microscopic multi-train simulation along all track links with MultiTrainSimulator."""
+        traversals: List[LinkTraversal] = []
+        cum_s = 0.0
+
+        if running_direction == RunningDirection.FORWARD:
+            ordered_links = list(track_links)
+            for i, lnk in enumerate(ordered_links):
+                rtl = lnk.model_copy(update={"start_node_id": f"RN_{i}", "end_node_id": f"RN_{i+1}"})
+                traversals.append(
+                    LinkTraversal(
+                        link=rtl,
+                        direction=RunningDirection.FORWARD,
+                        sequence_index=i,
+                        start_distance_m=cum_s,
+                        end_distance_m=cum_s + lnk.length_m,
+                    )
+                )
+                cum_s += lnk.length_m
+            route_id = "RT_CORRIDOR_FWD"
+        else:
+            ordered_links = list(reversed(track_links))
+            for i, lnk in enumerate(ordered_links):
+                rtl = lnk.model_copy(update={"start_node_id": f"RN_{i+1}", "end_node_id": f"RN_{i}"})
+                traversals.append(
+                    LinkTraversal(
+                        link=rtl,
+                        direction=RunningDirection.REVERSE,
+                        sequence_index=i,
+                        start_distance_m=cum_s,
+                        end_distance_m=cum_s + lnk.length_m,
+                    )
+                )
+                cum_s += lnk.length_m
+            route_id = "RT_CORRIDOR_REV"
+
+        route = Route(route_id=route_id, traversals=traversals)
+
+        params = RollingStockParameters.from_canonical(primary_tt)
+        st = ServiceType(
+            service_id="SVC_CORRIDOR",
+            train_type_id=primary_tt.train_type_id,
+            params=params,
+            route=route,
+            running_direction=running_direction,
+        )
+
+        train_leader = TrainGenerator.create_instance(
+            st,
+            train_id="TRN_LEADER",
+            requested_departure_s=0.0,
+            performance_factor=eff_pf,
+        )
+        train_follower = TrainGenerator.create_instance(
+            st,
+            train_id="TRN_FOLLOWER",
+            requested_departure_s=required_hw_s,
+            performance_factor=eff_pf,
+        )
+
+        if total_length_m <= 1000.0:
+            dt_s = 0.2
+        elif total_length_m <= 60000.0:
+            dt_s = 0.5
+        elif total_length_m <= 160000.0:
+            dt_s = 1.0
+        else:
+            dt_s = 2.0
+        storage_interval_s = dt_s
+        est_journey_s = total_length_m / max(5.0, max_speed_ms)
+        max_duration_s = max(7200.0, est_journey_s * 2.5 + required_hw_s + 600.0)
+
+        coord = SignallingCoordinator()
+        sim = MultiTrainSimulator(
+            coordinator=coord,
+            dt_s=dt_s,
+            storage_interval_s=storage_interval_s,
+        )
+        sim.register_trains([train_leader, train_follower])
+        sim.run_simulation(max_duration_s=max_duration_s)
+
+        traj_leader = cls._extract_trajectory(train_leader)
+        traj_follower = cls._extract_trajectory(train_follower)
+
+        return traj_leader, traj_follower, route, train_leader
+
+    @classmethod
+    def _extract_trajectory(cls, train: TrainServiceInstance) -> TrainTrajectory:
+        """Extract canonical TrainTrajectory trimmed to completion time."""
+        cutoff_t = (train.actual_completion_time_s or 1e9) + 1e-4
+        raw_samples = [s for s in train.trajectory_samples if s.time_s <= cutoff_t]
+        if not raw_samples and train.trajectory_samples:
+            raw_samples = list(train.trajectory_samples)
+
+        is_reverse = (train.running_direction == RunningDirection.REVERSE)
+        total_len = train.route.total_length_m
+
+        samples: List[TrajectorySample] = []
+        for s in raw_samples:
+            if is_reverse:
+                front_d = round(max(0.0, total_len - s.front_distance_m), 2)
+                rear_d = round(min(total_len, (total_len - s.front_distance_m) + train.params.length_m), 2)
+            else:
+                front_d = s.front_distance_m
+                rear_d = s.rear_distance_m
+            samples.append(
+                TrajectorySample(
+                    time_s=s.time_s,
+                    front_distance_m=front_d,
+                    rear_distance_m=rear_d,
+                    speed_ms=s.speed_ms,
+                    acceleration_ms2=s.acceleration_ms2,
+                    traction_force_n=s.traction_force_n,
+                    braking_force_n=s.braking_force_n,
+                    davis_resistance_n=s.davis_resistance_n,
+                    gradient_resistance_n=s.gradient_resistance_n,
+                    curvature_resistance_n=s.curvature_resistance_n,
+                    net_force_n=s.net_force_n,
+                    dynamic_mode=s.dynamic_mode,
+                    operational_state=s.operational_state,
+                    link_id=s.link_id,
+                    physical_coordinate_m=front_d,
+                )
+            )
+
+        return TrainTrajectory(
+            train_id=train.train_id,
+            train_type_id=train.params.train_type_id,
+            route_id=train.route.route_id,
+            running_direction=train.running_direction,
+            samples=samples,
+            events=list(train.events),
+        )
+
+    @classmethod
     def _build_microscopic_trajectory(
         cls,
         train_id: str,
@@ -466,64 +673,68 @@ class SimulationRunner:
         train_length_m: float,
         max_speed_ms: float,
         running_direction: RunningDirection,
+        performance_factor: float = 1.0,
     ) -> TrainTrajectory:
-        """Constructs a physically continuous microscopic train trajectory."""
-        samples: List[TrajectorySample] = []
-        t = 0.0
-        v = 0.0
-        dist = 0.0 if running_direction == RunningDirection.FORWARD else corridor_length_m
-        dt = 2.0
-        num_steps = 35
-
-        for i in range(num_steps):
-            if i < 10:
-                v = min(max_speed_ms, v + 1.0 * dt)
-                mode = DynamicMode.ACCELERATING
-            elif i < 25:
-                v = max_speed_ms
-                mode = DynamicMode.CRUISING
-            else:
-                v = max(0.0, v - 1.2 * dt)
-                mode = DynamicMode.SERVICE_BRAKING
-
-            step_dist = v * dt
-            dist += step_dist if running_direction == RunningDirection.FORWARD else -step_dist
-            t += dt
-
-            front_d = dist
-            rear_d = (
-                max(0.0, dist - train_length_m)
-                if running_direction == RunningDirection.FORWARD
-                else min(corridor_length_m, dist + train_length_m)
-            )
-
-            samples.append(
-                TrajectorySample(
-                    time_s=t,
-                    front_distance_m=front_d,
-                    rear_distance_m=rear_d,
-                    speed_ms=v,
-                    acceleration_ms2=1.0 if mode == DynamicMode.ACCELERATING else (-1.2 if mode == DynamicMode.SERVICE_BRAKING else 0.0),
-                    traction_force_n=120000.0 if mode == DynamicMode.ACCELERATING else 0.0,
-                    braking_force_n=150000.0 if mode == DynamicMode.SERVICE_BRAKING else 0.0,
-                    davis_resistance_n=2500.0,
-                    gradient_resistance_n=0.0,
-                    curvature_resistance_n=0.0,
-                    net_force_n=0.0,
-                    dynamic_mode=mode,
-                    operational_state=OperationalState.STANDSTILL if v <= 0.01 else OperationalState.RUNNING,
-                    link_id="LNK_MAIN",
-                    physical_coordinate_m=front_d,
-                )
-            )
-
-        return TrainTrajectory(
-            train_id=train_id,
-            train_type_id="TT_STANDARD",
-            route_id="RT_PRIMARY",
-            running_direction=running_direction,
-            samples=samples,
+        """Constructs a microscopic train trajectory using MultiTrainSimulator."""
+        link = TrackLink(
+            link_id="LNK_PRIMARY",
+            track_id="TRK_01",
+            start_node_id="ND_01",
+            end_node_id="ND_02",
+            length_m=corridor_length_m,
+            max_speed_ms=max_speed_ms,
         )
+        traversals = [
+            LinkTraversal(
+                link=link,
+                direction=running_direction,
+                sequence_index=0,
+                start_distance_m=0.0,
+                end_distance_m=corridor_length_m,
+            )
+        ]
+        route = Route(route_id=f"RT_{train_id}", traversals=traversals)
+        tt = TrainType(
+            train_type_id=f"TT_{train_id}",
+            description="Operational Consist",
+            length_m=train_length_m,
+            mass_empty_kg=400000.0,
+            mass_loaded_kg=450000.0,
+            max_speed_ms=max_speed_ms,
+            max_acceleration_ms2=0.8,
+            max_service_deceleration_ms2=0.8,
+            emergency_deceleration_ms2=1.2,
+            power_w=3500000.0,
+            max_tractive_effort_n=250000.0,
+            davis_a_n=2500.0,
+            davis_b_ns_m=140.0,
+            davis_c_ns2_m2=5.0,
+        )
+        params = RollingStockParameters.from_canonical(tt)
+        st = ServiceType(
+            service_id=f"SVC_{train_id}",
+            train_type_id=tt.train_type_id,
+            params=params,
+            route=route,
+            running_direction=running_direction,
+        )
+        train_inst = TrainGenerator.create_instance(
+            st,
+            train_id=train_id,
+            requested_departure_s=0.0,
+            performance_factor=performance_factor,
+        )
+        dt_s = 0.2 if corridor_length_m <= 1000.0 else 0.5
+        storage_interval_s = 0.2 if corridor_length_m <= 1000.0 else 0.5
+        est_s = corridor_length_m / max(5.0, max_speed_ms)
+        sim = MultiTrainSimulator(
+            coordinator=SignallingCoordinator(),
+            dt_s=dt_s,
+            storage_interval_s=storage_interval_s,
+        )
+        sim.register_train(train_inst)
+        sim.run_simulation(max_duration_s=max(7200.0, est_s * 2.5 + 600.0))
+        return cls._extract_trajectory(train_inst)
 
     @classmethod
     def _build_blocking_intervals(

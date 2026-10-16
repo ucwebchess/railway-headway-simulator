@@ -123,6 +123,12 @@ class Route:
         self.traversals: List[LinkTraversal] = list(traversals)
         self.description: Optional[str] = description
 
+        self._traversals_by_link: Dict[str, List[LinkTraversal]] = {}
+        self._traversal_end_distances: List[float] = []
+        for t in self.traversals:
+            self._traversals_by_link.setdefault(t.link_id, []).append(t)
+            self._traversal_end_distances.append(t.end_distance_m)
+
         self._validate_continuity()
 
     def _validate_continuity(self) -> None:
@@ -171,11 +177,10 @@ class Route:
 
         s_clamped = max(0.0, min(self.total_length_m, s))
 
-        for t in self.traversals:
-            if t.start_distance_m <= s_clamped <= t.end_distance_m:
-                return t
-
-        # Edge case: floating point boundary at end of route
+        import bisect
+        idx = bisect.bisect_left(self._traversal_end_distances, s_clamped)
+        if idx < len(self.traversals):
+            return self.traversals[idx]
         return self.traversals[-1]
 
     def route_distance_to_physical(self, s: float) -> Tuple[str, float, RunningDirection]:
@@ -188,7 +193,7 @@ class Route:
         self, link_id: str, offset_m: float, occurrence_index: int = 0
     ) -> float:
         """P02-ROUTE-006: Map physical position and occurrence index to cumulative route distance."""
-        matching = [t for t in self.traversals if t.link_id == link_id]
+        matching = self._traversals_by_link.get(link_id, [])
         if not matching:
             raise PositionMappingError(
                 f"Link '{link_id}' is not part of route '{self.route_id}'.",
@@ -207,7 +212,8 @@ class Route:
 
     def find_all_occurrences(self, link_id: str) -> List[Tuple[int, LinkTraversal]]:
         """Find all traversals of link_id along this route: list of (occurrence_index, LinkTraversal)."""
-        return [(idx, t) for idx, t in enumerate(self.traversals) if t.link_id == link_id]
+        matching = self._traversals_by_link.get(link_id, [])
+        return [(idx, t) for idx, t in enumerate(matching)]
 
     def create_reverse_route(
         self,

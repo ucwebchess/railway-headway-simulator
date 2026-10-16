@@ -270,6 +270,12 @@ class ReportAssembler:
         Total Service Duration = (Arrival Time at destination) - (Departure Time at origin)
         Includes running time along all links, station dwells, and infrastructure restrictions.
         """
+        # 0. If explicit service_duration_s provided in metadata
+        if "service_duration_s" in package.metadata and package.metadata["service_duration_s"] is not None:
+            dur = float(package.metadata["service_duration_s"])
+            if dur > 0.0:
+                return dur
+
         # 1. If station stops exist in metadata with at least 2 stops
         station_stops = package.metadata.get("station_stops", [])
         if station_stops and len(station_stops) >= 2:
