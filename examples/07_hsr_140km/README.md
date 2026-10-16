@@ -1,5 +1,16 @@
 # High-Speed Rail 140 km Corridor Example (`07_hsr_140km`)
 
+> **Fixture scope — read before interpreting any metric in this document.**  
+> This fixture is a *representative* 320 km/h high-speed corridor stress model. It reproduces the target corridor's topology (447 links, 448 nodes, 92 blocks, 91 signals), rolling stock (`TRN_HSR`, 8-car, 202 m, 465/485 t, 320 km/h, Davis A=2.506 kN / B=0.04065 / C=0.00043), and operations (`SRV_6000`, 5 stops, 120 s dwell). It does **not** reproduce the user's project exactly. Three differences are material:
+>
+> 1. **Station positions.** The fixture places intermediate stations at 35.0 km, 70.0 km, and 105.0 km (evenly spaced). The user's corridor places them at 4.4 km, 24.21 km, and 101.79 km — producing one uninterrupted 78 km non-stop segment between `STN_YAS` and `STN_MKT`. The fixture inserts one extra kinetic stop penalty (≈111 s) and one extra 120 s dwell that the user's corridor does not contain.
+> 2. **Signalling aspect model.** The fixture uses `THREE_ASPECT`. The user's project uses `TWO_ASPECT`. Minimum headway is aspect-model sensitive.
+> 3. **Tunnel / TVS.** The fixture has no tunnel sections. The user's corridor includes `TNL_01` with 14 TVS sections.
+>
+> Consequently, the 2,575 s (100 % PF) total service duration and the 52.9 s technical minimum headway reported for this fixture are **not** predictions for the user's project. Validation against the user's actual Excel workbooks is tracked as Phase 1 Closeout (see below).
+
+---
+
 The **High-Speed Rail 140 km Corridor** (`07_hsr_140km`) reference dataset models a microscopic 140 km, 320 km/h intercity high-speed passenger corridor operating under ETCS Level 2 cab signalling.
 
 ---
