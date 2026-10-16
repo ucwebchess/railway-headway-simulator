@@ -28,8 +28,8 @@ def create_platform_occupation_figure(
     if not occupation_records:
         layout = get_plotly_layout(
             title=title,
-            xaxis_title="Simulation Time (s)",
-            yaxis_title="Platform Track",
+            xaxis_title="Station Platform Track",
+            yaxis_title="Simulation Time [s]",
             running_direction=running_direction,
         )
         fig.update_layout(layout)
@@ -54,10 +54,10 @@ def create_platform_occupation_figure(
             fig.add_trace(
                 go.Bar(
                     name="Ingress",
-                    x=[ingress_dur],
-                    y=[plt_label],
+                    x=[plt_label],
+                    y=[ingress_dur],
                     base=[rec.arrival_time_s],
-                    orientation="h",
+                    orientation="v",
                     marker=dict(color=ChartColors.COMPONENT_APPROACH),
                     hovertemplate=f"Train: {rec.train_id}<br>Ingress: {ingress_dur:.1f} s<extra></extra>",
                     showlegend=False,
@@ -68,10 +68,10 @@ def create_platform_occupation_figure(
         fig.add_trace(
             go.Bar(
                 name="Passenger Dwell",
-                x=[rec.dwell_duration_s],
-                y=[plt_label],
+                x=[plt_label],
+                y=[rec.dwell_duration_s],
                 base=[rec.dwell_start_time_s],
-                orientation="h",
+                orientation="v",
                 marker=dict(color=ChartColors.COMPONENT_DWELL),
                 hovertemplate=(
                     f"<b>Train: {rec.train_id}</b><br>"
@@ -90,10 +90,10 @@ def create_platform_occupation_figure(
             fig.add_trace(
                 go.Bar(
                     name="Egress / Clearance",
-                    x=[egress_dur],
-                    y=[plt_label],
+                    x=[plt_label],
+                    y=[egress_dur],
                     base=[rec.departure_time_s],
-                    orientation="h",
+                    orientation="v",
                     marker=dict(color=ChartColors.COMPONENT_GEOMETRIC_CLEARANCE),
                     hovertemplate=f"Train: {rec.train_id}<br>Clearance: {egress_dur:.1f} s<extra></extra>",
                     showlegend=False,
@@ -106,10 +106,10 @@ def create_platform_occupation_figure(
             fig.add_trace(
                 go.Bar(
                     name="Residual Rear Invariant",
-                    x=[rec.residual_rear_duration_s],
-                    y=[plt_label],
+                    x=[plt_label],
+                    y=[rec.residual_rear_duration_s],
                     base=[rec.dwell_start_time_s],
-                    orientation="h",
+                    orientation="v",
                     marker=dict(
                         color=ChartColors.COMPONENT_RESIDUAL_REAR,
                         pattern=dict(shape="/", fgcolor=ChartColors.CRITICAL_RED),
@@ -125,12 +125,14 @@ def create_platform_occupation_figure(
 
     layout = get_plotly_layout(
         title=title,
-        xaxis_title="Simulation Time (s)",
-        yaxis_title="Station Platform Track",
+        xaxis_title="Station Platform Track",
+        yaxis_title="Simulation Time [s]",
         running_direction=running_direction,
         barmode="overlay",
-        height=max(450, len(platforms_seen) * 45 + 180),
+        width=max(800, len(platforms_seen) * 60 + 200),
+        height=550,
     )
     fig.update_layout(layout)
-    fig.update_yaxes(categoryorder="array", categoryarray=platforms_seen)
+    fig.update_xaxes(categoryorder="array", categoryarray=platforms_seen)
+    fig.update_yaxes(categoryarray=platforms_seen)
     return fig

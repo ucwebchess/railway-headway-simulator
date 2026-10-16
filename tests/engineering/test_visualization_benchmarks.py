@@ -444,7 +444,7 @@ class TestVisualizationBenchmarks:
         )
         fig = create_platform_occupation_figure([rec])
         rear_trace = next(t for t in fig.data if "Residual Rear" in t.name)
-        assert rear_trace.x[0] == 40.0
+        assert (rear_trace.y[0] if getattr(rear_trace, "orientation", None) == "v" else rear_trace.x[0]) == 40.0
 
     def test_p13_b016_mixed_traffic_heatmap(self) -> None:
         """P13-B016: Mixed-traffic heatmap displays N x N matrix with values and axes."""
