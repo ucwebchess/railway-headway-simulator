@@ -108,3 +108,160 @@ def test_axis_layout_platform_occupation():
     assert fig.layout.xaxis.title.text == "Station Platform Track"
     assert fig.layout.yaxis.title.text == "Simulation Time [s]"
     assert len(fig.layout.xaxis.categoryarray) == 2
+
+
+def test_report_binding_from_loaded_excel_project():
+    """Test 2a: Report data binding loads Rolling Stock and Infrastructure parameters from Project."""
+    from pathlib import Path
+    from headway.data.importer import ExcelImporter
+    from headway.data.converter import convert_raw_to_canonical
+    from headway.data.validation import ValidationReport
+    from headway.reporting.report_assembly import ReportAssembler
+    from headway.reporting.html_renderer import HtmlReportRenderer
+    from headway.reporting.result_models import SimulationResultPackage
+
+    ex_dir = Path("examples/05_comprehensive_line")
+    importer = ExcelImporter()
+    report = ValidationReport()
+
+    raw_wbs = {}
+    for f in sorted(ex_dir.glob("*.xlsx")):
+        raw = importer.load_workbook(f, report)
+        if raw:
+            raw_wbs[raw.workbook_type] = raw
+
+    project = convert_raw_to_canonical(raw_wbs)
+
+    decomp = BlockingTimeDecomposition(1.0, 5.0, 10.0, 0.0, 2.0, 0.0, 1.0)
+    bi = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp)
+    hw = HeadwayResult(
+        run_id="RUN_01",
+        analysis_id="AN_01",
+        scenario_id="SC_01",
+        running_direction=RunningDirection.FORWARD,
+        headway_s=60.0,
+        leader_service_id="SVC_01",
+        follower_service_id="SVC_02",
+        reference_point_id="BLK_01",
+        signalling_system="FIXED_BLOCK",
+        headway_definition="TECHNICAL_MINIMUM",
+        minimum_dispatch_headway_s=60.0,
+        controlling_conflicts=[],
+        blocking_intervals=[bi],
+    )
+
+    pkg = SimulationResultPackage(
+        run_id="RUN_01",
+        scenario_id="SC_01",
+        running_direction=RunningDirection.FORWARD,
+        headway_results={"PAIR_01": hw},
+        blocking_intervals=[bi],
+        trajectories={},
+        effective_config_hash="hash1234567890",
+        metadata={"project": project},
+    )
+
+    doc = ReportAssembler.assemble_report(pkg, project=project)
+
+    # 1. Verify Rolling Stock Parameters match loaded Excel workbook
+    rs = doc.rolling_stock
+    assert rs is not None
+    assert rs.train_type_id == "TRN_HSR"
+    assert rs.description == "High Speed Passenger Train"
+    assert rs.train_length_m == 200.0
+    assert rs.tare_mass_t == 400.0
+    assert rs.gross_mass_t == 450.0
+    assert rs.max_speed_kmh == 200.0
+    assert rs.max_tractive_effort_kn == 300.0
+    assert rs.traction_power_kw == 8000.0
+    assert rs.service_braking_deceleration_ms2 == 0.9
+    assert rs.emergency_braking_deceleration_ms2 == 1.2
+    assert rs.davis_a_n == 3500.0
+    assert rs.davis_b_ns_per_m == 144.0
+    assert rs.davis_c_ns2_per_m2 == 7.776
+    assert len(rs.train_types) == 3
+
+    # 2. Verify Infrastructure & Signalling Parameters match loaded Excel workbook
+    infra = doc.infrastructure
+    assert infra is not None
+    assert infra.signalling_technology == "GENERIC_FIXED_BLOCK_ENGINEERING_MODEL"
+    assert infra.aspect_model == "THREE_ASPECT"
+    assert infra.default_overlap_m == 50.0
+    assert infra.sighting_time_s == 8.0
+    assert infra.route_setup_time_s == 3.0
+    assert infra.resource_release_delay_s == 4.0
+    assert infra.total_links == 18
+    assert infra.total_blocks == 18
+    assert infra.total_signals == 18
+    assert infra.total_stations == 3
+    assert infra.total_platforms == 8
+    assert infra.total_tvs_sections == 4
+
+    # 3. Verify HTML rendering contains actual loaded data, not fallback defaults
+    html = HtmlReportRenderer.render(doc)
+    assert "TRN_HSR" in html
+    assert "High Speed Passenger Train" in html
+    assert "GENERIC_FIXED_BLOCK_ENGINEERING_MODEL" in html
+    assert "THREE_ASPECT" in html
+    assert "Metro EMU 6-Car Standard" not in html
+
+
+def test_report_binding_via_session_state_fallback(monkeypatch):
+    """Test 2b: Report data binding falls back to session_state.current_project when metadata lacks it."""
+    from pathlib import Path
+    from headway.data.importer import ExcelImporter
+    from headway.data.converter import convert_raw_to_canonical
+    from headway.data.validation import ValidationReport
+    from headway.reporting.report_assembly import ReportAssembler
+    from headway.reporting.result_models import SimulationResultPackage
+    from headway.ui.state import session_state
+
+    ex_dir = Path("examples/05_comprehensive_line")
+    importer = ExcelImporter()
+    report = ValidationReport()
+
+    raw_wbs = {}
+    for f in sorted(ex_dir.glob("*.xlsx")):
+        raw = importer.load_workbook(f, report)
+        if raw:
+            raw_wbs[raw.workbook_type] = raw
+
+    project = convert_raw_to_canonical(raw_wbs)
+    monkeypatch.setattr(session_state, "current_project", project)
+
+    decomp = BlockingTimeDecomposition(1.0, 5.0, 10.0, 0.0, 2.0, 0.0, 1.0)
+    bi = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp)
+    hw = HeadwayResult(
+        run_id="RUN_01",
+        analysis_id="AN_01",
+        scenario_id="SC_01",
+        running_direction=RunningDirection.FORWARD,
+        headway_s=60.0,
+        leader_service_id="SVC_01",
+        follower_service_id="SVC_02",
+        reference_point_id="BLK_01",
+        signalling_system="FIXED_BLOCK",
+        headway_definition="TECHNICAL_MINIMUM",
+        minimum_dispatch_headway_s=60.0,
+        controlling_conflicts=[],
+        blocking_intervals=[bi],
+    )
+
+    # Note: metadata has no "project" and project is not passed directly
+    pkg = SimulationResultPackage(
+        run_id="RUN_01",
+        scenario_id="SC_01",
+        running_direction=RunningDirection.FORWARD,
+        headway_results={"PAIR_01": hw},
+        blocking_intervals=[bi],
+        trajectories={},
+        effective_config_hash="hash1234567890",
+        metadata={},
+    )
+
+    doc = ReportAssembler.assemble_report(pkg)
+
+    assert doc.rolling_stock.train_type_id == "TRN_HSR"
+    assert doc.infrastructure.signalling_technology == "GENERIC_FIXED_BLOCK_ENGINEERING_MODEL"
+    assert doc.infrastructure.total_blocks == 18
+

@@ -88,11 +88,21 @@ class ReportAssembler:
         package: SimulationResultPackage,
         config: Optional[ReportConfig] = None,
         report_id: Optional[str] = None,
+        project: Optional[Any] = None,
     ) -> ReportDocument:
         """Assembles a full ReportDocument from a SimulationResultPackage."""
         cfg = config or ReportConfig()
         direction = cfg.running_direction or package.running_direction
         r_id = report_id or f"RPT-{package.scenario_id}-{direction.value}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+
+        # Resolve active canonical project
+        proj = project or package.metadata.get("project")
+        if not proj:
+            try:
+                from headway.ui.state import session_state
+                proj = getattr(session_state, "current_project", None)
+            except Exception:
+                proj = None
 
         # 1. Metadata
         metadata = ReportMetadata(
@@ -121,8 +131,8 @@ class ReportAssembler:
         kpis = cls._build_executive_kpis(package, primary_hw)
 
         # 4. Rolling Stock & Infrastructure Summaries
-        rs_summary = cls._build_rolling_stock_summary(package)
-        infra_summary = cls._build_infrastructure_summary(package)
+        rs_summary = cls._build_rolling_stock_summary(package, project=proj)
+        infra_summary = cls._build_infrastructure_summary(package, project=proj)
         bottleneck_diag = cls._build_bottleneck_diagnosis(primary_hw)
 
         # 5. Rule-Based Recommendations (P14-REC-001)
@@ -348,27 +358,171 @@ class ReportAssembler:
         )
 
     @classmethod
-    def _build_rolling_stock_summary(cls, package: SimulationResultPackage) -> RollingStockSummary:
+    def _build_rolling_stock_summary(
+        cls, package: SimulationResultPackage, project: Optional[Any] = None
+    ) -> RollingStockSummary:
         """P14-EXE-003: Extract train dynamic parameters."""
         meta = package.metadata.get("rolling_stock", {})
+
+        proj = project or package.metadata.get("project")
+        if not proj:
+            try:
+                from headway.ui.state import session_state
+                proj = getattr(session_state, "current_project", None)
+            except Exception:
+                proj = None
+
+        if proj and hasattr(proj, "rolling_stock") and proj.rolling_stock and getattr(proj.rolling_stock, "train_types", None):
+            all_tts = list(proj.rolling_stock.train_types)
+            primary_tt = all_tts[0]
+
+            train_type_summaries = []
+            for tt in all_tts:
+                p_w = getattr(tt, "power_w", getattr(tt, "installed_power_w", None))
+                svc_dec = getattr(tt, "max_service_deceleration_ms2", getattr(tt, "service_deceleration_ms2", 0.9))
+                emg_dec = getattr(tt, "emergency_deceleration_ms2", 1.2)
+                db = getattr(tt, "davis_b_ns_m", getattr(tt, "davis_b_ns_per_m", 0.0))
+                dc = getattr(tt, "davis_c_ns2_m2", getattr(tt, "davis_c_ns2_per_m2", 0.0))
+                tt_dict = {
+                    "train_type_id": tt.train_type_id,
+                    "description": tt.description or tt.train_type_id,
+                    "model_name": f"{tt.train_type_id} - {tt.description}" if tt.description else tt.train_type_id,
+                    "train_length_m": float(tt.length_m),
+                    "tare_mass_t": round(float(tt.mass_empty_kg) / 1000.0, 1),
+                    "gross_mass_t": round(float(tt.mass_loaded_kg) / 1000.0, 1),
+                    "max_speed_kmh": round(float(tt.max_speed_ms) * 3.6, 1),
+                    "max_tractive_effort_kn": round(float(tt.max_tractive_effort_n) / 1000.0, 1) if getattr(tt, "max_tractive_effort_n", None) is not None else 0.0,
+                    "traction_power_kw": round(float(p_w) / 1000.0, 1) if p_w is not None else 0.0,
+                    "service_braking_deceleration_ms2": round(float(svc_dec), 2),
+                    "emergency_braking_deceleration_ms2": round(float(emg_dec), 2),
+                    "davis_a_n": round(float(tt.davis_a_n), 1),
+                    "davis_b_ns_per_m": round(float(db), 4),
+                    "davis_c_ns2_per_m2": round(float(dc), 4),
+                }
+                train_type_summaries.append(tt_dict)
+
+            model_display = ", ".join(t.train_type_id for t in all_tts)
+            prim_p_w = getattr(primary_tt, "power_w", getattr(primary_tt, "installed_power_w", None))
+            prim_svc = getattr(primary_tt, "max_service_deceleration_ms2", getattr(primary_tt, "service_deceleration_ms2", 0.9))
+            prim_emg = getattr(primary_tt, "emergency_deceleration_ms2", 1.2)
+            prim_db = getattr(primary_tt, "davis_b_ns_m", getattr(primary_tt, "davis_b_ns_per_m", 0.0))
+            prim_dc = getattr(primary_tt, "davis_c_ns2_m2", getattr(primary_tt, "davis_c_ns2_per_m2", 0.0))
+
+            return RollingStockSummary(
+                model_name=model_display,
+                train_type_id=primary_tt.train_type_id,
+                description=primary_tt.description or primary_tt.train_type_id,
+                train_length_m=float(primary_tt.length_m),
+                tare_mass_t=round(float(primary_tt.mass_empty_kg) / 1000.0, 1),
+                gross_mass_t=round(float(primary_tt.mass_loaded_kg) / 1000.0, 1),
+                max_speed_kmh=round(float(primary_tt.max_speed_ms) * 3.6, 1),
+                max_tractive_effort_kn=round(float(primary_tt.max_tractive_effort_n) / 1000.0, 1) if getattr(primary_tt, "max_tractive_effort_n", None) is not None else 0.0,
+                traction_power_kw=round(float(prim_p_w) / 1000.0, 1) if prim_p_w is not None else 0.0,
+                service_braking_deceleration_ms2=round(float(prim_svc), 2),
+                emergency_braking_deceleration_ms2=round(float(prim_emg), 2),
+                davis_a_n=round(float(primary_tt.davis_a_n), 1),
+                davis_b_ns_per_m=round(float(prim_db), 4),
+                davis_c_ns2_per_m2=round(float(prim_dc), 4),
+                train_types=tuple(train_type_summaries),
+            )
+
         return RollingStockSummary(
             model_name=meta.get("model_name", "Metro EMU 6-Car Standard"),
+            train_type_id=meta.get("train_type_id", "TRN_DEFAULT"),
+            description=meta.get("description", "Default Rolling Stock"),
             train_length_m=meta.get("train_length_m", 120.0),
             tare_mass_t=meta.get("tare_mass_t", 210.0),
             gross_mass_t=meta.get("gross_mass_t", 280.0),
             max_speed_kmh=meta.get("max_speed_kmh", 80.0),
+            max_tractive_effort_kn=meta.get("max_tractive_effort_kn", 300.0),
             traction_power_kw=meta.get("traction_power_kw", 3200.0),
             service_braking_deceleration_ms2=meta.get("service_braking_deceleration_ms2", 0.9),
             emergency_braking_deceleration_ms2=meta.get("emergency_braking_deceleration_ms2", 1.2),
             davis_a_n=meta.get("davis_a_n", 2200.0),
             davis_b_ns_per_m=meta.get("davis_b_ns_per_m", 35.0),
             davis_c_ns2_per_m2=meta.get("davis_c_ns2_per_m2", 0.45),
+            train_types=tuple(meta.get("train_types", ())),
         )
 
     @classmethod
-    def _build_infrastructure_summary(cls, package: SimulationResultPackage) -> InfrastructureSummary:
+    def _build_infrastructure_summary(
+        cls, package: SimulationResultPackage, project: Optional[Any] = None
+    ) -> InfrastructureSummary:
         """P14-EXE-004: Extract signalling and infrastructure parameters."""
         meta = package.metadata.get("infrastructure", {})
+
+        proj = project or package.metadata.get("project")
+        if not proj:
+            try:
+                from headway.ui.state import session_state
+                proj = getattr(session_state, "current_project", None)
+            except Exception:
+                proj = None
+
+        if proj and hasattr(proj, "infrastructure") and proj.infrastructure:
+            infra = proj.infrastructure
+            sig = getattr(proj, "signalling", None)
+
+            sig_sys = (
+                getattr(sig, "system", None)
+                or getattr(sig, "signalling_system", None)
+            ) if sig else None
+
+            if sig_sys:
+                tech = getattr(sig_sys, "technology_type", None) or getattr(sig_sys, "system_type", "FIXED_BLOCK")
+                sig_tech = getattr(tech, "value", str(tech))
+                asp = getattr(sig_sys, "aspect_model", "THREE_ASPECT")
+                asp_model = getattr(asp, "value", str(asp))
+                def_overlap = float(getattr(sig_sys, "default_overlap_m", 0.0))
+                sight_time = float(getattr(sig_sys, "sighting_time_s", 8.0))
+                route_setup = float(getattr(sig_sys, "route_setup_time_s", 3.0))
+                rel_delay = float(getattr(sig_sys, "release_delay_s", 4.0))
+            elif sig and getattr(sig, "system_type", None):
+                sig_tech = getattr(sig.system_type, "value", str(sig.system_type))
+                asp_model = "THREE_ASPECT"
+                def_overlap = 0.0
+                sight_time = 8.0
+                route_setup = 3.0
+                rel_delay = 4.0
+            else:
+                sig_tech = meta.get("signalling_technology", "FIXED_BLOCK_3ASPECT")
+                asp_model = meta.get("aspect_model", "THREE_ASPECT")
+                def_overlap = meta.get("default_overlap_m", 0.0)
+                sight_time = meta.get("sighting_time_s", 8.0)
+                route_setup = meta.get("route_setup_time_s", 3.0)
+                rel_delay = meta.get("resource_release_delay_s", 4.0)
+
+            total_links = len(getattr(infra, "track_links", [])) or len(getattr(infra, "links", []))
+            total_blocks = len(getattr(sig, "blocks", [])) if sig else 0
+            total_signals = len(getattr(sig, "signals", [])) if sig else 0
+            total_stations = len(getattr(infra, "stations", []))
+            total_platforms = len(getattr(infra, "platforms", []))
+            total_tvs = len(getattr(infra, "tvs_sections", [])) or len(getattr(infra, "tvs_zones", []))
+
+            tracks = getattr(infra, "tracks", [])
+            is_bidi = any(getattr(t.directionality, "value", str(t.directionality)) == "BIDIRECTIONAL" for t in tracks)
+            topo_mode = "DOUBLE_TRACK_BIDIRECTIONAL" if is_bidi else ("DOUBLE_TRACK" if len(tracks) >= 2 else "SINGLE_TRACK")
+
+            return InfrastructureSummary(
+                signalling_technology=sig_tech,
+                topology_mode=topo_mode,
+                dataset_id=getattr(infra, "dataset_id", "CANONICAL_DS_01"),
+                dataset_version=getattr(infra, "version", "1.0.0") if hasattr(infra, "version") else "1.0.0",
+                dataset_hash=package.effective_config_hash[:16],
+                route_setup_time_s=route_setup,
+                resource_release_delay_s=rel_delay,
+                model_fidelity="MICROSCOPIC_HIGH_FIDELITY",
+                aspect_model=asp_model,
+                default_overlap_m=def_overlap,
+                sighting_time_s=sight_time,
+                total_links=total_links,
+                total_blocks=total_blocks,
+                total_signals=total_signals,
+                total_stations=total_stations,
+                total_platforms=total_platforms,
+                total_tvs_sections=total_tvs,
+            )
+
         return InfrastructureSummary(
             signalling_technology=meta.get("signalling_technology", "FIXED_BLOCK_3ASPECT"),
             topology_mode=meta.get("topology_mode", "DOUBLE_TRACK_BIDIRECTIONAL"),
@@ -378,6 +532,15 @@ class ReportAssembler:
             route_setup_time_s=meta.get("route_setup_time_s", 3.0),
             resource_release_delay_s=meta.get("resource_release_delay_s", 4.0),
             model_fidelity="MICROSCOPIC_HIGH_FIDELITY",
+            aspect_model=meta.get("aspect_model", "THREE_ASPECT"),
+            default_overlap_m=meta.get("default_overlap_m", 0.0),
+            sighting_time_s=meta.get("sighting_time_s", 8.0),
+            total_links=meta.get("total_links", len(package.metadata.get("track_links", []))),
+            total_blocks=meta.get("total_blocks", len(package.blocking_intervals)),
+            total_signals=meta.get("total_signals", 0),
+            total_stations=meta.get("total_stations", 0),
+            total_platforms=meta.get("total_platforms", len(package.metadata.get("platform_records", []))),
+            total_tvs_sections=meta.get("total_tvs_sections", len(package.metadata.get("tvs_events", []))),
         )
 
     @classmethod

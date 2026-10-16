@@ -402,6 +402,7 @@ class SimulationRunner:
             monte_carlo_result=mc_result,
             scenario_comparison_report=report_cmp,
             metadata={
+                "project": project,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
                 "stochastic_headway_samples": [required_hw_s + k * 0.3 for k in range(30)],

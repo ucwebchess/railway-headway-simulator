@@ -13,7 +13,7 @@ Defines:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.tables import EngineeringTable
@@ -170,20 +170,28 @@ class RollingStockSummary:
     davis_a_n: float
     davis_b_ns_per_m: float
     davis_c_ns2_per_m2: float
+    train_type_id: str = ""
+    description: str = ""
+    max_tractive_effort_kn: float = 0.0
+    train_types: Tuple[Dict[str, Any], ...] = ()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "model_name": self.model_name,
+            "train_type_id": self.train_type_id,
+            "description": self.description,
             "train_length_m": self.train_length_m,
             "tare_mass_t": self.tare_mass_t,
             "gross_mass_t": self.gross_mass_t,
             "max_speed_kmh": self.max_speed_kmh,
             "traction_power_kw": self.traction_power_kw,
+            "max_tractive_effort_kn": self.max_tractive_effort_kn,
             "service_braking_deceleration_ms2": self.service_braking_deceleration_ms2,
             "emergency_braking_deceleration_ms2": self.emergency_braking_deceleration_ms2,
             "davis_a_n": self.davis_a_n,
             "davis_b_ns_per_m": self.davis_b_ns_per_m,
             "davis_c_ns2_per_m2": self.davis_c_ns2_per_m2,
+            "train_types": list(self.train_types),
         }
 
 
@@ -199,6 +207,15 @@ class InfrastructureSummary:
     route_setup_time_s: float
     resource_release_delay_s: float
     model_fidelity: str = "MICROSCOPIC_HIGH_FIDELITY"
+    aspect_model: str = "THREE_ASPECT"
+    default_overlap_m: float = 0.0
+    sighting_time_s: float = 8.0
+    total_links: int = 0
+    total_blocks: int = 0
+    total_signals: int = 0
+    total_stations: int = 0
+    total_platforms: int = 0
+    total_tvs_sections: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -210,6 +227,15 @@ class InfrastructureSummary:
             "route_setup_time_s": self.route_setup_time_s,
             "resource_release_delay_s": self.resource_release_delay_s,
             "model_fidelity": self.model_fidelity,
+            "aspect_model": self.aspect_model,
+            "default_overlap_m": self.default_overlap_m,
+            "sighting_time_s": self.sighting_time_s,
+            "total_links": self.total_links,
+            "total_blocks": self.total_blocks,
+            "total_signals": self.total_signals,
+            "total_stations": self.total_stations,
+            "total_platforms": self.total_platforms,
+            "total_tvs_sections": self.total_tvs_sections,
         }
 
 
