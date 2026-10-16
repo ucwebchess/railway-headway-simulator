@@ -33,6 +33,7 @@ from headway.data.canonical import (
     ResourceInterval,
     SignallingBlock,
     Station,
+    StationStop,
     TrackDirectionality,
     TrackLink,
     TrainType,
@@ -209,6 +210,17 @@ class SimulationRunner:
             tracker.check_cancellation()
             tracker.update(current_step=45, stage="Microscopic Dynamics Integration", status_message=f"Integrating train movement dynamics with MultiTrainSimulator in {running_direction.value} direction...")
 
+        # Resolve stops for the primary service
+        service_stops = []
+        if ops and getattr(ops, "service_patterns", None):
+            pat = None
+            if running_direction == RunningDirection.FORWARD:
+                pat = next((sp for sp in ops.service_patterns if "UP" in sp.service_pattern_id or "FWD" in sp.service_pattern_id), ops.service_patterns[0])
+            else:
+                pat = next((sp for sp in ops.service_patterns if "DN" in sp.service_pattern_id or "REV" in sp.service_pattern_id), ops.service_patterns[-1])
+            if pat and getattr(pat, "stops", None):
+                service_stops = list(pat.stops)
+
         # 3. Integrate Train Trajectories via MultiTrainSimulator (P04 & P09)
         traj_leader, traj_follower, simulated_route, train_leader = cls._run_multitrain_simulation(
             track_links=track_links,
@@ -218,6 +230,8 @@ class SimulationRunner:
             required_hw_s=required_hw_s,
             total_length_m=total_length_m,
             max_speed_ms=max_speed_ms,
+            stops=service_stops,
+            platforms=list(infra.platforms) if infra and infra.platforms else [],
         )
 
         conflict = ResourceConflict(
@@ -531,6 +545,8 @@ class SimulationRunner:
         required_hw_s: float,
         total_length_m: float,
         max_speed_ms: float,
+        stops: Optional[List[StationStop]] = None,
+        platforms: Optional[List[Platform]] = None,
     ) -> Tuple[TrainTrajectory, TrainTrajectory, Route, TrainServiceInstance]:
         """Execute microscopic multi-train simulation along all track links with MultiTrainSimulator."""
         traversals: List[LinkTraversal] = []
@@ -575,6 +591,7 @@ class SimulationRunner:
             train_type_id=primary_tt.train_type_id,
             params=params,
             route=route,
+            stops=list(stops) if stops else [],
             running_direction=running_direction,
         )
 
@@ -604,6 +621,10 @@ class SimulationRunner:
         max_duration_s = max(7200.0, est_journey_s * 2.5 + required_hw_s + 600.0)
 
         coord = SignallingCoordinator()
+        if platforms:
+            for plat in platforms:
+                coord.platform_controller.register_platform(plat)
+
         sim = MultiTrainSimulator(
             coordinator=coord,
             dt_s=dt_s,

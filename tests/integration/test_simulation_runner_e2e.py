@@ -85,6 +85,22 @@ class TestSimulationRunnerE2E:
             f"Expected 140 km journey duration between 1500s and 3600s, got {traj.journey_time_s:.1f}s"
         )
 
+    def test_e2e_07_hsr_140km_corridor_pipeline(self):
+        """Verify full pipeline execution on 140 km HSR corridor (447 links, 92 blocks, 5 stations)."""
+        project, report, _ = FileManager.load_example_project("07_hsr_140km")
+        assert report.is_simulation_ready
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.FORWARD,
+            performance_factor=1.0,
+        )
+        assert pkg is not None
+        assert doc is not None
+        assert len(pkg.trajectories["TRN_LEADER"].samples) > 2500
+        assert 2000.0 <= doc.executive_kpis.total_service_duration_s <= 3000.0
+        assert doc.executive_kpis.controlling_bottleneck_id == "BLK_UP_092"
+        assert doc.executive_kpis.technical_headway_s == 52.9
+
     def test_e2e_reverse_simulation_monotonicity_and_equivalence(self, comprehensive_project):
         """Verify reverse simulation completes with monotonically decreasing corridor distance."""
         pkg_fwd, doc_fwd = SimulationRunner.run_simulation_pipeline(

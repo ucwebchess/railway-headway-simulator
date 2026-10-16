@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.0] — Operational Performance Factor
+## [Unreleased]
 
 ### Fixed
 
@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Offline Sandboxed Report Rendering (`HtmlReportRenderer`)**:
   - Removed external CDN script dependency (`https://cdn.plot.ly/plotly-2.35.2.min.js`) in generated HTML reports.
   - Inlined Plotly JavaScript on the initial interactive figure (`include_plotlyjs=True`) and stripped external CDN URLs to guarantee complete offline rendering in sandboxed viewer iframes.
+
+---
+
+## [1.3.0] — Operational Performance Factor
+
+### Fixed
+
 - The Network Schematic in the Infrastructure Explorer tab now places
   station labels at their correct cumulative positions along the
   corridor. Previously, all stations were plotted at the same
