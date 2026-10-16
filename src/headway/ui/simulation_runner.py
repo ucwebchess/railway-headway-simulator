@@ -26,10 +26,12 @@ from headway.analysis.headway_results import HeadwayResult, MixedTrafficHeadwayM
 from headway.analysis.headway_solver import TechnicalHeadwaySolver
 from headway.analysis.monte_carlo import MonteCarloExecutionResult
 from headway.analysis.statistics import StatisticalSummary
+from headway.core.exceptions import SignallingBlocksMissingError
 from headway.data.canonical import (
     CanonicalProject,
     Platform,
     ResourceInterval,
+    SignallingBlock,
     Station,
     TrackDirectionality,
     TrackLink,
@@ -134,6 +136,21 @@ class SimulationRunner:
         if not track_links:
             raise ValueError("Infrastructure model contains no track links.")
 
+        # Validate that signalling blocks are defined (RHS-CORRECTION-BLOCK-LOAD-FALLBACK-001)
+        sig = project.signalling
+        if not sig or not getattr(sig, "blocks", None) or len(sig.blocks) == 0:
+            err_msg = (
+                "ERR_SIG_BLOCKS_MISSING: No signalling blocks were loaded from the "
+                "Signalling workbook. The headway analysis cannot run without block "
+                "definitions. Check that the Blocks and BlockGeometry worksheets in "
+                "HEADWAY_SIGNALLING_v1.0.xlsx contain valid rows."
+            )
+            if tracker:
+                tracker.fail(err_msg)
+            raise SignallingBlocksMissingError(err_msg)
+
+        blocks = list(sig.blocks)
+
         total_length_m = sum(lnk.length_m for lnk in track_links)
         speed_limit_ms = min(lnk.max_speed_ms for lnk in track_links) if track_links else 25.0
 
@@ -168,16 +185,18 @@ class SimulationRunner:
 
         # 3. Blocking Intervals & Technical Headway (P08)
         blocking_intervals = cls._build_blocking_intervals(
+            blocks=blocks,
             track_links=track_links,
             running_direction=running_direction,
             train_length_m=train_len_m,
             speed_ms=max_speed_ms,
+            sig_system=getattr(sig, "system", None),
         )
 
         # Build pairwise conflicts and solve minimum technical headway
         controlling_interval = max(blocking_intervals, key=lambda b: b.duration_s) if blocking_intervals else None
         required_hw_s = controlling_interval.duration_s + 15.0 if controlling_interval else 85.0
-        bottleneck_id = controlling_interval.resource_id if controlling_interval else "BLK_01"
+        bottleneck_id = controlling_interval.resource_id if controlling_interval else (blocks[0].block_id if blocks else "BLK_01")
 
         conflict = ResourceConflict(
             conflict_id="CONF_CTRL_01",
@@ -336,20 +355,25 @@ class SimulationRunner:
 
         provenance_records = []
         cum_km = 0.0
-        for lnk in track_links:
+        for blk in blocks:
+            blk_len = 0.0
+            if getattr(blk, "link_intervals", None):
+                blk_len = sum(abs(iv.end_offset_m - iv.start_offset_m) for iv in blk.link_intervals)
+            if blk_len <= 0.0:
+                blk_len = 1000.0
             provenance_records.append(
                 ResourceProvenanceRecord(
-                    resource_id=f"BLK_{lnk.link_id}",
+                    resource_id=blk.block_id,
                     resource_type="TRACK_BLOCK",
                     physical_chainage_km=round(cum_km, 3),
-                    resource_length_m=lnk.length_m,
+                    resource_length_m=blk_len,
                     geometry_source="INPUT_MODEL",
                     dataset_id=project.project_id,
                     dataset_version="1.0.0",
                     is_baseline_geometry=True,
                 )
             )
-            cum_km += lnk.length_m / 1000.0
+            cum_km += blk_len / 1000.0
 
         # 8. Scenario Comparison Report
         report_cmp = ScenarioComparisonReport(
@@ -504,24 +528,38 @@ class SimulationRunner:
     @classmethod
     def _build_blocking_intervals(
         cls,
+        blocks: List[Any],
         track_links: List[TrackLink],
         running_direction: RunningDirection,
         train_length_m: float,
         speed_ms: float,
+        sig_system: Optional[Any] = None,
     ) -> List[ResourceBlockingInterval]:
         """Constructs sequenced 7-component blocking intervals for all corridor blocks."""
         intervals: List[ResourceBlockingInterval] = []
-        ordered_links = list(track_links)
+        ordered_blocks = list(blocks)
         if running_direction == RunningDirection.REVERSE:
-            ordered_links.reverse()
+            ordered_blocks.reverse()
+
+        setup_time = float(getattr(sig_system, "route_setup_time_s", 3.0)) if sig_system else 3.0
+        sight_time = float(getattr(sig_system, "sighting_time_s", 8.0)) if sig_system else 8.0
+        approach_time = round(sight_time + 4.0, 1)
 
         t_cursor = 10.0
-        for idx, lnk in enumerate(ordered_links[:6], start=1):
-            run_time = round(lnk.length_m / max(5.0, speed_ms), 1)
+        for idx, blk in enumerate(ordered_blocks, start=1):
+            blk_len = 0.0
+            if getattr(blk, "link_intervals", None):
+                blk_len = sum(abs(iv.end_offset_m - iv.start_offset_m) for iv in blk.link_intervals)
+            if blk_len <= 0.0:
+                blk_len = 1000.0
+
+            run_time = round(blk_len / max(5.0, speed_ms), 1)
             clearance_time = round(train_length_m / max(5.0, speed_ms), 1)
-            setup_time = 3.0
-            approach_time = 12.0
-            release_time = 4.0
+            release_time = (
+                float(blk.release_delay_s)
+                if getattr(blk, "release_delay_s", None) is not None
+                else (float(getattr(sig_system, "release_delay_s", 4.0)) if sig_system else 4.0)
+            )
             dwell_time = 0.0
             residual_rear = 0.0
 
@@ -542,7 +580,7 @@ class SimulationRunner:
             intervals.append(
                 ResourceBlockingInterval(
                     interval_id=f"INT_{idx:02d}",
-                    resource_id=f"BLK_{lnk.link_id}",
+                    resource_id=blk.block_id,
                     resource_category=ResourceCategory.TRACK_BLOCK,
                     start_time_s=start,
                     end_time_s=end,
