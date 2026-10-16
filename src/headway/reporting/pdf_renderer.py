@@ -424,16 +424,18 @@ class PdfReportRenderer:
             rs_data = [
                 [Paragraph("<b>Rolling Stock Characteristics</b>", styles["TableCellBold"]), Paragraph("", styles["TableCell"])],
                 [Paragraph("Train Model", styles["TableCell"]), Paragraph(f"<b>{rs.model_name}</b>", styles["TableCell"])],
-                [Paragraph("Length / Gross Mass", styles["TableCell"]), Paragraph(f"{rs.train_length_m:.1f} m / {rs.gross_mass_t:.1f} t", styles["TableCell"])],
+                [Paragraph("Length / Gross Mass", styles["TableCell"]), Paragraph(f"{rs.train_length_m:.1f} m / {rs.gross_mass_t:.1f} t (Tare: {rs.tare_mass_t:.1f} t)", styles["TableCell"])],
                 [Paragraph("Max Speed / Power", styles["TableCell"]), Paragraph(f"{rs.max_speed_kmh:.1f} km/h / {rs.traction_power_kw:.0f} kW", styles["TableCell"])],
                 [Paragraph("Braking (Service/Emerg)", styles["TableCell"]), Paragraph(f"{rs.service_braking_deceleration_ms2:.2f} / {rs.emergency_braking_deceleration_ms2:.2f} m/s²", styles["TableCell"])],
+                [Paragraph("Davis (A / B / C)", styles["TableCell"]), Paragraph(f"{rs.davis_a_n:.0f}N / {rs.davis_b_ns_per_m:.1f} / {rs.davis_c_ns2_per_m2:.4f}", styles["TableCell"])],
             ]
             infra_data = [
-                [Paragraph("<b>Signalling & Topology</b>", styles["TableCellBold"]), Paragraph("", styles["TableCell"])],
+                [Paragraph("<b>Infrastructure & Signalling</b>", styles["TableCellBold"]), Paragraph("", styles["TableCell"])],
                 [Paragraph("Signalling Technology", styles["TableCell"]), Paragraph(f"<b>{infra.signalling_technology}</b>", styles["TableCell"])],
-                [Paragraph("Corridor Topology", styles["TableCell"]), Paragraph(infra.topology_mode, styles["TableCell"])],
-                [Paragraph("Dataset ID / Version", styles["TableCell"]), Paragraph(f"{infra.dataset_id} (v{infra.dataset_version})", styles["TableCell"])],
-                [Paragraph("Setup / Release Delay", styles["TableCell"]), Paragraph(f"{infra.route_setup_time_s:.1f} s / {infra.resource_release_delay_s:.1f} s", styles["TableCell"])],
+                [Paragraph("Aspect Model / Overlap", styles["TableCell"]), Paragraph(f"{infra.aspect_model} / {infra.default_overlap_m:.0f} m", styles["TableCell"])],
+                [Paragraph("Sighting / Setup / Rel", styles["TableCell"]), Paragraph(f"{infra.sighting_time_s:.1f}s / {infra.route_setup_time_s:.1f}s / {infra.resource_release_delay_s:.1f}s", styles["TableCell"])],
+                [Paragraph("Links / Blocks / Signals", styles["TableCell"]), Paragraph(f"{infra.total_links} / {infra.total_blocks} / {infra.total_signals}", styles["TableCell"])],
+                [Paragraph("Stations / Plts / TVS", styles["TableCell"]), Paragraph(f"{infra.total_stations} / {infra.total_platforms} / {infra.total_tvs_sections}", styles["TableCell"])],
             ]
 
             t_rs = Table(rs_data, colWidths=[110, 140])

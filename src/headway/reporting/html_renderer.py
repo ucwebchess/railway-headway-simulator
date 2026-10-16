@@ -117,18 +117,37 @@ class HtmlReportRenderer:
         # Rolling Stock & Infrastructure Summaries (P14-EXE-003 & 004)
         html_parts.append("<div class='two-col-grid'>")
         if rs:
-            html_parts.append(f"""
-            <div class='summary-box'>
-                <h3 class='box-title'>Rolling Stock Characteristics</h3>
+            rs_html = []
+            rs_html.append("<div class='summary-box'>")
+            rs_html.append("<h3 class='box-title'>Rolling Stock Characteristics</h3>")
+            if rs.train_types:
+                for idx, tt in enumerate(rs.train_types):
+                    t_id = tt.get("train_type_id", "")
+                    desc = tt.get("description", "")
+                    border_style = "border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 8px;" if idx > 0 else ""
+                    rs_html.append(f"""
+                    <div style='{border_style}'>
+                        <div style='font-weight: 700; color: #1E3A8A; margin-bottom: 4px;'>Train Type ID: {html.escape(t_id)} &mdash; {html.escape(desc)}</div>
+                        <table class='summary-table'>
+                            <tr><td>Length / Tare / Loaded Mass</td><td>{tt.get('train_length_m', 0.0):.1f} m &nbsp;/&nbsp; {tt.get('tare_mass_t', 0.0):.1f} t &nbsp;/&nbsp; {tt.get('gross_mass_t', 0.0):.1f} t</td></tr>
+                            <tr><td>Max Speed / Power / TE</td><td>{tt.get('max_speed_kmh', 0.0):.1f} km/h &nbsp;/&nbsp; {tt.get('traction_power_kw', 0.0):.0f} kW &nbsp;/&nbsp; {tt.get('max_tractive_effort_kn', 0.0):.1f} kN</td></tr>
+                            <tr><td>Service / Emergency Brake</td><td>{tt.get('service_braking_deceleration_ms2', 0.0):.2f} / {tt.get('emergency_braking_deceleration_ms2', 0.0):.2f} m/s²</td></tr>
+                            <tr><td>Davis Resistance (A, B, C)</td><td>{tt.get('davis_a_n', 0.0):.1f} N + {tt.get('davis_b_ns_per_m', 0.0):.2f}v + {tt.get('davis_c_ns2_per_m2', 0.0):.4f}v²</td></tr>
+                        </table>
+                    </div>
+                    """)
+            else:
+                rs_html.append(f"""
                 <table class='summary-table'>
                     <tr><td>Train Model</td><td><b>{html.escape(rs.model_name)}</b></td></tr>
-                    <tr><td>Length / Gross Mass</td><td>{rs.train_length_m:.1f} m &nbsp;/&nbsp; {rs.gross_mass_t:.1f} t</td></tr>
+                    <tr><td>Length / Tare / Loaded Mass</td><td>{rs.train_length_m:.1f} m &nbsp;/&nbsp; {rs.tare_mass_t:.1f} t &nbsp;/&nbsp; {rs.gross_mass_t:.1f} t</td></tr>
                     <tr><td>Max Speed / Power</td><td>{rs.max_speed_kmh:.1f} km/h &nbsp;/&nbsp; {rs.traction_power_kw:.0f} kW</td></tr>
                     <tr><td>Service / Emergency Brake</td><td>{rs.service_braking_deceleration_ms2:.2f} / {rs.emergency_braking_deceleration_ms2:.2f} m/s²</td></tr>
                     <tr><td>Davis Resistance</td><td>{rs.davis_a_n:.0f} N + {rs.davis_b_ns_per_m:.1f}v + {rs.davis_c_ns2_per_m2:.3f}v²</td></tr>
                 </table>
-            </div>
-            """)
+                """)
+            rs_html.append("</div>")
+            html_parts.extend(rs_html)
 
         if infra:
             html_parts.append(f"""
@@ -136,9 +155,12 @@ class HtmlReportRenderer:
                 <h3 class='box-title'>Infrastructure & Signalling Parameters</h3>
                 <table class='summary-table'>
                     <tr><td>Signalling Technology</td><td><b>{html.escape(infra.signalling_technology)}</b></td></tr>
-                    <tr><td>Topology / Corridor</td><td>{html.escape(infra.topology_mode)}</td></tr>
-                    <tr><td>Dataset & Version</td><td>{html.escape(infra.dataset_id)} (v{html.escape(infra.dataset_version)})</td></tr>
-                    <tr><td>Route Setup / Release Delay</td><td>{infra.route_setup_time_s:.1f} s &nbsp;/&nbsp; {infra.resource_release_delay_s:.1f} s</td></tr>
+                    <tr><td>Aspect Model / Overlap</td><td>{html.escape(infra.aspect_model)} &nbsp;/&nbsp; {infra.default_overlap_m:.1f} m</td></tr>
+                    <tr><td>Sighting / Setup / Release</td><td>{infra.sighting_time_s:.1f} s &nbsp;/&nbsp; {infra.route_setup_time_s:.1f} s &nbsp;/&nbsp; {infra.resource_release_delay_s:.1f} s</td></tr>
+                    <tr><td>Network Topology</td><td>{html.escape(infra.topology_mode)}</td></tr>
+                    <tr><td>Total Links / Blocks / Signals</td><td>{infra.total_links} links &nbsp;/&nbsp; {infra.total_blocks} blocks &nbsp;/&nbsp; {infra.total_signals} signals</td></tr>
+                    <tr><td>Total Stations / Platforms / TVS</td><td>{infra.total_stations} stations &nbsp;/&nbsp; {infra.total_platforms} platforms &nbsp;/&nbsp; {infra.total_tvs_sections} TVS</td></tr>
+                    <tr><td>Dataset ID & Version</td><td>{html.escape(infra.dataset_id)} (v{html.escape(infra.dataset_version)})</td></tr>
                     <tr><td>Simulation Fidelity</td><td>{html.escape(infra.model_fidelity)}</td></tr>
                 </table>
             </div>

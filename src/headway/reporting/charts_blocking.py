@@ -55,14 +55,14 @@ def create_blocking_stairway_figure(
         color = ChartColors.CONTROLLING_BORDER if is_controlling else ChartColors.LEADER_TRAIN
         opacity = 0.85 if is_controlling else 0.55
 
-        # Horizontal bar from start_time to end_time
+        # Vertical bar spanning time from start_time to end_time
         fig.add_trace(
             go.Bar(
                 name="Leader Block",
-                x=[bi.duration_s],
-                y=[bi.resource_id],
+                x=[bi.resource_id],
+                y=[bi.duration_s],
                 base=[bi.start_time_s],
-                orientation="h",
+                orientation="v",
                 marker=dict(
                     color=color,
                     opacity=opacity,
@@ -89,10 +89,10 @@ def create_blocking_stairway_figure(
         fig.add_trace(
             go.Bar(
                 name="Shifted Follower Block",
-                x=[bi.duration_s],
-                y=[bi.resource_id],
+                x=[bi.resource_id],
+                y=[bi.duration_s],
                 base=[shifted_start],
-                orientation="h",
+                orientation="v",
                 marker=dict(
                     color=color,
                     opacity=opacity,
@@ -118,14 +118,16 @@ def create_blocking_stairway_figure(
 
     layout = get_plotly_layout(
         title=title,
-        xaxis_title="Time (s)",
-        yaxis_title="Signalling Block Resource",
+        xaxis_title="Signalling Block Resource",
+        yaxis_title="Time [s]",
         running_direction=running_dir,
         barmode="overlay",
-        height=max(500, len(resource_order) * 28 + 200),
+        width=max(800, len(resource_order) * 45 + 200),
+        height=550,
     )
     fig.update_layout(layout)
-    fig.update_yaxes(categoryorder="array", categoryarray=resource_order)
+    fig.update_xaxes(categoryorder="array", categoryarray=resource_order)
+    fig.update_yaxes(categoryarray=resource_order)
 
     fig.add_annotation(
         text=hw_annotation,
@@ -156,7 +158,12 @@ def create_seven_component_figure(
     fig = go.Figure()
 
     if df.empty:
-        layout = get_plotly_layout(title=title, xaxis_title="Blocking Duration (s)", yaxis_title="Resource ID")
+        layout = get_plotly_layout(
+            title=title,
+            xaxis_title="Signalling Block Resource",
+            yaxis_title="Blocking Time [s]",
+            running_direction=running_direction,
+        )
         fig.update_layout(layout)
         return fig
 
@@ -176,31 +183,33 @@ def create_seven_component_figure(
         fig.add_trace(
             go.Bar(
                 name=comp_label,
-                y=df["resource_id"],
-                x=df[col_name],
-                orientation="h",
+                x=df["resource_id"],
+                y=df[col_name],
+                orientation="v",
                 marker=dict(color=color),
-                hovertemplate=f"Resource: %{{y}}<br>{comp_label}: %{{x:.2f}} s<extra></extra>",
+                hovertemplate=f"Resource: %{{x}}<br>{comp_label}: %{{y:.2f}} s<extra></extra>",
             )
         )
 
-    # Controlling resources highlighted on y-axis
-    y_labels = []
+    # Controlling resources highlighted on x-axis
+    x_labels = []
     for rid in df["resource_id"]:
         if rid in ctrl_set:
-            y_labels.append(f"★ {rid} (CRITICAL)")
+            x_labels.append(f"★ {rid} (CRITICAL)")
         else:
-            y_labels.append(rid)
+            x_labels.append(rid)
 
     layout = get_plotly_layout(
         title=title,
-        xaxis_title="Blocking Time Duration (s)",
-        yaxis_title="Signalling Resource",
+        xaxis_title="Signalling Block Resource",
+        yaxis_title="Blocking Time [s]",
         running_direction=running_direction,
         barmode="stack",
-        height=max(500, len(df) * 26 + 180),
+        width=max(800, len(df) * 45 + 200),
+        height=550,
     )
     fig.update_layout(layout)
-    fig.update_yaxes(categoryorder="array", categoryarray=list(df["resource_id"]))
+    fig.update_xaxes(categoryorder="array", categoryarray=list(df["resource_id"]))
+    fig.update_yaxes(categoryarray=list(df["resource_id"]))
 
     return fig

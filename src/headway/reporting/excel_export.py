@@ -142,11 +142,20 @@ class ExcelReportExporter:
                 ws.cell(row=r_start + 1, column=col).font = cls.HEADER_FONT
 
             ws.append(["Signalling Technology", infra.signalling_technology, ""])
+            ws.append(["Aspect Model", getattr(infra, "aspect_model", "THREE_ASPECT"), ""])
+            ws.append(["Default Overlap", getattr(infra, "default_overlap_m", 0.0), "m"])
+            ws.append(["Sighting Time", getattr(infra, "sighting_time_s", 8.0), "s"])
+            ws.append(["Route Setup Time", infra.route_setup_time_s, "s"])
+            ws.append(["Release Delay", infra.resource_release_delay_s, "s"])
+            ws.append(["Total Links", getattr(infra, "total_links", 0), "links"])
+            ws.append(["Total Blocks", getattr(infra, "total_blocks", 0), "blocks"])
+            ws.append(["Total Signals", getattr(infra, "total_signals", 0), "signals"])
+            ws.append(["Total Stations", getattr(infra, "total_stations", 0), "stations"])
+            ws.append(["Total Platforms", getattr(infra, "total_platforms", 0), "platforms"])
+            ws.append(["Total TVS Sections", getattr(infra, "total_tvs_sections", 0), "sections"])
             ws.append(["Topology Mode", infra.topology_mode, ""])
             ws.append(["Dataset ID", infra.dataset_id, ""])
             ws.append(["Dataset Version", infra.dataset_version, ""])
-            ws.append(["Route Setup Time", infra.route_setup_time_s, "s"])
-            ws.append(["Release Delay", infra.resource_release_delay_s, "s"])
             ws.append(["Model Fidelity", infra.model_fidelity, ""])
             ws.append([])
 
