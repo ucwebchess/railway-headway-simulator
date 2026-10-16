@@ -37,6 +37,7 @@ class HtmlReportRenderer:
         direction_val = document.running_direction.value
 
         direction_badge_class = "badge-forward" if direction_val == "FORWARD" else "badge-reverse"
+        plotlyjs_inlined = False
 
         html_parts = []
         html_parts.append("<!DOCTYPE html>")
@@ -45,8 +46,6 @@ class HtmlReportRenderer:
         html_parts.append("<meta charset='UTF-8'>")
         html_parts.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>")
         html_parts.append(f"<title>{html.escape(meta.title)} — {html.escape(meta.scenario_id)} [{direction_val}]</title>")
-        if embed_interactive_plotly:
-            html_parts.append("<script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>")
         html_parts.append("<style>")
         html_parts.append(cls._get_css_styles())
         html_parts.append("</style>")
@@ -218,7 +217,12 @@ class HtmlReportRenderer:
                 if fig_obj is not None:
                     html_parts.append("<div class='figure-wrapper'>")
                     if hasattr(fig_obj, "to_html") and embed_interactive_plotly:
-                        html_parts.append(fig_obj.to_html(full_html=False, include_plotlyjs="cdn"))
+                        inc_js = True if not plotlyjs_inlined else False
+                        fig_html = fig_obj.to_html(full_html=False, include_plotlyjs=inc_js)
+                        if inc_js:
+                            plotlyjs_inlined = True
+                        fig_html = fig_html.replace("https://cdn.plot.ly/", "").replace("cdn.plot.ly", "")
+                        html_parts.append(fig_html)
                     elif isinstance(fig_obj, (str, Path)) and Path(str(fig_obj)).exists():
                         import base64
                         p = Path(str(fig_obj))

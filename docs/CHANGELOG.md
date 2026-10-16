@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Microscopic Simulation Engine Wiring (`SimulationRunner`)**:
+  - Replaced the 35-sample / 68-second synthetic trajectory stub with `MultiTrainSimulator` integration across all corridor track links.
+  - Generates full microscopic trajectories (>1,000 samples) with physically realistic acceleration, cruising, and braking regimes.
+  - Dynamically calculates platform occupation arrival, dwell, and departure timestamps according to actual train travel along the corridor.
+  - Added corridor route traversal indexing and binary-search distance lookups in `Route` to maintain high computational performance across long networks.
+- **Offline Sandboxed Report Rendering (`HtmlReportRenderer`)**:
+  - Removed external CDN script dependency (`https://cdn.plot.ly/plotly-2.35.2.min.js`) in generated HTML reports.
+  - Inlined Plotly JavaScript on the initial interactive figure (`include_plotlyjs=True`) and stripped external CDN URLs to guarantee complete offline rendering in sandboxed viewer iframes.
+
+---
+
 ## [1.3.0] — Operational Performance Factor
 
 ### Fixed

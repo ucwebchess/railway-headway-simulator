@@ -139,7 +139,7 @@ def test_defect_02_html_report_preview_figures_embedded():
     assert "<iframe srcdoc=" in preview_html
     assert "sandbox=\"allow-scripts allow-same-origin\"" in preview_html
     assert "plotly-graph-div" in preview_html
-    assert "cdn.plot.ly" in preview_html
+    assert "Plotly" in preview_html
 
 
 @pytest.mark.regression

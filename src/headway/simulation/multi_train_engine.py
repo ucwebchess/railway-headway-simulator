@@ -480,6 +480,11 @@ class MultiTrainSimulator:
                 new_s = curr_s + curr_v * dt + 0.5 * a_req * (dt ** 2)
                 new_v = max(0.0, curr_v + a_req * dt)
 
+            # Guard: cap against controller overshoot beyond permissible line limit
+            tolerance = 1e-4
+            if new_v > v_line_limit + tolerance:
+                new_v = v_line_limit
+
             if eoa_m < route_len and new_s >= eoa_m:
                 new_s = max(0.0, eoa_m - 0.1)
                 new_v = 0.0
