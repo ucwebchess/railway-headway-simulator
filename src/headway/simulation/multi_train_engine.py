@@ -126,6 +126,9 @@ class MultiTrainSimulator:
         self._train_entered_resources: Dict[str, Set[Any]] = {}
         # Per-train, per-resource set of intervals in progress: train_id -> {res_id: set_of_interval_tokens}
         self._train_active_intervals: Dict[str, Dict[str, Set[Any]]] = {}
+        # Route-to-resource spatial indexing cache (DEF-05 performance optimization)
+        self._route_resource_intervals: Dict[str, List[Tuple[int, str, Any, int, float, float]]] = {}
+        self._route_block_eoa_entries: Dict[str, List[Tuple[float, str]]] = {}
 
     def register_train(self, train: TrainServiceInstance) -> None:
         """Register a single train instance for simulation."""
@@ -167,6 +170,78 @@ class MultiTrainSimulator:
         self._unconstrained_cache[service.service_id] = (jt, planned_dwell)
         return jt, planned_dwell
 
+    def _get_route_resource_intervals(self, route: Route) -> List[Tuple[int, str, Any, int, float, float]]:
+        """Precompute and cache matching route intervals for resource occupation tracking."""
+        if route.route_id in self._route_resource_intervals:
+            return self._route_resource_intervals[route.route_id]
+
+        cached = []
+        for i, trav in enumerate(route.traversals):
+            for res_id, res in self.coordinator.resource_controller.resources.items():
+                res_intervals = res.intervals if res.intervals else []
+                matching_intervals: List[Tuple[int, Optional[ResourceInterval]]] = [
+                    (inv_idx, inv) for inv_idx, inv in enumerate(res_intervals)
+                    if inv.link_id == trav.link_id
+                ]
+                if not matching_intervals and (
+                    getattr(res, "link_id", None) == trav.link_id or res_id == f"BLK_{trav.link_id}"
+                ):
+                    matching_intervals = [(0, None)]
+
+                for inv_idx, inv in matching_intervals:
+                    if inv is not None:
+                        try:
+                            clamped_start = max(0.0, min(inv.start_offset_m, trav.length_m))
+                            clamped_end = max(0.0, min(inv.end_offset_m, trav.length_m))
+                            s1 = trav.physical_offset_to_route_distance(clamped_start)
+                            s2 = trav.physical_offset_to_route_distance(clamped_end)
+                            r_start = min(s1, s2)
+                            r_end = max(s1, s2)
+                        except PositionMappingError:
+                            continue
+                    else:
+                        link_start = route.physical_to_route_distance(trav.link_id, 0.0)
+                        link_end = route.physical_to_route_distance(trav.link_id, trav.length_m)
+                        if link_start is None or link_end is None:
+                            continue
+                        r_start = min(link_start, link_end)
+                        r_end = max(link_start, link_end)
+                    cached.append((i, res_id, res, inv_idx, r_start, r_end))
+        self._route_resource_intervals[route.route_id] = cached
+        return cached
+
+    def _get_route_block_eoa_entries(self, route: Route) -> List[Tuple[float, str]]:
+        """Precompute and cache block entry route locations for downstream EOA lookup."""
+        if route.route_id in self._route_block_eoa_entries:
+            return self._route_block_eoa_entries[route.route_id]
+
+        entries = []
+        for trav in route.traversals:
+            dist_along = route.physical_to_route_distance(trav.link_id, 0.0)
+            if dist_along is None:
+                continue
+
+            for res_id, res in self.coordinator.resource_controller.resources.items():
+                res_links = [inv.link_id for inv in res.intervals] if res.intervals else []
+                if trav.link_id in res_links or getattr(res, "link_id", None) == trav.link_id or res_id == f"BLK_{trav.link_id}":
+                    if res.category == ResourceCategory.TRACK_BLOCK:
+                        block_entry_dist = dist_along
+                        if res.intervals:
+                            matching = [inv for inv in res.intervals if inv.link_id == trav.link_id]
+                            if matching:
+                                try:
+                                    s_vals = [
+                                        min(trav.physical_offset_to_route_distance(max(0.0, min(inv.start_offset_m, trav.length_m))),
+                                            trav.physical_offset_to_route_distance(max(0.0, min(inv.end_offset_m, trav.length_m))))
+                                        for inv in matching
+                                    ]
+                                    block_entry_dist = min(s_vals)
+                                except PositionMappingError:
+                                    pass
+                        entries.append((block_entry_dist, res_id))
+        self._route_block_eoa_entries[route.route_id] = entries
+        return entries
+
     def _find_downstream_eoa(
         self,
         train: TrainServiceInstance,
@@ -183,41 +258,14 @@ class MultiTrainSimulator:
         governing_cause = None
         holding_res = None
 
-        # 1. Signalling / Block Constraints
-        # Check downstream blocks on this route
-        for trav in train.route.traversals:
-            dist_along = train.route.physical_to_route_distance(trav.link_id, 0.0)
-            if dist_along is None:
-                continue
-
-            # Look up blocks on this link
-            for res_id, res in self.coordinator.resource_controller.resources.items():
-                res_links = [inv.link_id for inv in res.intervals] if res.intervals else []
-                if trav.link_id in res_links or getattr(res, "link_id", None) == trav.link_id or res_id == f"BLK_{trav.link_id}":
-                    if res.category == ResourceCategory.TRACK_BLOCK:
-                        # Earliest entry distance along route for this block interval on this link
-                        block_entry_dist = dist_along
-                        if res.intervals:
-                            matching = [inv for inv in res.intervals if inv.link_id == trav.link_id]
-                            if matching:
-                                try:
-                                    s_vals = [
-                                        min(trav.physical_offset_to_route_distance(max(0.0, min(inv.start_offset_m, trav.length_m))),
-                                            trav.physical_offset_to_route_distance(max(0.0, min(inv.end_offset_m, trav.length_m))))
-                                        for inv in matching
-                                    ]
-                                    block_entry_dist = min(s_vals)
-                                except PositionMappingError:
-                                    pass
-
-                        # Check if block is ahead of train front
-                        if block_entry_dist > curr_pos:
-                            # Is block available for this train?
-                            if not self.coordinator.resource_controller.is_resource_available(res_id, train.train_id, self.current_time_s):
-                                if block_entry_dist < min_eoa:
-                                    min_eoa = block_entry_dist
-                                    governing_cause = "SIGNALLING"
-                                    holding_res = res_id
+        # 1. Signalling / Block Constraints (fast lookup via precomputed route block entries)
+        for block_entry_dist, res_id in self._get_route_block_eoa_entries(train.route):
+            if block_entry_dist > curr_pos:
+                if not self.coordinator.resource_controller.is_resource_available(res_id, train.train_id, self.current_time_s):
+                    if block_entry_dist < min_eoa:
+                        min_eoa = block_entry_dist
+                        governing_cause = "SIGNALLING"
+                        holding_res = res_id
 
         # 2. CBTC Moving-Block Separation (P09-SIG-003 & P09-B014)
         if self.coordinator.technology_type in (
@@ -514,73 +562,42 @@ class MultiTrainSimulator:
             entered = self._train_entered_resources.setdefault(train.train_id, set())
             active_intervals = self._train_active_intervals.setdefault(train.train_id, {})
 
-            # Check all route traversals
-            for i, trav in enumerate(train.route.traversals):
-                # Find resources associated with this link
-                for res_id, res in self.coordinator.resource_controller.resources.items():
-                    res_intervals = res.intervals if res.intervals else []
-                    matching_intervals: List[Tuple[int, Optional[ResourceInterval]]] = [
-                        (inv_idx, inv) for inv_idx, inv in enumerate(res_intervals)
-                        if inv.link_id == trav.link_id
-                    ]
-                    if not matching_intervals and (
-                        getattr(res, "link_id", None) == trav.link_id or res_id == f"BLK_{trav.link_id}"
-                    ):
-                        matching_intervals = [(0, None)]
+            # Check cached route intervals (DEF-05 performance optimization)
+            for i, res_id, res, inv_idx, r_start, r_end in self._get_route_resource_intervals(train.route):
+                key = (i, res_id, inv_idx)
+                interval_token = (i, inv_idx)
 
-                    for inv_idx, inv in matching_intervals:
-                        if inv is not None:
-                            try:
-                                clamped_start = max(0.0, min(inv.start_offset_m, trav.length_m))
-                                clamped_end = max(0.0, min(inv.end_offset_m, trav.length_m))
-                                s1 = trav.physical_offset_to_route_distance(clamped_start)
-                                s2 = trav.physical_offset_to_route_distance(clamped_end)
-                                r_start = min(s1, s2)
-                                r_end = max(s1, s2)
-                            except PositionMappingError:
-                                continue
-                        else:
-                            link_start = train.route.physical_to_route_distance(trav.link_id, 0.0)
-                            link_end = train.route.physical_to_route_distance(trav.link_id, trav.length_m)
-                            if link_start is None or link_end is None:
-                                continue
-                            r_start = min(link_start, link_end)
-                            r_end = max(link_start, link_end)
+                # Front entry into this interval
+                if key not in entered and curr_front >= r_start and curr_rear < r_end:
+                    if train.train_id not in res.reservations:
+                        self.coordinator.resource_controller.reserve_resource(
+                            train_id=train.train_id,
+                            resource_id=res_id,
+                            timestamp_s=current_time_s,
+                            running_direction=train.running_direction,
+                        )
+                    if res_id not in held_res:
+                        self.coordinator.resource_controller.front_enter_resource(
+                            train_id=train.train_id,
+                            resource_id=res_id,
+                            timestamp_s=current_time_s,
+                        )
+                        held_res.add(res_id)
+                    entered.add(key)
+                    active_intervals.setdefault(res_id, set()).add(interval_token)
 
-                        key = (i, res_id, inv_idx)
-                        interval_token = (i, inv_idx)
-
-                        # Front entry into this interval
-                        if key not in entered and curr_front >= r_start and curr_rear < r_end:
-                            if train.train_id not in res.reservations:
-                                self.coordinator.resource_controller.reserve_resource(
-                                    train_id=train.train_id,
-                                    resource_id=res_id,
-                                    timestamp_s=current_time_s,
-                                    running_direction=train.running_direction,
-                                )
-                            if res_id not in held_res:
-                                self.coordinator.resource_controller.front_enter_resource(
-                                    train_id=train.train_id,
-                                    resource_id=res_id,
-                                    timestamp_s=current_time_s,
-                                )
-                                held_res.add(res_id)
-                            entered.add(key)
-                            active_intervals.setdefault(res_id, set()).add(interval_token)
-
-                        # Rear clearance of this interval
-                        res_in_prog = active_intervals.get(res_id, set())
-                        if interval_token in res_in_prog and curr_rear >= r_end:
-                            res_in_prog.discard(interval_token)
-                            # Only call rear_clear_resource when all entered intervals have cleared
-                            if len(res_in_prog) == 0 and res_id in held_res:
-                                self.coordinator.resource_controller.rear_clear_resource(
-                                    train_id=train.train_id,
-                                    resource_id=res_id,
-                                    timestamp_s=current_time_s,
-                                )
-                                held_res.discard(res_id)
+                # Rear clearance of this interval
+                res_in_prog = active_intervals.get(res_id, set())
+                if interval_token in res_in_prog and curr_rear >= r_end:
+                    res_in_prog.discard(interval_token)
+                    # Only call rear_clear_resource when all entered intervals have cleared
+                    if len(res_in_prog) == 0 and res_id in held_res:
+                        self.coordinator.resource_controller.rear_clear_resource(
+                            train_id=train.train_id,
+                            resource_id=res_id,
+                            timestamp_s=current_time_s,
+                        )
+                        held_res.discard(res_id)
 
             # Check occupied platforms for rear clearance (P07 & P09-ST-007)
             for plat_id, plat_obj in self.coordinator.platform_controller.platforms.items():
