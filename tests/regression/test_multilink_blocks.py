@@ -420,3 +420,41 @@ def test_round_trip_project_package_preserves_multilink_geometry():
                 assert orig_iv.link_id == re_iv.link_id
                 assert orig_iv.start_offset_m == re_iv.start_offset_m
                 assert orig_iv.end_offset_m == re_iv.end_offset_m
+
+
+# ==============================================================================
+# 9. Multi-Link Block Resource Tracking Regression (DEF-05)
+# ==============================================================================
+
+def test_multi_link_block_resource_tracking():
+    """Verify that a block spanning >= 2 links has a single usage record whose start_time_s is when train front entered."""
+    coord = SignallingCoordinator()
+    multilink_block = ManagedResource(
+        resource_id="BLK_MULTI",
+        category=ResourceCategory.TRACK_BLOCK,
+        intervals=[
+            ResourceInterval(link_id="L1", start_offset_m=0.0, end_offset_m=1000.0),
+            ResourceInterval(link_id="L2", start_offset_m=0.0, end_offset_m=1000.0),
+        ],
+        release_delay_s=0.0,
+    )
+    coord.resource_controller.register_resource(multilink_block)
+
+    params = make_test_train_params()
+    route = make_test_route(link_ids=["L1", "L2", "L3"], link_lengths=[1000.0, 1000.0, 1000.0])
+    st = ServiceType("SVC_TEST", "TRN_TEST", params, route)
+    trains = TrainGenerator.generate_pairwise(st, st, interval_s=500.0)
+    lead_train = trains[0]
+
+    sim = MultiTrainSimulator(coordinator=coord, dt_s=0.2)
+    sim.register_train(lead_train)
+    sim.run_simulation(max_duration_s=500.0)
+
+    records = [r for r in coord.get_resource_usage_records() if r.resource_id == "BLK_MULTI"]
+    assert len(records) == 1, "Multi-link block must produce exactly one usage record for the train"
+    rec = records[0]
+    assert rec.train_id == lead_train.train_id
+    assert rec.reservation_start_s == 0.0, "Start time must be when train front entered first interval"
+    assert rec.physical_front_entry_s == 0.0
+    assert rec.rear_clearance_s is not None and rec.rear_clearance_s > 0.0
+
