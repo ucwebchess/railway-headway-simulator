@@ -9,16 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
 ### Fixed
 
-- **Microscopic Simulation Engine Wiring (`SimulationRunner`)**:
+### Security
+
+---
+
+## [1.4.0] - 2026-10-17
+
+### Fixed
+
+- **DEF-01 — Microscopic Simulation Engine Wiring (`SimulationRunner`)**:
   - Replaced the 35-sample / 68-second synthetic trajectory stub with `MultiTrainSimulator` integration across all corridor track links.
-  - Generates full microscopic trajectories (>1,000 samples) with physically realistic acceleration, cruising, and braking regimes.
+  - Generates full microscopic trajectories (>1,000 samples) with physically realistic acceleration, cruising, and braking regimes spanning the full corridor.
   - Dynamically calculates platform occupation arrival, dwell, and departure timestamps according to actual train travel along the corridor.
   - Added corridor route traversal indexing and binary-search distance lookups in `Route` to maintain high computational performance across long networks.
-- **Offline Sandboxed Report Rendering (`HtmlReportRenderer`)**:
-  - Removed external CDN script dependency (`https://cdn.plot.ly/plotly-2.35.2.min.js`) in generated HTML reports.
-  - Inlined Plotly JavaScript on the initial interactive figure (`include_plotlyjs=True`) and stripped external CDN URLs to guarantee complete offline rendering in sandboxed viewer iframes.
+- **DEF-02 — Speed Profile Chart Binding (`HtmlReportRenderer`, `PdfReportRenderer`)**:
+  - Bound Speed Profile chart in HTML and PDF reports directly to full-corridor microscopic simulation results.
+  - Removed external CDN script dependency (`https://cdn.plot.ly/plotly-2.35.2.min.js`) in generated HTML reports; inlined Plotly JavaScript on the initial interactive figure (`include_plotlyjs=True`) to guarantee complete offline rendering in sandboxed viewers.
+- **DEF-03 — Station Stopping Pattern Table**:
+  - Multi-train station stop records correctly surfaced in Station Stopping Pattern table across HTML and PDF reports.
+  - Populated comprehensive station stop metadata (arrival, dwell, departure) for all simulated trains in multi-train operational scenarios.
+- **DEF-04 — Davis Formula Resistance Units Display**:
+  - Davis formula displays complete physical units (`Ns/m` for B, `Ns²/m²` for C) and explicit velocity unit declaration (`(v in m/s)` / `[v in m/s]`) across HTML and PDF executive summaries.
+- **Civil Speed Envelope Piecewise Discretization**:
+  - Resolved envelope refinement bug identified in Phase 2 by maintaining discrete link-boundary speed limits without over-collapsing adjacent links of identical speed limits.
 
 ---
 
