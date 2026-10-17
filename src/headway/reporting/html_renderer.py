@@ -131,7 +131,7 @@ class HtmlReportRenderer:
                             <tr><td>Length / Tare / Loaded Mass</td><td>{tt.get('train_length_m', 0.0):.1f} m &nbsp;/&nbsp; {tt.get('tare_mass_t', 0.0):.1f} t &nbsp;/&nbsp; {tt.get('gross_mass_t', 0.0):.1f} t</td></tr>
                             <tr><td>Max Speed / Power / TE</td><td>{tt.get('max_speed_kmh', 0.0):.1f} km/h &nbsp;/&nbsp; {tt.get('traction_power_kw', 0.0):.0f} kW &nbsp;/&nbsp; {tt.get('max_tractive_effort_kn', 0.0):.1f} kN</td></tr>
                             <tr><td>Service / Emergency Brake</td><td>{tt.get('service_braking_deceleration_ms2', 0.0):.2f} / {tt.get('emergency_braking_deceleration_ms2', 0.0):.2f} m/s²</td></tr>
-                            <tr><td>Davis Resistance (A, B, C)</td><td>{tt.get('davis_a_n', 0.0):.1f} N + {tt.get('davis_b_ns_per_m', 0.0):.2f}v + {tt.get('davis_c_ns2_per_m2', 0.0):.4f}v²</td></tr>
+                            <tr><td>Davis Resistance (A, B, C)</td><td>{tt.get('davis_a_n', 0.0):.1f} N + {tt.get('davis_b_ns_per_m', 0.0):.2f} Ns/m · v + {tt.get('davis_c_ns2_per_m2', 0.0):.4f} Ns²/m² · v² (v in m/s)</td></tr>
                         </table>
                     </div>
                     """)
@@ -142,7 +142,7 @@ class HtmlReportRenderer:
                     <tr><td>Length / Tare / Loaded Mass</td><td>{rs.train_length_m:.1f} m &nbsp;/&nbsp; {rs.tare_mass_t:.1f} t &nbsp;/&nbsp; {rs.gross_mass_t:.1f} t</td></tr>
                     <tr><td>Max Speed / Power</td><td>{rs.max_speed_kmh:.1f} km/h &nbsp;/&nbsp; {rs.traction_power_kw:.0f} kW</td></tr>
                     <tr><td>Service / Emergency Brake</td><td>{rs.service_braking_deceleration_ms2:.2f} / {rs.emergency_braking_deceleration_ms2:.2f} m/s²</td></tr>
-                    <tr><td>Davis Resistance</td><td>{rs.davis_a_n:.0f} N + {rs.davis_b_ns_per_m:.1f}v + {rs.davis_c_ns2_per_m2:.3f}v²</td></tr>
+                    <tr><td>Davis Resistance</td><td>{rs.davis_a_n:.1f} N + {rs.davis_b_ns_per_m:.2f} Ns/m · v + {rs.davis_c_ns2_per_m2:.4f} Ns²/m² · v² (v in m/s)</td></tr>
                 </table>
                 """)
             rs_html.append("</div>")

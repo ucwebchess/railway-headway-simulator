@@ -427,7 +427,7 @@ class PdfReportRenderer:
                 [Paragraph("Length / Gross Mass", styles["TableCell"]), Paragraph(f"{rs.train_length_m:.1f} m / {rs.gross_mass_t:.1f} t (Tare: {rs.tare_mass_t:.1f} t)", styles["TableCell"])],
                 [Paragraph("Max Speed / Power", styles["TableCell"]), Paragraph(f"{rs.max_speed_kmh:.1f} km/h / {rs.traction_power_kw:.0f} kW", styles["TableCell"])],
                 [Paragraph("Braking (Service/Emerg)", styles["TableCell"]), Paragraph(f"{rs.service_braking_deceleration_ms2:.2f} / {rs.emergency_braking_deceleration_ms2:.2f} m/s²", styles["TableCell"])],
-                [Paragraph("Davis (A / B / C)", styles["TableCell"]), Paragraph(f"{rs.davis_a_n:.0f}N / {rs.davis_b_ns_per_m:.1f} / {rs.davis_c_ns2_per_m2:.4f}", styles["TableCell"])],
+                [Paragraph("Davis (A / B / C)", styles["TableCell"]), Paragraph(f"A = {rs.davis_a_n:.1f} N / B = {rs.davis_b_ns_per_m:.2f} Ns/m / C = {rs.davis_c_ns2_per_m2:.4f} Ns²/m² [v in m/s]", styles["TableCell"])],
             ]
             infra_data = [
                 [Paragraph("<b>Infrastructure & Signalling</b>", styles["TableCellBold"]), Paragraph("", styles["TableCell"])],
@@ -478,6 +478,17 @@ class PdfReportRenderer:
             flowables.append(callout)
 
         return flowables
+
+    @classmethod
+    def _build_kpi_section(
+        cls,
+        document: ReportDocument,
+        styles: Optional[Dict[str, ParagraphStyle]] = None,
+    ) -> List[Any]:
+        """Build KPI executive dashboard section flowables (alias for test inspection)."""
+        if styles is None:
+            styles = cls._build_styles()
+        return cls._build_executive_dashboard(document, styles)
 
     @classmethod
     def _build_callout_box(
