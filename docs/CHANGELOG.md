@@ -32,16 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Generates full microscopic trajectories (>1,000 samples) with physically realistic acceleration, cruising, and braking regimes spanning the full corridor.
   - Dynamically calculates platform occupation arrival, dwell, and departure timestamps according to actual train travel along the corridor.
   - Added corridor route traversal indexing and binary-search distance lookups in `Route` to maintain high computational performance across long networks.
-- **DEF-02 — Speed Profile Chart Binding (`HtmlReportRenderer`, `PdfReportRenderer`)**:
-  - Bound Speed Profile chart in HTML and PDF reports directly to full-corridor microscopic simulation results.
+- **DEF-02 — Speed Profile Chart Binding (`HtmlReportRenderer`)**:
+  - Bound Speed Profile chart in interactive HTML reports directly to full-corridor microscopic simulation results.
   - Removed external CDN script dependency (`https://cdn.plot.ly/plotly-2.35.2.min.js`) in generated HTML reports; inlined Plotly JavaScript on the initial interactive figure (`include_plotlyjs=True`) to guarantee complete offline rendering in sandboxed viewers.
+  - Note: Static Speed Profile chart rendering for PDF export remains an open item due to headless environment Plotly/Kaleido image generation constraints.
 - **DEF-03 — Station Stopping Pattern Table**:
   - Multi-train station stop records correctly surfaced in Station Stopping Pattern table across HTML and PDF reports.
   - Populated comprehensive station stop metadata (arrival, dwell, departure) for all simulated trains in multi-train operational scenarios.
 - **DEF-04 — Davis Formula Resistance Units Display**:
   - Davis formula displays complete physical units (`Ns/m` for B, `Ns²/m²` for C) and explicit velocity unit declaration (`(v in m/s)` / `[v in m/s]`) across HTML and PDF executive summaries.
 - **Civil Speed Envelope Piecewise Discretization**:
-  - Resolved envelope refinement bug identified in Phase 2 by maintaining discrete link-boundary speed limits without over-collapsing adjacent links of identical speed limits.
+  - Civil speed envelope reflects per-link `MAX_SPEED_KMH` limits with discrete step transitions at limit changes (delivered in Phase 2).
 
 ---
 

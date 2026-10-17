@@ -71,11 +71,21 @@ Per §4.2, every pull request description submitted to the project repository mu
 
 | Version | Status | Description |
 |:---|:---|:---|
-| v1.0.0 | Released | Initial production release (Milestones P00–P15 core simulation platform) |
-| v1.1.0 | Released | Comprehensive line reference dataset & examples expansion (`05_comprehensive_line`) |
-| v1.2.0 | Released | Multi-link signalling blocks & TVS section validation fixes (`06_multilink_blocks`) |
-| v1.3.0 | Released | Operational Performance Factor traction & service braking derating (`RHS-FEATURE-PERF-FACTOR-001`) |
+| v1.0.0 | Released | Initial release |
+| v1.0.1 | Released | Post-release UI + download fixes |
+| v1.0.2 | Released | Colab download, service duration, speed envelope |
+| v1.0.3 | Released | Template example consistency |
+| v1.1.0 | Released | Comprehensive demonstration line |
+| v1.2.0 | Released | Multi-link signalling blocks + TVS geometry |
+| v1.3.0 | Released | Operational performance factor |
 | v1.4.0 | Released | Phase 1–3 corrections; DEF-01 through DEF-04 closed |
+
+### 5.1 Historical Notes & Milestone References
+- **v1.0.0**: Foundational delivery incorporating Milestones P00 through P15 (microscopic ODE integration, Davis running resistance, fixed/moving block signalling, 7-component blocking time, UIC 406 capacity analysis).
+- **v1.1.0**: Comprehensive demonstration line reference dataset expansion (`05_comprehensive_line`).
+- **v1.2.0**: Multi-link signalling block clearance engine and TVS zone geometric continuity (`06_multilink_blocks`).
+- **v1.3.0**: Operational Performance Factor traction and service braking derating (`RHS-FEATURE-PERF-FACTOR-001`).
+- **v1.4.0**: Microscopic engine wiring (`SimulationRunner`), full-corridor Speed Profile chart binding, station stop metadata surfacing, and complete Davis equation physical units.
 
 ---
 
@@ -110,8 +120,8 @@ All four open defect items identified in Section 10 are completely resolved, ver
   - *Symptom*: Simulation runner executed a synthetic 35-sample / 68-second trajectory stub that only modeled single-link movement.
   - *Fix*: Wired `MultiTrainSimulator` into `SimulationRunner`, resolving actual service patterns, multi-link route traversals, and full corridor trajectories (>1,000 samples) with physically authentic acceleration, cruising, and braking regimes.
 - **DEF-02 — Speed Profile Chart Binding & Range** (Resolved in Phase 1, PR #37):
-  - *Symptom*: Speed profile chart in HTML and PDF reports displayed synthetic stub trajectory data spanning only 0–1,200 m instead of full corridor results.
-  - *Fix*: Bound HTML and PDF speed charts directly to full-corridor microscopic simulation outputs and embedded Plotly JS for sandboxed offline rendering.
+  - *Symptom*: Speed profile chart in HTML report displayed synthetic stub trajectory data spanning only 0–1,200 m instead of full corridor results.
+  - *Fix*: Bound HTML speed chart directly to full-corridor microscopic simulation outputs and embedded Plotly JS for sandboxed offline rendering. PDF static chart generation remains an open item due to environment Plotly/Kaleido headless image capture constraints.
 - **DEF-03 — Station Stopping Pattern Table Multi-Train Surfacing** (Resolved in Phase 2, PR #38):
   - *Symptom*: Station Stopping Pattern table failed to display arrival, dwell, and departure records for multi-train simulations.
   - *Fix*: Updated `SimulationRunner` to record station stop arrival, dwell, and departure timestamps across all trains and forward them into the report metadata.
