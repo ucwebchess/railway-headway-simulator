@@ -8,7 +8,7 @@ P13 (visualization), and P14 (reports) without introducing new calculations.
 
 from datetime import datetime, timezone
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from headway.analysis.blocking_time import (
     BlockingTimeDecomposition,
@@ -26,11 +26,12 @@ from headway.analysis.headway_results import HeadwayResult, MixedTrafficHeadwayM
 from headway.analysis.headway_solver import TechnicalHeadwaySolver
 from headway.analysis.monte_carlo import MonteCarloExecutionResult
 from headway.analysis.statistics import StatisticalSummary
-from headway.core.exceptions import SignallingBlocksMissingError
+from headway.core.exceptions import SignallingBlocksMissingError, SimulationError
 from headway.data.canonical import (
     CanonicalProject,
     Platform,
     ResourceInterval,
+    ServicePattern,
     SignallingBlock,
     Station,
     StationStop,
@@ -49,6 +50,7 @@ from headway.reporting.result_models import (
     PlatformOccupationRecord,
     ResourceProvenanceRecord,
     SimulationResultPackage,
+    StationStopRecord,
 )
 from headway.reporting.result_validation import ResultValidator
 from headway.rolling_stock.train import RollingStockParameters
@@ -87,6 +89,24 @@ class SimulationJobConfig:
     convergence_tolerance_s: float = 0.1
     max_iterations: int = 50
     stochastic_runs: int = 50
+
+
+class ServicePatternAmbiguousError(SimulationError):
+    """Raised when multiple service patterns exist and the active pattern cannot be uniquely determined."""
+
+    DEFAULT_ERROR_CODE = "ERR_SERVICE_PATTERN_AMBIGUOUS"
+
+    def __init__(self, message: str, **kwargs) -> None:
+        super().__init__(message, error_code="ERR_SERVICE_PATTERN_AMBIGUOUS", **kwargs)
+
+
+class StationStopFieldMissingError(SimulationError):
+    """Raised when a required field for building a StationStopRecord is missing."""
+
+    DEFAULT_ERROR_CODE = "ERR_STATION_STOP_FIELD_MISSING"
+
+    def __init__(self, message: str, **kwargs) -> None:
+        super().__init__(message, error_code="ERR_STATION_STOP_FIELD_MISSING", **kwargs)
 
 
 class SimulationRunner:
@@ -210,16 +230,22 @@ class SimulationRunner:
             tracker.check_cancellation()
             tracker.update(current_step=45, stage="Microscopic Dynamics Integration", status_message=f"Integrating train movement dynamics with MultiTrainSimulator in {running_direction.value} direction...")
 
-        # Resolve stops for the primary service
-        service_stops = []
-        if ops and getattr(ops, "service_patterns", None):
-            pat = None
-            if running_direction == RunningDirection.FORWARD:
-                pat = next((sp for sp in ops.service_patterns if "UP" in sp.service_pattern_id or "FWD" in sp.service_pattern_id), ops.service_patterns[0])
-            else:
-                pat = next((sp for sp in ops.service_patterns if "DN" in sp.service_pattern_id or "REV" in sp.service_pattern_id), ops.service_patterns[-1])
-            if pat and getattr(pat, "stops", None):
-                service_stops = list(pat.stops)
+        # Resolve active service pattern (Change A)
+        active_pattern = cls._resolve_active_service_pattern(
+            project=project,
+            running_direction=running_direction,
+            scenario_id=scenario_id,
+            analysis_id=None,
+            primary_train_type_id=primary_tt.train_type_id if primary_tt else None,
+        )
+
+        service_stops: List[StationStop] = []
+        if active_pattern and getattr(active_pattern, "stops", None):
+            service_stops = (
+                list(active_pattern.stops)
+                if running_direction == RunningDirection.FORWARD
+                else list(reversed(active_pattern.stops))
+            )
 
         # 3. Integrate Train Trajectories via MultiTrainSimulator (P04 & P09)
         traj_leader, traj_follower, simulated_route, train_leader = cls._run_multitrain_simulation(
@@ -383,8 +409,8 @@ class SimulationRunner:
 
                 dwell_s = 30.0
                 if ops and getattr(ops, "service_patterns", None):
-                    for sp in ops.service_patterns:
-                        for st_stop in getattr(sp, "stops", []):
+                    for cur_svc in ops.service_patterns:
+                        for st_stop in getattr(cur_svc, "stops", []):
                             if getattr(st_stop, "platform_id", None) == p.platform_id or getattr(st_stop, "station_id", None) == p.station_id:
                                 dwell_s = float(st_stop.dwell_time_s)
                                 break
@@ -480,11 +506,21 @@ class SimulationRunner:
             tracker.check_cancellation()
             tracker.update(current_step=90, stage="Assembling Canonical Result Package", status_message="Packaging simulation outputs...")
 
-        # Permissible speed envelope
-        speed_envelope = compute_permissible_speed_envelope(
+        # Permissible speed envelope (Change B: piecewise from TrackLinks)
+        speed_envelope = cls._build_permissible_speed_envelope(
             track_links=infra.track_links,
-            rolling_stock_max_speed_kmh=max_speed_ms * 3.6,
             running_direction=running_direction,
+        )
+
+        # Build station stop records (Change A — closes DEF-03)
+        station_stop_records = cls._build_station_stop_records(
+            project=project,
+            active_pattern=active_pattern,
+            traj_leader=traj_leader,
+            total_length_m=total_length_m,
+            train_len_m=train_len_m,
+            running_direction=running_direction,
+            track_links=track_links,
         )
 
         # 9. Build Canonical Result Package (P13)
@@ -504,6 +540,7 @@ class SimulationRunner:
                 "project": project,
                 "project_name": project.name,
                 "service_duration_s": traj_leader.journey_time_s,
+                "station_stops": station_stop_records,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
                 "stochastic_headway_samples": [required_hw_s + k * 0.3 for k in range(30)],
@@ -534,6 +571,284 @@ class SimulationRunner:
             tracker.complete(f"Simulation {run_id} completed successfully in {running_direction.value} direction.")
 
         return package, report_doc
+
+    @classmethod
+    def _resolve_active_service_pattern(
+        cls,
+        project: CanonicalProject,
+        running_direction: RunningDirection,
+        scenario_id: str,
+        analysis_id: Optional[str] = None,
+        primary_train_type_id: Optional[str] = None,
+    ) -> Optional[ServicePattern]:
+        """Resolve the active service pattern from project operations (Change A)."""
+        if not project.operations or not getattr(project.operations, "service_patterns", None):
+            return None
+
+        service_patterns = list(project.operations.service_patterns)
+        if not service_patterns:
+            return None
+        if len(service_patterns) == 1:
+            return service_patterns[0]
+
+        # 1. Match against explicit analysis_id if provided
+        if analysis_id and getattr(project, "analysis", None) and getattr(project.analysis, "analyses", None):
+            for an in project.analysis.analyses:
+                if an.analysis_id == analysis_id:
+                    matched = [cur_svc for cur_svc in service_patterns if cur_svc.service_pattern_id == an.leader_service_id]
+                    if len(matched) == 1:
+                        return matched[0]
+
+        # 2. Check scenario overrides
+        if getattr(project, "scenarios", None):
+            scen_list = project.scenarios if isinstance(project.scenarios, list) else getattr(project.scenarios, "scenarios", [])
+            for sc in scen_list:
+                if sc.scenario_id == scenario_id:
+                    for ov in getattr(sc, "overrides", []):
+                        if getattr(ov, "target_domain", None) == "operations" and getattr(ov, "target_object_id", None) in [cur_svc.service_pattern_id for cur_svc in service_patterns]:
+                            matched = [cur_svc for cur_svc in service_patterns if cur_svc.service_pattern_id == ov.target_object_id]
+                            if len(matched) == 1:
+                                return matched[0]
+
+        # 3. Check direct scenario ID match
+        direct_scen_matches = [cur_svc for cur_svc in service_patterns if cur_svc.service_pattern_id == scenario_id or scenario_id in cur_svc.service_pattern_id]
+        if len(direct_scen_matches) == 1:
+            return direct_scen_matches[0]
+
+        # 4. Filter by analysis matching running direction and primary train type
+        if getattr(project, "analysis", None) and getattr(project.analysis, "analyses", None):
+            dir_tag = "UP" if running_direction == RunningDirection.FORWARD else "DN"
+            dir_alt = "FWD" if running_direction == RunningDirection.FORWARD else "REV"
+            candidate_analyses = [
+                an for an in project.analysis.analyses
+                if (dir_tag in an.analysis_id or dir_alt in an.analysis_id)
+            ]
+            if candidate_analyses and primary_train_type_id:
+                matching_patterns = [
+                    cur_svc for cur_svc in service_patterns
+                    if cur_svc.train_type_id == primary_train_type_id and (dir_tag in cur_svc.service_pattern_id or dir_alt in cur_svc.service_pattern_id)
+                ]
+                if len(matching_patterns) == 1:
+                    return matching_patterns[0]
+
+        # 5. Filter by running direction tag and train type
+        dir_tag = "UP" if running_direction == RunningDirection.FORWARD else "DN"
+        dir_alt = "FWD" if running_direction == RunningDirection.FORWARD else "REV"
+        dir_filtered = [
+            cur_svc for cur_svc in service_patterns
+            if (dir_tag in cur_svc.service_pattern_id or dir_alt in cur_svc.service_pattern_id)
+            and (not primary_train_type_id or cur_svc.train_type_id == primary_train_type_id)
+        ]
+        if len(dir_filtered) == 1:
+            return dir_filtered[0]
+
+        # Could not uniquely determine active service pattern -> fail loudly
+        raise ServicePatternAmbiguousError(
+            f"ERR_SERVICE_PATTERN_AMBIGUOUS: Multiple service patterns found ({[cur_svc.service_pattern_id for cur_svc in service_patterns]}) "
+            f"and active pattern cannot be uniquely determined for scenario '{scenario_id}', "
+            f"direction {running_direction.value}, train type '{primary_train_type_id}'."
+        )
+
+    @classmethod
+    def _build_station_stop_records(
+        cls,
+        project: CanonicalProject,
+        active_pattern: Optional[ServicePattern],
+        traj_leader: TrainTrajectory,
+        total_length_m: float,
+        train_len_m: float,
+        running_direction: RunningDirection,
+        track_links: Sequence[TrackLink],
+    ) -> List[StationStopRecord]:
+        """Build StationStopRecord list from active service pattern and trajectory (Change A)."""
+        if not active_pattern or not getattr(active_pattern, "stops", None):
+            return []
+
+        infra = project.infrastructure
+        if not infra:
+            return []
+
+        stn_map = {s.station_id: s for s in getattr(infra, "stations", [])}
+        plat_map = {p.platform_id: p for p in getattr(infra, "platforms", [])}
+        stopping_pt_map = {stp.platform_id: stp for stp in getattr(infra, "stopping_points", [])}
+
+        fwd_link_starts: Dict[str, float] = {}
+        cum_m = 0.0
+        for lnk in track_links:
+            fwd_link_starts[lnk.link_id] = cum_m
+            cum_m += float(lnk.length_m)
+
+        # Reverse direction: stop order is reversed (last stop becomes origin)
+        ordered_stops = (
+            list(active_pattern.stops)
+            if running_direction == RunningDirection.FORWARD
+            else list(reversed(active_pattern.stops))
+        )
+
+        # Route distance for trajectory samples (0 -> total_length_m)
+        route_samples: List[Tuple[float, float, float]] = []
+        for s in traj_leader.samples:
+            r_dist = (
+                float(s.front_distance_m)
+                if running_direction == RunningDirection.FORWARD
+                else max(0.0, total_length_m - float(s.front_distance_m))
+            )
+            route_samples.append((r_dist, float(s.time_s), float(s.speed_ms)))
+
+        records: List[StationStopRecord] = []
+        for stop in ordered_stops:
+            stn_id = getattr(stop, "station_id", None)
+            if not stn_id or stn_id not in stn_map:
+                raise StationStopFieldMissingError(
+                    f"ERR_STATION_STOP_FIELD_MISSING: Station ID '{stn_id}' cannot be resolved in project stations."
+                )
+            station = stn_map[stn_id]
+            if not getattr(station, "name", None):
+                raise StationStopFieldMissingError(
+                    f"ERR_STATION_STOP_FIELD_MISSING: Station '{stn_id}' missing required 'name' field."
+                )
+
+            plt_id = getattr(stop, "platform_id", None)
+            if not plt_id or plt_id not in plat_map:
+                raise StationStopFieldMissingError(
+                    f"ERR_STATION_STOP_FIELD_MISSING: Platform ID '{plt_id}' cannot be resolved in project platforms."
+                )
+            platform = plat_map[plt_id]
+            if not getattr(platform, "link_id", None):
+                raise StationStopFieldMissingError(
+                    f"ERR_STATION_STOP_FIELD_MISSING: Platform '{plt_id}' missing required 'link_id' field."
+                )
+            if platform.link_id not in fwd_link_starts:
+                raise StationStopFieldMissingError(
+                    f"ERR_STATION_STOP_FIELD_MISSING: Platform link '{platform.link_id}' is not part of corridor track links."
+                )
+
+            plat_link_start = fwd_link_starts[platform.link_id]
+            stp = stopping_pt_map.get(platform.platform_id)
+            if stp and getattr(stp, "offset_m", None) is not None:
+                offset_on_link = float(stp.offset_m)
+            else:
+                plat_len = float(platform.length_m) if getattr(platform, "length_m", None) else float(platform.end_offset_m - platform.start_offset_m)
+                offset_on_link = float(platform.start_offset_m) + plat_len / 2.0
+
+            fwd_stopping_pos_m = plat_link_start + offset_on_link
+
+            if running_direction == RunningDirection.FORWARD:
+                front_stopping_pos_m = fwd_stopping_pos_m
+            else:
+                front_stopping_pos_m = max(0.0, total_length_m - fwd_stopping_pos_m)
+
+            # Check simulator STATION_ARRIVED events first
+            arr_time: Optional[float] = None
+            arr_ev = next(
+                (
+                    e for e in getattr(traj_leader, "events", [])
+                    if getattr(e.event_type, "value", str(e.event_type)) == "STATION_ARRIVED"
+                    and station.station_id in (e.description or "")
+                ),
+                None,
+            )
+            if arr_ev is not None:
+                arr_time = float(arr_ev.timestamp_s)
+                front_stopping_pos_m = float(arr_ev.route_distance_m)
+            else:
+                # Interpolate arrival time from trajectory samples
+                dwell_pts = [
+                    pt for pt in route_samples
+                    if abs(pt[0] - front_stopping_pos_m) <= 5.0 and pt[2] < 0.05
+                ]
+                if dwell_pts:
+                    arr_time = dwell_pts[0][1]
+                else:
+                    for i in range(len(route_samples) - 1):
+                        d0, t0, _ = route_samples[i]
+                        d1, t1, _ = route_samples[i + 1]
+                        if d0 <= front_stopping_pos_m <= d1:
+                            if abs(d1 - d0) < 1e-6:
+                                arr_time = t0
+                            else:
+                                arr_time = t0 + ((front_stopping_pos_m - d0) / (d1 - d0)) * (t1 - t0)
+                            break
+                    if arr_time is None and route_samples:
+                        arr_time = route_samples[-1][1] if front_stopping_pos_m >= route_samples[-1][0] else route_samples[0][1]
+
+            dwell_s = float(stop.dwell_time_s) if getattr(stop, "dwell_time_s", None) is not None else 0.0
+            dep_time = (arr_time if arr_time is not None else 0.0) + dwell_s
+            rear_stopping_pos_m = max(0.0, front_stopping_pos_m - float(train_len_m))
+            route_chainage_km = round(front_stopping_pos_m / 1000.0, 3)
+            physical_chainage_km = (
+                float(station.chainage_km)
+                if getattr(station, "chainage_km", None) is not None
+                else round(fwd_stopping_pos_m / 1000.0, 3)
+            )
+
+            rec = StationStopRecord(
+                train_id=str(traj_leader.train_id),
+                station_id=str(station.station_id),
+                station_name=str(station.name),
+                platform_id=str(platform.platform_id),
+                link_id=str(platform.link_id),
+                running_direction=running_direction,
+                arrival_time_s=round(arr_time, 2) if arr_time is not None else 0.0,
+                dwell_duration_s=round(dwell_s, 2),
+                departure_time_s=round(dep_time, 2),
+                front_stopping_position_m=round(front_stopping_pos_m, 2),
+                rear_stopping_position_m=round(rear_stopping_pos_m, 2),
+                route_chainage_km=route_chainage_km,
+                physical_chainage_km=physical_chainage_km,
+            )
+            records.append(rec)
+
+        records.sort(key=lambda r: r.arrival_time_s)
+        return records
+
+    @classmethod
+    def _build_permissible_speed_envelope(
+        cls,
+        track_links: Sequence[TrackLink],
+        running_direction: RunningDirection,
+    ) -> List[Dict[str, float]]:
+        """P13-SPD-001: Build piecewise civil permissible speed envelope from TrackLinks (Change B)."""
+        if not track_links:
+            return []
+
+        if running_direction == RunningDirection.FORWARD:
+            ordered_links = list(track_links)
+        else:
+            ordered_links = list(reversed(track_links))
+
+        raw_segments: List[Tuple[float, float, float]] = []
+        cum_m = 0.0
+
+        for lnk in ordered_links:
+            speed_kmh = getattr(lnk, "max_speed_kmh", None)
+            if speed_kmh is None:
+                if getattr(lnk, "max_speed_ms", None) is None:
+                    raise SimulationError(
+                        f"ERR_LINK_SPEED_MISSING: TrackLink '{lnk.link_id}' is missing civil speed limit.",
+                        error_code="ERR_LINK_SPEED_MISSING",
+                    )
+                speed_kmh = round(float(lnk.max_speed_ms) * 3.6, 2)
+
+            start_m = cum_m
+            end_m = cum_m + float(lnk.length_m)
+            raw_segments.append((start_m, end_m, float(speed_kmh)))
+            cum_m = end_m
+
+        envelope: List[Dict[str, float]] = []
+        for start_m, end_m, spd in raw_segments:
+            if not envelope:
+                envelope.append({"route_distance_m": start_m, "max_speed_kmh": float(spd)})
+                envelope.append({"route_distance_m": end_m, "max_speed_kmh": float(spd)})
+            else:
+                prev = envelope[-1]
+                if abs(prev["max_speed_kmh"] - spd) < 1e-4 and abs(prev["route_distance_m"] - start_m) < 1e-4:
+                    envelope.append({"route_distance_m": end_m, "max_speed_kmh": float(spd)})
+                else:
+                    envelope.append({"route_distance_m": start_m, "max_speed_kmh": float(spd)})
+                    envelope.append({"route_distance_m": end_m, "max_speed_kmh": float(spd)})
+
+        return envelope
 
     @classmethod
     def _run_multitrain_simulation(
