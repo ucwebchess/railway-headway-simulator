@@ -552,7 +552,7 @@ class MultiTrainSimulator:
 
                         # Front entry into this interval
                         if key not in entered and curr_front >= r_start and curr_rear < r_end:
-                            if res_id not in res.reservations:
+                            if train.train_id not in res.reservations:
                                 self.coordinator.resource_controller.reserve_resource(
                                     train_id=train.train_id,
                                     resource_id=res_id,
