@@ -21,6 +21,9 @@ from headway.reporting.report_models import ReportSectionId
 from headway.reporting.result_models import StationStopRecord
 from headway.ui.file_manager import FileManager
 from headway.ui.simulation_runner import (
+    HeadwayInfeasibleError,
+    HeadwayNoIntervalsError,
+    LeaderTrajectoryEmptyError,
     ServicePatternAmbiguousError,
     SimulationRunner,
     StationStopFieldMissingError,
@@ -124,8 +127,10 @@ class TestSimulationRunnerE2E:
         assert doc is not None
         assert len(pkg.trajectories["TRN_LEADER"].samples) > 2500
         assert 2000.0 <= doc.executive_kpis.total_service_duration_s <= 3000.0
-        assert doc.executive_kpis.controlling_bottleneck_id == "BLK_UP_092"
-        assert doc.executive_kpis.technical_headway_s == 52.9
+        assert doc.executive_kpis.controlling_bottleneck_id in ("BLK_UP_001", "BLK_UP_092")
+        technical_headway_s = doc.executive_kpis.technical_headway_s
+        assert 200.0 < technical_headway_s < 260.0
+        assert technical_headway_s == pytest.approx(228.0, abs=6.0)
 
     def test_e2e_reverse_simulation_monotonicity_and_equivalence(self, comprehensive_project):
         """Verify reverse simulation completes with monotonically decreasing corridor distance."""
@@ -348,4 +353,170 @@ class TestSimulationRunnerE2E:
                 running_direction=RunningDirection.FORWARD,
             )
         assert "ERR_STATION_STOP_FIELD_MISSING" in str(exc_info.value)
+
+    def test_headway_responds_to_dwell(self, comprehensive_project):
+        """DEF-05: Technical minimum headway responds monotonically to dwell duration changes."""
+        p1 = copy.deepcopy(comprehensive_project)
+        p2 = copy.deepcopy(comprehensive_project)
+
+        # Baseline run
+        pkg1, doc1 = SimulationRunner.run_simulation_pipeline(p1, RunningDirection.FORWARD)
+        hw1 = doc1.executive_kpis.technical_headway_s
+
+        # Increase all stop dwell times by 60 seconds
+        for st_stop in p2.operations.service_patterns[0].stops:
+            st_stop.dwell_time_s = float(st_stop.dwell_time_s) + 60.0
+
+        pkg2, doc2 = SimulationRunner.run_simulation_pipeline(p2, RunningDirection.FORWARD)
+        hw2 = doc2.executive_kpis.technical_headway_s
+
+        assert hw2 > hw1, f"Expected headway to increase with dwell: hw1={hw1:.1f}s vs hw2={hw2:.1f}s"
+        assert pkg2.metadata["technical_minimum_headway_s"] == hw2
+
+    def test_headway_responds_to_performance_factor(self, comprehensive_project):
+        """DEF-05: Technical minimum headway responds to rolling stock performance factor."""
+        p = copy.deepcopy(comprehensive_project)
+
+        pkg_pf1, doc_pf1 = SimulationRunner.run_simulation_pipeline(
+            p, RunningDirection.FORWARD, performance_factor=1.0
+        )
+        pkg_pf8, doc_pf8 = SimulationRunner.run_simulation_pipeline(
+            p, RunningDirection.FORWARD, performance_factor=0.8
+        )
+
+        hw1 = doc_pf1.executive_kpis.technical_headway_s
+        hw8 = doc_pf8.executive_kpis.technical_headway_s
+
+        # Reduced performance factor (0.8) lowers acceleration/speed, extending block clearance times
+        assert hw8 > hw1, f"Lower performance factor must increase headway: {hw8:.1f}s > {hw1:.1f}s"
+        assert pkg_pf8.metadata["performance_factor"] == 0.8
+
+    def test_headway_is_not_fudged(self, hsr_sim_results):
+        """DEF-05: Headway equals microscopic controlling block duration with NO +15.0 constant."""
+        pkg, doc = hsr_sim_results
+        controlling_iv = max(pkg.blocking_intervals, key=lambda b: b.duration_s)
+        controlling_dur = controlling_iv.duration_s
+
+        # Technical headway must match controlling duration exactly, NOT +15.0
+        assert doc.executive_kpis.technical_headway_s == pytest.approx(controlling_dur, abs=0.01)
+        assert doc.executive_kpis.technical_headway_s != pytest.approx(controlling_dur + 15.0, abs=0.01)
+        # Verify metadata propagation
+        assert pkg.metadata["technical_minimum_headway_s"] == doc.executive_kpis.technical_headway_s
+
+    def test_headway_dwell_appears_in_controlling_resource(self, hsr_sim_results):
+        """DEF-05: Station dwell appears in the controlling resource's decomposition."""
+        pkg, doc = hsr_sim_results
+        ctrl_id = doc.executive_kpis.controlling_bottleneck_id
+        assert ctrl_id in ("BLK_UP_001", "BLK_UP_092"), f"Expected BLK_UP_001 or BLK_UP_092, got {ctrl_id}"
+        ctrl_iv = next(iv for iv in pkg.blocking_intervals if iv.resource_id == ctrl_id)
+
+        assert ctrl_iv.decomposition is not None
+        assert ctrl_iv.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
+        assert ctrl_iv.duration_s >= 120.0
+
+    def test_headway_responds_to_dwell_on_multilink_corridor(self, hsr_project):
+        """DEF-05: Technical minimum headway responds to dwell duration on 140 km corridor."""
+        p1 = copy.deepcopy(hsr_project)
+        p2 = copy.deepcopy(hsr_project)
+
+        pkg1, doc1 = SimulationRunner.run_simulation_pipeline(p1, RunningDirection.FORWARD)
+        hw1 = doc1.executive_kpis.technical_headway_s
+
+        for st_stop in p2.operations.service_patterns[0].stops:
+            st_stop.dwell_time_s = float(st_stop.dwell_time_s) + 60.0
+            st_stop.min_dwell_s = float(st_stop.min_dwell_s) + 60.0
+
+        pkg2, doc2 = SimulationRunner.run_simulation_pipeline(p2, RunningDirection.FORWARD)
+        hw2 = doc2.executive_kpis.technical_headway_s
+
+        assert hw2 > hw1, f"Expected headway to increase with dwell: hw1={hw1:.1f}s vs hw2={hw2:.1f}s"
+        assert hw2 - hw1 == pytest.approx(60.0, abs=5.0)
+        assert pkg2.metadata["technical_minimum_headway_s"] == hw2
+
+    def test_headway_responds_to_performance_factor_on_multilink_corridor(self, hsr_project):
+        """DEF-05: Technical minimum headway responds to performance factor on 140 km corridor."""
+        p = copy.deepcopy(hsr_project)
+
+        pkg_pf1, doc_pf1 = SimulationRunner.run_simulation_pipeline(
+            p, RunningDirection.FORWARD, performance_factor=1.0
+        )
+        pkg_pf8, doc_pf8 = SimulationRunner.run_simulation_pipeline(
+            p, RunningDirection.FORWARD, performance_factor=0.8
+        )
+
+        hw1 = doc_pf1.executive_kpis.technical_headway_s
+        hw8 = doc_pf8.executive_kpis.technical_headway_s
+
+        assert hw8 > hw1, f"Lower performance factor must increase headway: {hw8:.1f}s > {hw1:.1f}s"
+        assert pkg_pf8.metadata["performance_factor"] == 0.8
+
+    def test_headway_no_intervals_raises_error(self, comprehensive_project, monkeypatch):
+        """DEF-05: ERR_HEADWAY_NO_INTERVALS raised when no usage records are extracted."""
+        from headway.signalling.coordinator import SignallingCoordinator
+        monkeypatch.setattr(
+            SignallingCoordinator,
+            "get_resource_usage_records",
+            lambda self: [],
+        )
+        with pytest.raises(HeadwayNoIntervalsError) as exc_info:
+            SimulationRunner.run_simulation_pipeline(
+                project=comprehensive_project,
+                running_direction=RunningDirection.FORWARD,
+            )
+        assert "ERR_HEADWAY_NO_INTERVALS" in str(exc_info.value)
+
+    def test_leader_trajectory_empty_raises_error(self, comprehensive_project, monkeypatch):
+        """DEF-05: ERR_LEADER_TRAJECTORY_EMPTY raised when leader trajectory contains no samples."""
+        from headway.simulation.trajectory import TrainTrajectory
+        empty_traj = TrainTrajectory(
+            train_id="TRN_LEADER",
+            train_type_id="TT_01",
+            route_id="RT_01",
+            running_direction=RunningDirection.FORWARD,
+            samples=[],
+        )
+        monkeypatch.setattr(
+            SimulationRunner,
+            "_extract_trajectory",
+            lambda train: empty_traj,
+        )
+        with pytest.raises(LeaderTrajectoryEmptyError) as exc_info:
+            SimulationRunner.run_simulation_pipeline(
+                project=comprehensive_project,
+                running_direction=RunningDirection.FORWARD,
+            )
+        assert "ERR_LEADER_TRAJECTORY_EMPTY" in str(exc_info.value)
+
+    def test_headway_infeasible_raises_error(self, comprehensive_project, monkeypatch):
+        """DEF-05: ERR_HEADWAY_INFEASIBLE raised when headway solution is infeasible or non-positive."""
+        from headway.analysis.headway_solver import TechnicalHeadwaySolver
+        from headway.analysis.headway_results import HeadwayResult, HeadwayValidationStatus
+
+        orig_solve = TechnicalHeadwaySolver.solve_pairwise_headway
+
+        def mock_infeasible(self, *args, **kwargs):
+            res = orig_solve(self, *args, **kwargs)
+            return HeadwayResult(
+                run_id=res.run_id,
+                analysis_id=res.analysis_id,
+                scenario_id=res.scenario_id,
+                leader_service_id=res.leader_service_id,
+                follower_service_id=res.follower_service_id,
+                reference_point_id=res.reference_point_id,
+                running_direction=res.running_direction,
+                signalling_system=res.signalling_system,
+                headway_definition=res.headway_definition,
+                headway_s=0.0,
+                minimum_dispatch_headway_s=0.0,
+                verification_status=HeadwayValidationStatus.INFEASIBLE,
+            )
+
+        monkeypatch.setattr(TechnicalHeadwaySolver, "solve_pairwise_headway", mock_infeasible)
+        with pytest.raises(HeadwayInfeasibleError) as exc_info:
+            SimulationRunner.run_simulation_pipeline(
+                project=comprehensive_project,
+                running_direction=RunningDirection.FORWARD,
+            )
+        assert "ERR_HEADWAY_INFEASIBLE" in str(exc_info.value)
+
 

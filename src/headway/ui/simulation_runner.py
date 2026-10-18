@@ -12,8 +12,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from headway.analysis.blocking_time import (
     BlockingTimeDecomposition,
+    BlockingTimeline,
     ResourceBlockingInterval,
     ResourceCategory,
+    extract_blocking_intervals_from_records,
 )
 from headway.analysis.capacity import TheoreticalCapacityCalculator
 from headway.analysis.capacity_models import (
@@ -22,7 +24,11 @@ from headway.analysis.capacity_models import (
     SensitivityStudyResult,
 )
 from headway.analysis.conflict_detection import ConflictType, ResourceConflict
-from headway.analysis.headway_results import HeadwayResult, MixedTrafficHeadwayMatrix
+from headway.analysis.headway_results import (
+    HeadwayResult,
+    HeadwayValidationStatus,
+    MixedTrafficHeadwayMatrix,
+)
 from headway.analysis.headway_solver import TechnicalHeadwaySolver
 from headway.analysis.monte_carlo import MonteCarloExecutionResult
 from headway.analysis.statistics import StatisticalSummary
@@ -107,6 +113,33 @@ class StationStopFieldMissingError(SimulationError):
 
     def __init__(self, message: str, **kwargs) -> None:
         super().__init__(message, error_code="ERR_STATION_STOP_FIELD_MISSING", **kwargs)
+
+
+class HeadwayNoIntervalsError(SimulationError):
+    """Raised when no resource blocking intervals are extracted from microscopic simulation (DEF-05)."""
+
+    DEFAULT_ERROR_CODE = "ERR_HEADWAY_NO_INTERVALS"
+
+    def __init__(self, message: str = "ERR_HEADWAY_NO_INTERVALS: No resource blocking intervals available from microscopic simulation.", **kwargs) -> None:
+        super().__init__(message, error_code="ERR_HEADWAY_NO_INTERVALS", **kwargs)
+
+
+class HeadwayInfeasibleError(SimulationError):
+    """Raised when technical headway calculation is infeasible or non-positive (DEF-05)."""
+
+    DEFAULT_ERROR_CODE = "ERR_HEADWAY_INFEASIBLE"
+
+    def __init__(self, message: str = "ERR_HEADWAY_INFEASIBLE: Technical headway solution is infeasible.", **kwargs) -> None:
+        super().__init__(message, error_code="ERR_HEADWAY_INFEASIBLE", **kwargs)
+
+
+class LeaderTrajectoryEmptyError(SimulationError):
+    """Raised when the leader train trajectory contains no simulation samples (DEF-05)."""
+
+    DEFAULT_ERROR_CODE = "ERR_LEADER_TRAJECTORY_EMPTY"
+
+    def __init__(self, message: str = "ERR_LEADER_TRAJECTORY_EMPTY: Leader train trajectory contains no samples.", **kwargs) -> None:
+        super().__init__(message, error_code="ERR_LEADER_TRAJECTORY_EMPTY", **kwargs)
 
 
 class SimulationRunner:
@@ -209,28 +242,9 @@ class SimulationRunner:
 
         if tracker:
             tracker.check_cancellation()
-            tracker.update(current_step=25, stage="Blocking Time & Headway Solving", status_message="Calculating 7-component blocking stairways...")
+            tracker.update(current_step=25, stage="Pass 1: Leader-Only Dynamics & Headway Solving", status_message=f"Integrating leader train trajectory with MultiTrainSimulator in {running_direction.value} direction...")
 
-        # 2. Blocking Intervals & Technical Headway (P08)
-        blocking_intervals = cls._build_blocking_intervals(
-            blocks=blocks,
-            track_links=track_links,
-            running_direction=running_direction,
-            train_length_m=train_len_m,
-            speed_ms=max_speed_ms,
-            sig_system=getattr(sig, "system", None),
-        )
-
-        # Build pairwise conflicts and solve minimum technical headway
-        controlling_interval = max(blocking_intervals, key=lambda b: b.duration_s) if blocking_intervals else None
-        required_hw_s = controlling_interval.duration_s + 15.0 if controlling_interval else 85.0
-        bottleneck_id = controlling_interval.resource_id if controlling_interval else (blocks[0].block_id if blocks else "BLK_01")
-
-        if tracker:
-            tracker.check_cancellation()
-            tracker.update(current_step=45, stage="Microscopic Dynamics Integration", status_message=f"Integrating train movement dynamics with MultiTrainSimulator in {running_direction.value} direction...")
-
-        # Resolve active service pattern (Change A)
+        # Resolve active service pattern
         active_pattern = cls._resolve_active_service_pattern(
             project=project,
             running_direction=running_direction,
@@ -247,8 +261,112 @@ class SimulationRunner:
                 else list(reversed(active_pattern.stops))
             )
 
-        # 3. Integrate Train Trajectories via MultiTrainSimulator (P04 & P09)
-        traj_leader, traj_follower, simulated_route, train_leader = cls._run_multitrain_simulation(
+        # 2. Pass 1: Leader-only microscopic simulation & Technical Headway Solving (DEF-05)
+        traj_leader_p1, _, simulated_route, train_leader_p1, coord_p1 = cls._run_multitrain_simulation(
+            track_links=track_links,
+            primary_tt=primary_tt,
+            running_direction=running_direction,
+            eff_pf=eff_pf,
+            required_hw_s=None,
+            total_length_m=total_length_m,
+            max_speed_ms=max_speed_ms,
+            stops=service_stops,
+            platforms=list(infra.platforms) if infra and infra.platforms else [],
+            blocks=blocks,
+        )
+
+        if not traj_leader_p1 or not traj_leader_p1.samples:
+            raise LeaderTrajectoryEmptyError(
+                "ERR_LEADER_TRAJECTORY_EMPTY: Leader train trajectory contains no simulation samples."
+            )
+
+        usage_records = coord_p1.get_resource_usage_records()
+        if not usage_records:
+            raise HeadwayNoIntervalsError(
+                "ERR_HEADWAY_NO_INTERVALS: No resource usage records generated by microscopic simulation."
+            )
+
+        # Map platform dwells to blocks containing the platform
+        plat_map = {plt.platform_id: plt for plt in (infra.platforms or [])}
+        block_dwell_map: Dict[str, float] = {}
+        for st_stop in service_stops:
+            cur_plat = plat_map.get(st_stop.platform_id)
+            if not cur_plat:
+                continue
+            p_start = min(cur_plat.start_offset_m, cur_plat.end_offset_m)
+            p_end = max(cur_plat.start_offset_m, cur_plat.end_offset_m)
+            for blk in blocks:
+                for inv in (blk.link_intervals or []):
+                    if inv.link_id == cur_plat.link_id:
+                        b_start = min(inv.start_offset_m, inv.end_offset_m)
+                        b_end = max(inv.start_offset_m, inv.end_offset_m)
+                        if max(p_start, b_start) <= min(p_end, b_end):
+                            block_dwell_map[blk.block_id] = float(st_stop.dwell_time_s)
+                            break
+
+        for rec in usage_records:
+            if rec.front_exit_s is None and rec.rear_clearance_s is not None:
+                rec.front_exit_s = rec.rear_clearance_s
+
+        blocking_intervals = extract_blocking_intervals_from_records(
+            usage_records=usage_records,
+            reference_event_time_s=0.0,
+            setup_duration_s=0.0,
+            dwell_durations=block_dwell_map,
+        )
+        if not blocking_intervals:
+            raise HeadwayNoIntervalsError(
+                "ERR_HEADWAY_NO_INTERVALS: No resource blocking intervals extracted from simulation records."
+            )
+
+        leader_timeline = BlockingTimeline(
+            train_id="TRN_LEADER",
+            service_id="SVC_CORRIDOR",
+            route_id=simulated_route.route_id,
+            running_direction=running_direction,
+            reference_event_name="DEPARTURE",
+            reference_event_time_s=0.0,
+            intervals=blocking_intervals,
+        )
+        follower_timeline = BlockingTimeline(
+            train_id="TRN_FOLLOWER",
+            service_id="SVC_CORRIDOR",
+            route_id=simulated_route.route_id,
+            running_direction=running_direction,
+            reference_event_name="DEPARTURE",
+            reference_event_time_s=0.0,
+            intervals=[iv.shift(0.0, new_interval_id=f"{iv.interval_id}_FOL") for iv in blocking_intervals],
+        )
+
+        solver = TechnicalHeadwaySolver(minimum_dispatch_headway_s=0.0, planning_margin_s=0.0)
+        hw_result = solver.solve_pairwise_headway(
+            leader_timeline=leader_timeline,
+            follower_timeline=follower_timeline,
+            run_id=run_id,
+            scenario_id=scenario_id,
+            performance_factor=eff_pf,
+            performance_factor_source=eff_pf_src,
+        )
+
+        if not math.isfinite(hw_result.headway_s) or hw_result.headway_s <= 0.0 or hw_result.verification_status == HeadwayValidationStatus.INFEASIBLE:
+            raise HeadwayInfeasibleError(
+                f"ERR_HEADWAY_INFEASIBLE: Technical headway solution {hw_result.headway_s} s is infeasible."
+            )
+
+        required_hw_s = hw_result.headway_s
+        bottleneck_id = (
+            hw_result.controlling_conflicts[0].leader_resource_id
+            if hw_result.controlling_conflicts
+            else (blocks[0].block_id if blocks else "BLK_01")
+        )
+        hw_result.reference_point_id = bottleneck_id
+
+        if tracker:
+            tracker.check_cancellation()
+            tracker.update(current_step=45, stage="Pass 2: Multi-Train Validation Integration", status_message=f"Integrating follower train dispatched at {required_hw_s:.1f} s...")
+
+        # 3. Pass 2: Multi-Train Validation with Follower Dispatched at technical minimum headway
+        traj_leader, traj_follower, _, train_leader, coord_p2 = cls._run_multitrain_simulation(
             track_links=track_links,
             primary_tt=primary_tt,
             running_direction=running_direction,
@@ -258,37 +376,7 @@ class SimulationRunner:
             max_speed_ms=max_speed_ms,
             stops=service_stops,
             platforms=list(infra.platforms) if infra and infra.platforms else [],
-        )
-
-        conflict = ResourceConflict(
-            conflict_id="CONF_CTRL_01",
-            leader_usage=controlling_interval,
-            follower_usage=controlling_interval,
-            conflict_type=ConflictType.IDENTICAL_RESOURCE,
-            leader_release_time_s=controlling_interval.end_time_s if controlling_interval else 60.0,
-            follower_start_time_s=10.0,
-            required_headway_s=required_hw_s,
-            slack_s=0.0,
-            bottleneck_type="CRITICAL_BLOCK",
-        )
-
-        hw_result = HeadwayResult(
-            run_id=run_id,
-            analysis_id=f"AN_{run_id}",
-            scenario_id=scenario_id,
-            leader_service_id="SVC_MAIN_01",
-            follower_service_id="SVC_MAIN_02",
-            reference_point_id=bottleneck_id,
-            running_direction=running_direction,
-            signalling_system="FIXED_BLOCK_3ASPECT",
-            headway_definition="TECHNICAL_MINIMUM",
-            headway_s=required_hw_s,
-            minimum_dispatch_headway_s=required_hw_s,
-            controlling_conflicts=[conflict],
-            conflict_ranking=[conflict],
-            blocking_intervals=blocking_intervals,
-            performance_factor=eff_pf,
-            performance_factor_source=eff_pf_src,
+            blocks=blocks,
         )
 
         if tracker:
@@ -549,6 +637,9 @@ class SimulationRunner:
                 "track_links": list(infra.track_links),
                 "performance_factor": eff_pf,
                 "performance_factor_source": eff_pf_src,
+                "technical_minimum_headway_s": required_hw_s,
+                "theoretical_capacity_tph": round(3600.0 / required_hw_s, 1),
+                "blocking_intervals": blocking_intervals,
             },
         )
 
@@ -857,12 +948,13 @@ class SimulationRunner:
         primary_tt: TrainType,
         running_direction: RunningDirection,
         eff_pf: float,
-        required_hw_s: float,
+        required_hw_s: Optional[float],
         total_length_m: float,
         max_speed_ms: float,
         stops: Optional[List[StationStop]] = None,
         platforms: Optional[List[Platform]] = None,
-    ) -> Tuple[TrainTrajectory, TrainTrajectory, Route, TrainServiceInstance]:
+        blocks: Optional[List[SignallingBlock]] = None,
+    ) -> Tuple[TrainTrajectory, Optional[TrainTrajectory], Route, TrainServiceInstance, SignallingCoordinator]:
         """Execute microscopic multi-train simulation along all track links with MultiTrainSimulator."""
         traversals: List[LinkTraversal] = []
         cum_s = 0.0
@@ -916,12 +1008,14 @@ class SimulationRunner:
             requested_departure_s=0.0,
             performance_factor=eff_pf,
         )
-        train_follower = TrainGenerator.create_instance(
-            st,
-            train_id="TRN_FOLLOWER",
-            requested_departure_s=required_hw_s,
-            performance_factor=eff_pf,
-        )
+        train_follower = None
+        if required_hw_s is not None:
+            train_follower = TrainGenerator.create_instance(
+                st,
+                train_id="TRN_FOLLOWER",
+                requested_departure_s=required_hw_s,
+                performance_factor=eff_pf,
+            )
 
         if total_length_m <= 1000.0:
             dt_s = 0.2
@@ -933,25 +1027,33 @@ class SimulationRunner:
             dt_s = 2.0
         storage_interval_s = dt_s
         est_journey_s = total_length_m / max(5.0, max_speed_ms)
-        max_duration_s = max(7200.0, est_journey_s * 2.5 + required_hw_s + 600.0)
+        hw_offset = required_hw_s if required_hw_s is not None else 0.0
+        max_duration_s = max(7200.0, est_journey_s * 2.5 + hw_offset + 600.0)
 
         coord = SignallingCoordinator()
         if platforms:
             for plat in platforms:
                 coord.platform_controller.register_platform(plat)
+        if blocks:
+            for blk in blocks:
+                coord.resource_controller.register_signalling_block(blk)
 
         sim = MultiTrainSimulator(
             coordinator=coord,
             dt_s=dt_s,
             storage_interval_s=storage_interval_s,
         )
-        sim.register_trains([train_leader, train_follower])
+        if train_follower is not None:
+            sim.register_trains([train_leader, train_follower])
+        else:
+            sim.register_trains([train_leader])
+
         sim.run_simulation(max_duration_s=max_duration_s)
 
         traj_leader = cls._extract_trajectory(train_leader)
-        traj_follower = cls._extract_trajectory(train_follower)
+        traj_follower = cls._extract_trajectory(train_follower) if train_follower is not None else None
 
-        return traj_leader, traj_follower, route, train_leader
+        return traj_leader, traj_follower, route, train_leader, coord
 
     @classmethod
     def _extract_trajectory(cls, train: TrainServiceInstance) -> TrainTrajectory:
@@ -968,9 +1070,13 @@ class SimulationRunner:
         for s in raw_samples:
             if is_reverse:
                 front_d = round(max(0.0, total_len - s.front_distance_m), 2)
+                if samples:
+                    front_d = min(samples[-1].front_distance_m, front_d)
                 rear_d = round(min(total_len, (total_len - s.front_distance_m) + train.params.length_m), 2)
             else:
                 front_d = s.front_distance_m
+                if samples:
+                    front_d = max(samples[-1].front_distance_m, front_d)
                 rear_d = s.rear_distance_m
             samples.append(
                 TrajectorySample(
@@ -1071,70 +1177,3 @@ class SimulationRunner:
         sim.register_train(train_inst)
         sim.run_simulation(max_duration_s=max(7200.0, est_s * 2.5 + 600.0))
         return cls._extract_trajectory(train_inst)
-
-    @classmethod
-    def _build_blocking_intervals(
-        cls,
-        blocks: List[Any],
-        track_links: List[TrackLink],
-        running_direction: RunningDirection,
-        train_length_m: float,
-        speed_ms: float,
-        sig_system: Optional[Any] = None,
-    ) -> List[ResourceBlockingInterval]:
-        """Constructs sequenced 7-component blocking intervals for all corridor blocks."""
-        intervals: List[ResourceBlockingInterval] = []
-        ordered_blocks = list(blocks)
-        if running_direction == RunningDirection.REVERSE:
-            ordered_blocks.reverse()
-
-        setup_time = float(getattr(sig_system, "route_setup_time_s", 3.0)) if sig_system else 3.0
-        sight_time = float(getattr(sig_system, "sighting_time_s", 8.0)) if sig_system else 8.0
-        approach_time = round(sight_time + 4.0, 1)
-
-        t_cursor = 10.0
-        for idx, blk in enumerate(ordered_blocks, start=1):
-            blk_len = 0.0
-            if getattr(blk, "link_intervals", None):
-                blk_len = sum(abs(iv.end_offset_m - iv.start_offset_m) for iv in blk.link_intervals)
-            if blk_len <= 0.0:
-                blk_len = 1000.0
-
-            run_time = round(blk_len / max(5.0, speed_ms), 1)
-            clearance_time = round(train_length_m / max(5.0, speed_ms), 1)
-            release_time = (
-                float(blk.release_delay_s)
-                if getattr(blk, "release_delay_s", None) is not None
-                else (float(getattr(sig_system, "release_delay_s", 4.0)) if sig_system else 4.0)
-            )
-            dwell_time = 0.0
-            residual_rear = 0.0
-
-            decomp = BlockingTimeDecomposition(
-                setup_time_s=setup_time,
-                approach_time_s=approach_time,
-                running_time_s=run_time,
-                dwell_time_s=dwell_time,
-                geometric_clearance_time_s=clearance_time,
-                residual_rear_time_s=residual_rear,
-                release_time_s=release_time,
-            )
-
-            start = t_cursor
-            duration = setup_time + approach_time + run_time + dwell_time + clearance_time + residual_rear + release_time
-            end = start + duration
-
-            intervals.append(
-                ResourceBlockingInterval(
-                    interval_id=f"INT_{idx:02d}",
-                    resource_id=blk.block_id,
-                    resource_category=ResourceCategory.TRACK_BLOCK,
-                    start_time_s=start,
-                    end_time_s=end,
-                    train_id="TRN_LEADER",
-                    decomposition=decomp,
-                )
-            )
-            t_cursor += run_time
-
-        return intervals
