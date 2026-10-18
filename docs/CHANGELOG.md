@@ -23,6 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] — 2026-10-18
+
+### Fixed
+
+- **DEF-05 — Microscopic Technical Minimum Headway (`SimulationRunner`, `MultiTrainSimulator`)**:
+  - Technical minimum headway is now derived from the leader train's microscopic trajectory via a two-pass pipeline: (1) simulate the leader alone, extract resource usage records, solve pairwise headway; (2) dispatch the follower at the solved headway and validate collision-free operation.
+  - Removed the analytic `block_length / line_speed` headway formula. The undocumented `+15.0 s` fudge constant has been removed entirely. Technical headway now equals the maximum blocking-interval duration across all resources, with no additive margin embedded in the value.
+  - Dwell and operational performance factor now propagate to headway, matching physical behavior.
+- **Multi-Link Block Reservation Guard (`MultiTrainSimulator._update_resource_occupations`)**:
+  - Corrected the reservation guard from `if res_id not in res.reservations` to `if train.train_id not in res.reservations`. Prior behavior re-reserved on entry to every constituent link of a multi-link block, overwriting `reservation_start_s` to the last-link entry time. This truncated multi-link block occupancy records to only the final link traversal and silently discarded station dwell — which on corridors where all blocks are multi-link caused headway to ignore dwell entirely.
+- **Sensitivity regression tests**: headway response to dwell and performance factor now covered by dedicated tests on both single-link (`05_comprehensive_line`) and multi-link (`07_hsr_140km`) geometry.
+- **Multi-train engine spatial indexing**: route-to-resource interval maps and block entry caches (`_get_route_resource_intervals`, `_get_route_block_eoa_entries`) replace per-step O(N) linear scans. Leader-only pass on 447 links / 92 blocks: **152 s → 3.5 s** (43.5×). Full two-train pipeline: **184 s → 8.9 s** (20.8×). Byte-identical `ResourceUsageRecord` output preserved.
+
+### Changed
+
+- **Technical minimum headway values are corrected upward.** On the reference 140 km HSR corridor (5 stations, `TRN_HSR`, dwell=120 s, PF=100%), the technical minimum headway is **228.0 s**, not the 52.9 s reported by `v1.4.0`. The prior value was an analytic approximation that ignored dwell; the new value reflects the actual blocking time of the controlling resource (`BLK_UP_001`). **Any capacity assessment or headway report produced with `v1.4.0` headway values should be regenerated.**
+
+---
+
 ## [1.4.0] - 2026-10-17
 
 ### Fixed
