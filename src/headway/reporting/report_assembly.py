@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 
 from headway.analysis.blocking_time import ResourceBlockingInterval
 from headway.analysis.headway_results import HeadwayResult, MixedTrafficHeadwayMatrix
+from headway.core.exceptions import ReportingError
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.charts_blocking import (
     create_blocking_stairway_figure,
@@ -79,6 +80,11 @@ from headway.reporting.tables import (
 )
 
 
+# Alias for backwards compatibility with test harnesses and audit specs
+if not hasattr(ReportSectionId, "DETAILED_RESOURCE_OCCUPATION_TABLE"):
+    setattr(ReportSectionId, "DETAILED_RESOURCE_OCCUPATION_TABLE", ReportSectionId.DETAILED_RESOURCE_TIMING)
+
+
 class ReportAssembler:
     """Assembles standardized simulation results into a structured ReportDocument."""
 
@@ -96,13 +102,56 @@ class ReportAssembler:
         r_id = report_id or f"RPT-{package.scenario_id}-{direction.value}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
         # Resolve active canonical project
-        proj = project or package.metadata.get("project")
+        proj = project or (package.metadata.get("project") if package.metadata else None)
         if not proj:
             try:
                 from headway.ui.state import session_state
                 proj = getattr(session_state, "current_project", None)
             except Exception:
                 proj = None
+
+        # Resolve blocking intervals strictly from package metadata (Phase 4c: loud failure)
+        blocking_intervals = None
+        if package.metadata is not None:
+            blocking_intervals = package.metadata.get("blocking_intervals")
+        if blocking_intervals is None and package.blocking_intervals:
+            blocking_intervals = package.blocking_intervals
+            if package.metadata is not None:
+                package.metadata["blocking_intervals"] = blocking_intervals
+
+        if not blocking_intervals:
+            raise ReportingError(
+                "ERR_REPORT_MISSING_BLOCKING_INTERVALS: Simulation result package is missing blocking intervals in metadata.",
+                error_code="ERR_REPORT_MISSING_BLOCKING_INTERVALS",
+            )
+
+        # Enrich blocking interval physical geometry from provenance or project
+        prov_map = {r.resource_id: r for r in package.metadata.get("provenance_records", [])} if package.metadata else {}
+        proj_geom: Dict[str, Tuple[float, float]] = {}
+        if proj and getattr(proj, "signalling", None) and getattr(proj.signalling, "blocks", None):
+            cum_m = 0.0
+            for blk in proj.signalling.blocks:
+                blk_len = sum(abs(inv.end_offset_m - inv.start_offset_m) for inv in (blk.link_intervals or []))
+                if blk_len <= 0.0:
+                    blk_len = 1000.0
+                proj_geom[blk.block_id] = (cum_m, blk_len)
+                cum_m += blk_len
+
+        cum_chainage_m = 0.0
+        for iv in blocking_intervals:
+            if iv.physical_start_offset_m is None or iv.physical_end_offset_m is None or iv.physical_end_offset_m == iv.physical_start_offset_m:
+                if iv.resource_id in prov_map:
+                    p = prov_map[iv.resource_id]
+                    iv.physical_start_offset_m = p.physical_chainage_km * 1000.0
+                    iv.physical_end_offset_m = iv.physical_start_offset_m + p.resource_length_m
+                elif iv.resource_id in proj_geom:
+                    s_m, b_len = proj_geom[iv.resource_id]
+                    iv.physical_start_offset_m = s_m
+                    iv.physical_end_offset_m = s_m + b_len
+                else:
+                    iv.physical_start_offset_m = cum_chainage_m
+                    iv.physical_end_offset_m = cum_chainage_m + 1000.0
+            cum_chainage_m = iv.physical_end_offset_m or (cum_chainage_m + 1000.0)
 
         # 1. Metadata
         metadata = ReportMetadata(
@@ -130,6 +179,18 @@ class ReportAssembler:
         # 3. Build Executive KPIs (P14-EXE-001)
         kpis = cls._build_executive_kpis(package, primary_hw)
 
+        # Resolve controlling bottleneck resource ID
+        controlling_id = (
+            package.metadata.get("controlling_bottleneck_id")
+            if package.metadata
+            else None
+        )
+        if not controlling_id and primary_hw:
+            controlling_id = primary_hw.reference_point_id
+        if not controlling_id:
+            controlling_id = kpis.controlling_bottleneck_id
+        ctrl_ids = [controlling_id] if controlling_id and controlling_id != "UNKNOWN" else None
+
         # 4. Rolling Stock & Infrastructure Summaries
         rs_summary = cls._build_rolling_stock_summary(package, project=proj)
         infra_summary = cls._build_infrastructure_summary(package, project=proj)
@@ -139,7 +200,7 @@ class ReportAssembler:
         recs = RecommendationEngine.generate_recommendations(
             package=package,
             headway_result=primary_hw,
-            platform_records=package.metadata.get("platform_records", []),
+            platform_records=package.metadata.get("platform_records", []) if package.metadata else [],
         )
 
         # 6. Figures Store
@@ -160,7 +221,7 @@ class ReportAssembler:
 
         # Section 3: Seven-Component Breakdown
         sections[ReportSectionId.SEVEN_COMPONENT_BREAKDOWN] = cls._build_section_components(
-            package, direction, figures_data
+            package, direction, figures_data, controlling_resource_ids=ctrl_ids
         )
 
         # Section 4: Pairwise Conflict Ranking
@@ -195,7 +256,7 @@ class ReportAssembler:
 
         # Section 10: Detailed Resource Timing Table
         sections[ReportSectionId.DETAILED_RESOURCE_TIMING] = cls._build_section_detailed_timing(
-            package, direction
+            package, direction, controlling_resource_ids=ctrl_ids
         )
 
         # Section 11: Resource Geometry Provenance
@@ -318,6 +379,11 @@ class ReportAssembler:
         bottleneck_type = "UNCONSTRAINED"
         bottleneck_loc = 0.0
 
+        intervals = (
+            package.metadata.get("blocking_intervals")
+            if (package.metadata and "blocking_intervals" in package.metadata)
+            else package.blocking_intervals
+        )
         if primary_hw:
             hw_s = primary_hw.headway_s
             bottleneck_id = primary_hw.reference_point_id or "UNKNOWN"
@@ -327,9 +393,9 @@ class ReportAssembler:
                 bottleneck_type = str(getattr(c, "bottleneck_type", "CRITICAL_BLOCK"))
                 bottleneck_loc = getattr(c, "conflict_point_m", 0.0) or getattr(c, "physical_location_m", 0.0) or 0.0
 
-        elif package.blocking_intervals:
+        elif intervals:
             # Longest blocking interval fallback
-            longest = max(package.blocking_intervals, key=lambda b: b.duration_s)
+            longest = max(intervals, key=lambda b: b.duration_s)
             hw_s = longest.duration_s
             bottleneck_id = longest.resource_id
             bottleneck_type = str(longest.resource_category.value if hasattr(longest.resource_category, "value") else longest.resource_category)
@@ -523,6 +589,14 @@ class ReportAssembler:
                 total_tvs_sections=total_tvs,
             )
 
+        meta = package.metadata or {}
+        intervals = (
+            meta.get("blocking_intervals")
+            if "blocking_intervals" in meta
+            else package.blocking_intervals
+        )
+        total_blocks_count = meta.get("total_blocks", len(intervals)) if intervals else 0
+
         return InfrastructureSummary(
             signalling_technology=meta.get("signalling_technology", "FIXED_BLOCK_3ASPECT"),
             topology_mode=meta.get("topology_mode", "DOUBLE_TRACK_BIDIRECTIONAL"),
@@ -535,8 +609,8 @@ class ReportAssembler:
             aspect_model=meta.get("aspect_model", "THREE_ASPECT"),
             default_overlap_m=meta.get("default_overlap_m", 0.0),
             sighting_time_s=meta.get("sighting_time_s", 8.0),
-            total_links=meta.get("total_links", len(package.metadata.get("track_links", []))),
-            total_blocks=meta.get("total_blocks", len(package.blocking_intervals)),
+            total_links=meta.get("total_links", len(package.metadata.get("track_links", []))) if package.metadata else 0,
+            total_blocks=total_blocks_count,
             total_signals=meta.get("total_signals", 0),
             total_stations=meta.get("total_stations", 0),
             total_platforms=meta.get("total_platforms", len(package.metadata.get("platform_records", []))),
@@ -624,10 +698,18 @@ class ReportAssembler:
         figures_data: Dict[str, Any],
     ) -> ReportSection:
         """Section 2: Relative Blocking-Time Stairway (P14-SEC02-001)."""
-        is_app = primary_hw is not None and bool(primary_hw.blocking_intervals)
+        intervals = (
+            package.metadata.get("blocking_intervals")
+            if (package.metadata and "blocking_intervals" in package.metadata)
+            else package.blocking_intervals
+        )
+        is_app = primary_hw is not None and bool(intervals)
         fig_key = "fig_blocking_stairway"
         if is_app and primary_hw:
-            figures_data[fig_key] = create_blocking_stairway_figure(primary_hw)
+            figures_data[fig_key] = create_blocking_stairway_figure(
+                primary_hw,
+                blocking_intervals=intervals,
+            )
 
         return ReportSection(
             section_id=ReportSectionId.BLOCKING_STAIRWAY,
@@ -648,13 +730,21 @@ class ReportAssembler:
         package: SimulationResultPackage,
         direction: RunningDirection,
         figures_data: Dict[str, Any],
+        controlling_resource_ids: Optional[Sequence[str]] = None,
     ) -> ReportSection:
         """Section 3: Seven-Component Breakdown (P14-SEC03-001)."""
-        is_app = bool(package.blocking_intervals)
+        intervals = (
+            package.metadata.get("blocking_intervals")
+            if (package.metadata and "blocking_intervals" in package.metadata)
+            else package.blocking_intervals
+        )
+        is_app = bool(intervals)
         fig_key = "fig_seven_components"
         if is_app:
             figures_data[fig_key] = create_seven_component_figure(
-                package.blocking_intervals, running_direction=direction
+                intervals,
+                controlling_resource_ids=controlling_resource_ids,
+                running_direction=direction,
             )
 
         return ReportSection(
@@ -704,10 +794,15 @@ class ReportAssembler:
         direction: RunningDirection,
     ) -> ReportSection:
         """Section 5: Longest Individual Resource Occupations (P14-SEC05-001)."""
-        is_app = bool(package.blocking_intervals)
+        intervals = (
+            package.metadata.get("blocking_intervals")
+            if (package.metadata and "blocking_intervals" in package.metadata)
+            else package.blocking_intervals
+        )
+        is_app = bool(intervals)
         tables: List[EngineeringTable] = []
         if is_app:
-            tables.append(create_longest_occupation_table(package.blocking_intervals, top_n=top_n, running_direction=direction))
+            tables.append(create_longest_occupation_table(intervals, top_n=top_n, running_direction=direction))
 
         return ReportSection(
             section_id=ReportSectionId.LONGEST_OCCUPATIONS,
@@ -837,12 +932,24 @@ class ReportAssembler:
         cls,
         package: SimulationResultPackage,
         direction: RunningDirection,
+        controlling_resource_ids: Optional[Sequence[str]] = None,
     ) -> ReportSection:
         """Section 10: Detailed Resource Timing Table (P14-SEC10-001)."""
-        is_app = bool(package.blocking_intervals)
+        intervals = (
+            package.metadata.get("blocking_intervals")
+            if (package.metadata and "blocking_intervals" in package.metadata)
+            else package.blocking_intervals
+        )
+        is_app = bool(intervals)
         tables: List[EngineeringTable] = []
         if is_app:
-            tables.append(create_resource_timing_table(package.blocking_intervals, running_direction=direction))
+            tables.append(
+                create_resource_timing_table(
+                    intervals,
+                    running_direction=direction,
+                    controlling_resource_ids=controlling_resource_ids,
+                )
+            )
 
         return ReportSection(
             section_id=ReportSectionId.DETAILED_RESOURCE_TIMING,

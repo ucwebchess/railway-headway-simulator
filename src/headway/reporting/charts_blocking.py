@@ -28,32 +28,53 @@ from headway.reporting.visualization_adapters import VisualizationAdapter
 def create_blocking_stairway_figure(
     headway_result: HeadwayResult,
     title: str = "Blocking-Time Stairway Diagram & Critical Conflict",
+    blocking_intervals: Optional[Sequence[ResourceBlockingInterval]] = None,
 ) -> go.Figure:
     """P13-BTS-001 to 007: Generate interactive Plotly blocking stairway with shifted follower."""
     fig = go.Figure()
 
     running_dir = headway_result.running_direction
-    intervals = headway_result.blocking_intervals or []
+    intervals = (
+        blocking_intervals
+        if blocking_intervals is not None
+        else (headway_result.blocking_intervals or [])
+    )
     shift_s = headway_result.headway_s
 
     controlling_res_ids = {c.leader_resource_id for c in headway_result.controlling_conflicts}
 
-    # Distinct resources in route order
+    # Distinct resources in route order (filtering follower if both are present in intervals)
     resource_order = []
     seen = set()
+    leader_intervals = []
     for bi in intervals:
+        if getattr(bi, "train_id", None) == "TRN_FOLLOWER":
+            continue
         if bi.resource_id not in seen:
             resource_order.append(bi.resource_id)
             seen.add(bi.resource_id)
+            leader_intervals.append(bi)
+
+    if not leader_intervals:
+        leader_intervals = list(intervals)
+        for bi in intervals:
+            if bi.resource_id not in seen:
+                resource_order.append(bi.resource_id)
+                seen.add(bi.resource_id)
 
     if running_dir == RunningDirection.REVERSE:
         resource_order = list(reversed(resource_order))
 
     # 1. Leader blocking intervals
-    for bi in intervals:
+    for bi in leader_intervals:
         is_controlling = bi.resource_id in controlling_res_ids
         color = ChartColors.CONTROLLING_BORDER if is_controlling else ChartColors.LEADER_TRAIN
         opacity = 0.85 if is_controlling else 0.55
+
+        d = bi.decomposition
+        setup = d.setup_time_s if d else 0.0
+        appr = d.approach_time_s if d else 0.0
+        rel = d.release_time_s if d else 0.0
 
         # Vertical bar spanning time from start_time to end_time
         fig.add_trace(
@@ -63,6 +84,7 @@ def create_blocking_stairway_figure(
                 y=[bi.duration_s],
                 base=[bi.start_time_s],
                 orientation="v",
+                customdata=[[setup, appr, rel]],
                 marker=dict(
                     color=color,
                     opacity=opacity,
@@ -73,18 +95,24 @@ def create_blocking_stairway_figure(
                     f"Resource: {bi.resource_id}<br>"
                     f"Start: {bi.start_time_s:.1f} s<br>"
                     f"End: {bi.end_time_s:.1f} s<br>"
-                    f"Duration: {bi.duration_s:.1f} s<extra></extra>"
+                    f"Duration: {bi.duration_s:.1f} s<br>"
+                    f"Setup: {setup:.1f} s | Approach: {appr:.1f} s | Release: {rel:.1f} s<extra></extra>"
                 ),
-                showlegend=(bi == intervals[0]),
+                showlegend=(bi == leader_intervals[0]),
             )
         )
 
     # 2. Shifted Follower blocking intervals
-    for bi in intervals:
+    for bi in leader_intervals:
         shifted_start = bi.start_time_s + shift_s
         is_controlling = bi.resource_id in controlling_res_ids
         color = ChartColors.CRITICAL_RED if is_controlling else ChartColors.FOLLOWER_TRAIN
         opacity = 0.85 if is_controlling else 0.45
+
+        d = bi.decomposition
+        setup = d.setup_time_s if d else 0.0
+        appr = d.approach_time_s if d else 0.0
+        rel = d.release_time_s if d else 0.0
 
         fig.add_trace(
             go.Bar(
@@ -93,6 +121,7 @@ def create_blocking_stairway_figure(
                 y=[bi.duration_s],
                 base=[shifted_start],
                 orientation="v",
+                customdata=[[setup, appr, rel]],
                 marker=dict(
                     color=color,
                     opacity=opacity,
@@ -103,9 +132,10 @@ def create_blocking_stairway_figure(
                     f"Resource: {bi.resource_id}<br>"
                     f"Start: {shifted_start:.1f} s<br>"
                     f"End: {(shifted_start + bi.duration_s):.1f} s<br>"
-                    f"Duration: {bi.duration_s:.1f} s<extra></extra>"
+                    f"Duration: {bi.duration_s:.1f} s<br>"
+                    f"Setup: {setup:.1f} s | Approach: {appr:.1f} s | Release: {rel:.1f} s<extra></extra>"
                 ),
-                showlegend=(bi == intervals[0]),
+                showlegend=(bi == leader_intervals[0]),
             )
         )
 
