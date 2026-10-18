@@ -26,6 +26,7 @@ from headway.ui.simulation_runner import (
     LeaderTrajectoryEmptyError,
     ServicePatternAmbiguousError,
     SimulationRunner,
+    SimulationRunnerError,
     StationStopFieldMissingError,
 )
 
@@ -127,10 +128,10 @@ class TestSimulationRunnerE2E:
         assert doc is not None
         assert len(pkg.trajectories["TRN_LEADER"].samples) > 2500
         assert 2000.0 <= doc.executive_kpis.total_service_duration_s <= 3000.0
-        assert doc.executive_kpis.controlling_bottleneck_id in ("BLK_UP_001", "BLK_UP_092")
+        assert doc.executive_kpis.controlling_bottleneck_id == "BLK_UP_092"
         technical_headway_s = doc.executive_kpis.technical_headway_s
-        assert 200.0 < technical_headway_s < 260.0
-        assert technical_headway_s == pytest.approx(228.0, abs=6.0)
+        assert 235.0 < technical_headway_s < 255.0
+        assert technical_headway_s == pytest.approx(244.0, abs=6.0)
 
     def test_e2e_reverse_simulation_monotonicity_and_equivalence(self, comprehensive_project):
         """Verify reverse simulation completes with monotonically decreasing corridor distance."""
@@ -404,15 +405,71 @@ class TestSimulationRunnerE2E:
         assert pkg.metadata["technical_minimum_headway_s"] == doc.executive_kpis.technical_headway_s
 
     def test_headway_dwell_appears_in_controlling_resource(self, hsr_sim_results):
-        """DEF-05: Station dwell appears in the controlling resource's decomposition."""
+        """DEF-05/DEF-06: Station dwell appears in the controlling resource's decomposition."""
         pkg, doc = hsr_sim_results
         ctrl_id = doc.executive_kpis.controlling_bottleneck_id
-        assert ctrl_id in ("BLK_UP_001", "BLK_UP_092"), f"Expected BLK_UP_001 or BLK_UP_092, got {ctrl_id}"
+        assert ctrl_id == "BLK_UP_092", f"Expected BLK_UP_092, got {ctrl_id}"
         ctrl_iv = next(iv for iv in pkg.blocking_intervals if iv.resource_id == ctrl_id)
 
         assert ctrl_iv.decomposition is not None
         assert ctrl_iv.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
         assert ctrl_iv.duration_s >= 120.0
+
+    def test_setup_approach_release_nonzero_on_hsr_corridor(self, hsr_sim_results):
+        """DEF-06: Setup, approach, and release are non-zero on non-origin corridor blocks."""
+        pkg, _ = hsr_sim_results
+        blk92 = next(b for b in pkg.blocking_intervals if b.resource_id == "BLK_UP_092")
+
+        assert blk92.decomposition.setup_time_s == pytest.approx(3.0, abs=0.1)
+        assert blk92.decomposition.approach_time_s == pytest.approx(10.0, abs=0.1)
+        assert blk92.decomposition.release_time_s == pytest.approx(4.0, abs=0.1)
+        assert blk92.decomposition.running_time_s == pytest.approx(107.0, abs=5.0)
+        assert blk92.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
+        assert blk92.duration_s == pytest.approx(244.0, abs=6.0)
+
+    def test_origin_block_has_zero_approach(self, hsr_sim_results):
+        """DEF-06: Origin block has zero approach time because train is already stationary at platform."""
+        pkg, _ = hsr_sim_results
+        blk01 = next(b for b in pkg.blocking_intervals if b.resource_id == "BLK_UP_001")
+
+        assert blk01.decomposition.setup_time_s == pytest.approx(3.0, abs=0.1)
+        assert blk01.decomposition.approach_time_s == 0.0
+        assert blk01.decomposition.release_time_s == pytest.approx(4.0, abs=0.1)
+        assert blk01.duration_s == pytest.approx(235.0, abs=6.0)
+
+    def test_decomposition_components_sum_to_duration(self, hsr_sim_results):
+        """DEF-06: Seven additive decomposition components reconcile with interval duration for every block."""
+        pkg, _ = hsr_sim_results
+        for iv in pkg.blocking_intervals:
+            d = iv.decomposition
+            comp_sum = (
+                d.setup_time_s
+                + d.approach_time_s
+                + d.running_time_s
+                + d.dwell_time_s
+                + d.geometric_clearance_time_s
+                + d.residual_rear_time_s
+                + d.release_time_s
+            )
+            assert abs(comp_sum - iv.duration_s) < 0.1, (
+                f"Block {iv.resource_id} decomposition {comp_sum:.3f}s does not reconcile with duration {iv.duration_s:.3f}s"
+            )
+
+    def test_controlling_resource_switches_to_terminal_after_enrichment(self, hsr_sim_results):
+        """DEF-06: Controlling bottleneck switches from origin BLK_UP_001 to terminal BLK_UP_092."""
+        pkg, doc = hsr_sim_results
+        assert pkg.metadata["controlling_bottleneck_id"] == "BLK_UP_092"
+        assert doc.executive_kpis.controlling_bottleneck_id == "BLK_UP_092"
+        assert doc.executive_kpis.technical_headway_s == pytest.approx(244.0, abs=6.0)
+        assert pkg.metadata["technical_minimum_headway_s"] == pytest.approx(244.0, abs=6.0)
+
+    def test_origin_block_undetermined_raises_error(self, hsr_project, monkeypatch):
+        """DEF-06: ERR_ORIGIN_BLOCK_UNDETERMINED raised when origin block cannot be mapped from route."""
+        from headway.infrastructure.route import Route
+        monkeypatch.setattr(Route, "physical_to_route_distance", lambda self, link_id, offset: None)
+        with pytest.raises(SimulationRunnerError) as exc_info:
+            SimulationRunner.run_simulation_pipeline(hsr_project, RunningDirection.FORWARD)
+        assert "ERR_ORIGIN_BLOCK_UNDETERMINED" in str(exc_info.value)
 
     def test_headway_responds_to_dwell_on_multilink_corridor(self, hsr_project):
         """DEF-05: Technical minimum headway responds to dwell duration on 140 km corridor."""

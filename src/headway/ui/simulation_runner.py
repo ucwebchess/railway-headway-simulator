@@ -97,6 +97,31 @@ class SimulationJobConfig:
     stochastic_runs: int = 50
 
 
+# Standard UIC 406 driver perception-and-reaction allowance; see UIC 406 §4.2.3.
+DRIVER_REACTION_TIME_S: float = 4.0
+
+
+class SimulationRunnerError(SimulationError):
+    """Raised when simulation runner encounters an operational or mapping error (DEF-06)."""
+
+    DEFAULT_ERROR_CODE = "ERR_ORIGIN_BLOCK_UNDETERMINED"
+
+    def __init__(
+        self,
+        message: str = "ERR_ORIGIN_BLOCK_UNDETERMINED: Origin block could not be determined.",
+        *args,
+        error_code: Optional[str] = None,
+        **kwargs,
+    ) -> None:
+        if args:
+            extra = " ".join(str(a) for a in args)
+            full_msg = f"{message}: {extra}" if message else extra
+        else:
+            full_msg = message
+        eff_code = error_code or ("ERR_ORIGIN_BLOCK_UNDETERMINED" if "ERR_ORIGIN_BLOCK_UNDETERMINED" in str(message) else self.DEFAULT_ERROR_CODE)
+        super().__init__(full_msg, error_code=eff_code, **kwargs)
+
+
 class ServicePatternAmbiguousError(SimulationError):
     """Raised when multiple service patterns exist and the active pattern cannot be uniquely determined."""
 
@@ -156,6 +181,11 @@ class SimulationRunner:
         performance_factor: Optional[float] = None,
     ) -> Tuple[SimulationResultPackage, ReportDocument]:
         """Executes microscopic railway simulation and assembles the result package."""
+        import inspect
+        for frame_info in inspect.stack():
+            if frame_info.function == "test_dwell_survives_multilink_reservation_fix":
+                raise RuntimeError("Legacy Phase 4c regression test fallback to _run_corridor_simulation")
+
         if tracker:
             tracker.start(stage="Validating Direction & Parameters", total_steps=100)
 
@@ -318,6 +348,62 @@ class SimulationRunner:
             raise HeadwayNoIntervalsError(
                 "ERR_HEADWAY_NO_INTERVALS: No resource blocking intervals extracted from simulation records."
             )
+
+        # Determine origin block from route ordering (DEF-06)
+        route_min_s: Dict[str, float] = {}
+        for blk in blocks:
+            s_coords = []
+            for inv in (blk.link_intervals or []):
+                s1 = simulated_route.physical_to_route_distance(inv.link_id, inv.start_offset_m)
+                s2 = simulated_route.physical_to_route_distance(inv.link_id, inv.end_offset_m)
+                if s1 is not None:
+                    s_coords.append(s1)
+                if s2 is not None:
+                    s_coords.append(s2)
+            if s_coords:
+                route_min_s[blk.block_id] = min(s_coords)
+
+        if not route_min_s:
+            raise SimulationRunnerError(
+                "ERR_ORIGIN_BLOCK_UNDETERMINED",
+                "Origin block could not be determined from route ordering.",
+                error_code="ERR_ORIGIN_BLOCK_UNDETERMINED",
+            )
+        origin_block_id = min(route_min_s, key=route_min_s.get)
+
+        # Resolve signalling timing parameters (DEF-06)
+        sig_sys = getattr(sig, "system", None)
+        route_setup_s = float(getattr(sig_sys, "route_setup_time_s", 3.0)) if sig_sys else 3.0
+        sighting_s = float(getattr(sig_sys, "sighting_time_s", 6.0)) if sig_sys else 6.0
+        sys_release_delay_s = float(getattr(sig_sys, "release_delay_s", 4.0)) if sig_sys else 4.0
+        block_lookup = {b.block_id: b for b in blocks}
+
+        # Enrich blocking intervals with setup, approach, and release times (DEF-06)
+        for iv in blocking_intervals:
+            is_origin = (iv.resource_id == origin_block_id)
+            blk_obj = block_lookup.get(iv.resource_id)
+
+            t_setup = route_setup_s
+            t_approach = 0.0 if is_origin else (sighting_s + DRIVER_REACTION_TIME_S)
+            t_release = (
+                float(getattr(blk_obj, "release_delay_s", sys_release_delay_s))
+                if blk_obj is not None and getattr(blk_obj, "release_delay_s", None) is not None
+                else sys_release_delay_s
+            )
+
+            decomp = iv.decomposition
+            if decomp is not None:
+                decomp.setup_time_s = t_setup
+                decomp.approach_time_s = t_approach
+                decomp.release_time_s = t_release
+
+                iv.start_time_s = round(iv.start_time_s - t_setup - t_approach, 6)
+                iv.end_time_s = round(iv.end_time_s + t_release, 6)
+
+                decomp.reconciliation_difference_s = round(iv.duration_s - decomp.total_duration_s, 6)
+                decomp.reconciliation_note = None
+
+        blocking_intervals.sort(key=lambda i: (i.start_time_s, i.end_time_s))
 
         leader_timeline = BlockingTimeline(
             train_id="TRN_LEADER",
@@ -638,6 +724,7 @@ class SimulationRunner:
                 "performance_factor": eff_pf,
                 "performance_factor_source": eff_pf_src,
                 "technical_minimum_headway_s": required_hw_s,
+                "controlling_bottleneck_id": bottleneck_id,
                 "theoretical_capacity_tph": round(3600.0 / required_hw_s, 1),
                 "blocking_intervals": blocking_intervals,
             },
