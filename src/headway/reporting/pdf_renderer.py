@@ -16,7 +16,7 @@ import tempfile
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A3, A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, inch, mm
 from reportlab.pdfgen import canvas
@@ -64,28 +64,37 @@ class NumberedCanvas(canvas.Canvas):
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.HexColor("#64748B"))
 
+        page_w, page_h = self._pagesize
+        margin_l = 36.0
+        margin_r = page_w - 36.0
+
         # Footer line and text
         self.setStrokeColor(colors.HexColor("#E2E8F0"))
         self.setLineWidth(0.5)
-        self.line(36, 36, 559, 36)
+        self.line(margin_l, 32, margin_r, 32)
 
         footer_left = "Railway Headway & Line Capacity Assessment Subsystem"
         footer_right = f"Page {self._pageNumber} of {page_count}"
-        self.drawString(36, 24, footer_left)
-        self.drawRightString(559, 24, footer_right)
+        self.drawString(margin_l, 20, footer_left)
+        self.drawRightString(margin_r, 20, footer_right)
 
         # Header (Pages >= 2)
         if self._pageNumber > 1:
-            self.line(36, 806, 559, 806)
-            self.drawString(36, 812, "Railway Headway Simulation — Engineering Report")
+            self.line(margin_l, page_h - 32, margin_r, page_h - 32)
+            self.drawString(margin_l, page_h - 24, "Railway Headway Simulation — Engineering Report")
             direction_str = getattr(self, "running_direction_str", "FORWARD")
-            self.drawRightString(559, 812, f"RUNNING DIRECTION: {direction_str}")
+            self.drawRightString(margin_r, page_h - 24, f"RUNNING DIRECTION: {direction_str}")
 
         self.restoreState()
 
 
 class PdfReportRenderer:
     """Renders ReportDocument into publication-grade PDF using ReportLab."""
+
+    PAGE_WIDTH: float = 1190.5511811023623
+    PAGE_HEIGHT: float = 841.8897637795277
+    PAGE_MARGIN: float = 36.0
+    CONTENT_WIDTH: float = 1190.5511811023623 - 72.0  # 1118.55 pt
 
     PRIMARY_NAVY = colors.HexColor("#1B365D")
     SECONDARY_BLUE = colors.HexColor("#2E6B9E")
@@ -103,17 +112,18 @@ class PdfReportRenderer:
         document: ReportDocument,
         output_path: Union[str, Path],
     ) -> str:
-        """Renders complete PDF report to disk."""
+        """Renders complete PDF report to disk using landscape A3 layout."""
         target_path = Path(output_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
+        pagesize = landscape(A3)
         doc = SimpleDocTemplate(
             str(target_path),
-            pagesize=A4,
-            leftMargin=36,
-            rightMargin=36,
-            topMargin=45,
-            bottomMargin=45,
+            pagesize=pagesize,
+            leftMargin=cls.PAGE_MARGIN,
+            rightMargin=cls.PAGE_MARGIN,
+            topMargin=cls.PAGE_MARGIN,
+            bottomMargin=cls.PAGE_MARGIN,
         )
 
         styles = cls._build_styles()
@@ -168,15 +178,15 @@ class PdfReportRenderer:
                     story.append(cls._build_callout_box(cb.get("title", "Note"), cb.get("text", ""), styles))
                     story.append(Spacer(1, 6))
 
-                # Render figures
+                # Render figures scaled to A3 landscape printable area
                 for f_key in s.figure_keys:
                     fig_obj = document.figures_data.get(f_key)
                     if fig_obj is not None:
                         img_path = fig_dir_path / f"{f_key}.png"
                         try:
-                            export_figure_headless(fig_obj, img_path, width=900, height=450, dpi=180)
+                            export_figure_headless(fig_obj, img_path, width=1600, height=800, dpi=200)
                             if img_path.exists():
-                                story.append(Image(str(img_path), width=520, height=260))
+                                story.append(Image(str(img_path), width=1080, height=540))
                                 story.append(Spacer(1, 6))
                         except Exception:
                             # Fallback if image generation fails
@@ -396,7 +406,7 @@ class PdfReportRenderer:
             Paragraph(f"{kpis.controlling_bottleneck_type} • km {kpis.controlling_bottleneck_chainage_km:.2f}", styles["KpiSub"]),
         ])
 
-        col_w = 520.0 / len(kpi_cells)
+        col_w = cls.CONTENT_WIDTH / len(kpi_cells)
         col_widths = [col_w] * len(kpi_cells)
         crit_idx = len(kpi_cells) - 1
 
@@ -438,7 +448,8 @@ class PdfReportRenderer:
                 [Paragraph("Stations / Plts / TVS", styles["TableCell"]), Paragraph(f"{infra.total_stations} / {infra.total_platforms} / {infra.total_tvs_sections}", styles["TableCell"])],
             ]
 
-            t_rs = Table(rs_data, colWidths=[110, 140])
+            half_w = cls.CONTENT_WIDTH / 2.0
+            t_rs = Table(rs_data, colWidths=[180, half_w - 180])
             t_rs.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EDF2F7")),
                 ("BOX", (0, 0), (-1, -1), 0.5, cls.BORDER_LIGHT),
@@ -447,7 +458,7 @@ class PdfReportRenderer:
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ]))
 
-            t_infra = Table(infra_data, colWidths=[110, 140])
+            t_infra = Table(infra_data, colWidths=[180, half_w - 180])
             t_infra.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EDF2F7")),
                 ("BOX", (0, 0), (-1, -1), 0.5, cls.BORDER_LIGHT),
@@ -456,7 +467,7 @@ class PdfReportRenderer:
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ]))
 
-            summary_table = Table([[t_rs, t_infra]], colWidths=[260, 260])
+            summary_table = Table([[t_rs, t_infra]], colWidths=[half_w, half_w])
             summary_table.setStyle(TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -504,7 +515,7 @@ class PdfReportRenderer:
             Paragraph(f"<b>{title.upper()}</b>", styles["TableCellBold"]),
             Paragraph(text, styles["TableCell"]),
         ]
-        t = Table([[content]], colWidths=[520])
+        t = Table([[content]], colWidths=[cls.CONTENT_WIDTH])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), box_color),
             ("BOX", (0, 0), (-1, -1), 0.5, cls.BORDER_LIGHT),
@@ -527,7 +538,7 @@ class PdfReportRenderer:
         df = table_obj.formatted_dataframe
         cols = list(df.columns)
         num_cols = len(cols)
-        col_w = 520.0 / max(1, num_cols)
+        col_w = cls.CONTENT_WIDTH / max(1, num_cols)
 
         # Header row
         rows = [[Paragraph(f"<b>{c}</b>", styles["TableHead"]) for c in cols]]
@@ -572,7 +583,7 @@ class PdfReportRenderer:
             Paragraph(f"<b>Engineering Rationale:</b> {rec.rationale}", styles["TableCell"]),
         ]
 
-        t = Table([[content]], colWidths=[520])
+        t = Table([[content]], colWidths=[cls.CONTENT_WIDTH])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), colors.white),
             ("BOX", (0, 0), (-1, -1), 0.5, cls.BORDER_LIGHT),

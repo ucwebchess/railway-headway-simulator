@@ -39,6 +39,7 @@ class AppState:
     simulation_packages: Dict[str, SimulationResultPackage] = field(default_factory=dict)
     latest_result_package: Optional[SimulationResultPackage] = None
     latest_report_doc: Optional[ReportDocument] = None
+    report_config: Optional[Any] = None
     reports_dir: Path = field(default_factory=lambda: Path(os.environ.get("HEADWAY_STORAGE_DIR", Path.cwd() / "storage")) / "reports")
 
     # Logging and Diagnostics
@@ -70,6 +71,7 @@ class AppState:
         self.simulation_packages.clear()
         self.latest_result_package = None
         self.latest_report_doc = None
+        self.report_config = None
         self.session_logs = [f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Session reset."]
         self.last_updated = datetime.now(timezone.utc).isoformat()
 
