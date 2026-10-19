@@ -26,18 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.6.0] — 2026-10-19
 
 ### Added
-- **Report Configuration & Assessment Template Wiring (`ReportAssembler`, `SimulationRunner`, `app`)**:
-  - Wired Gradio checkboxes for "Included Report Sections" and "Assessment Template / Type" to `ReportAssembler.assemble_report`.
-  - Sections excluded by user configuration or assessment template are marked `is_applicable=False` with descriptive reasons ("Excluded by user configuration" or template exclusion).
-  - Assessment templates ("Standard", "Executive Summary Only", "Capacity Focus", etc.) structure reports according to engineering operational focus.
-  - Wired "Analysis & Simulation Mode" dropdown to the effective performance factor (`eff_pf`), dynamically toggling between full performance (`AN_HSR_HSR_UP_100` / 1.00) and degraded performance (`AN_HSR_HSR_UP_95` / 0.95).
-- **A3 Landscape PDF Layout Engine (`PdfReportRenderer`)**:
-  - Transitioned formal PDF report output from A4 portrait to `landscape(A3)` (1190.55 × 841.89 pt).
-  - Scaled embedded charts to full A3 printable frame (1080 × 540 pt, 2:1 aspect ratio) and widened engineering tables across 1118 pt printable width.
-  - Updated `NumberedCanvas` header and footer coordinates to span the complete A3 landscape width dynamically.
-- **Extended Dynamic Engineering Narratives (`ReportAssembler`)**:
-  - Dynamically generated domain narrative text across 7 key report sections (Conclusions & Recommendations, TVS Assessment, Block-Length Sensitivity, Mixed-Traffic Matrix, Station Platform Occupation, Longest Resource Occupations, and Stochastic Reliability).
-  - Replaced static text with calculations and findings derived from simulation trajectories, headway bottlenecks, and physical corridor geometry.
+- **Interactive Report Configuration & Assessment Templates**: Wired the Gradio "Included Report Sections" checkboxes and "Assessment Template" dropdowns to the `ReportAssembler`. Users can now generate custom report scopes (e.g., "Executive Summary Only" or "Capacity Focus") and exclude specific sections, which are cleanly marked as `is_applicable=False`.
+- **Analysis & Simulation Mode Integration**: The "Analysis & Simulation Mode" dropdown now dynamically toggles the microscopic engine's performance factor between 1.00 (100%) and 0.95 (95%), altering the resulting trajectories and headway.
+- **A3 Landscape PDF Rendering**: Transitioned the `PdfReportRenderer` from A4 Portrait to ISO A3 Landscape (`1190.55 × 841.89 pt`). Wide charts (Sections 4 and 13) and dense tables (Sections 5 and 10) are now scaled to a 1080 × 540 pt frame and 1118 pt printable width, matching the readability of the HTML report.
+- **Dynamic Engineering Narratives**: Replaced static text with data-driven narrative generation for 7 core sections:
+  - **Engineering Conclusions and Actionable Recommendations**: Dynamically synthesizes the controlling bottleneck, theoretical vs. planning capacity, and provides 5–8 actionable engineering recommendations based on the simulation.
+  - **TVS Assessment**: Details tunnel lengths, governing TVS zones, occupancy durations, and compares them against the technical headway.
+  - **Constrained Block-Length Sensitivity**, **Mixed-Traffic Matrix**, **Station Platform Occupation**, **Longest Resource Occupations**, and **Stochastic Reliability**: All now feature dynamic textual explanations generated from the `SimulationResultPackage` metadata.
 
 ---
 
