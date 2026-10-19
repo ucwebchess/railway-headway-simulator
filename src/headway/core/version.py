@@ -5,9 +5,9 @@ This module provides the single authoritative source of truth for the applicatio
 
 from typing import Any, Dict, Tuple
 
-__version__: str = "1.5.0"
+__version__: str = "1.5.1"
 
-VERSION_INFO: Tuple[int, int, int] = (1, 5, 0)
+VERSION_INFO: Tuple[int, int, int] = (1, 5, 1)
 
 APP_NAME: str = "Railway Headway & Capacity Simulator"
 APP_DESCRIPTION: str = (
@@ -27,6 +27,6 @@ def get_build_info() -> Dict[str, Any]:
         "app_name": APP_NAME,
         "version": __version__,
         "version_info": VERSION_INFO,
-        "phase": "Release 1.5.0",
+        "phase": "Release 1.5.1",
         "status": "Released",
     }
