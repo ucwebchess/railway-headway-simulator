@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] — 2026-10-19
+
+### Added
+- **Report Configuration & Assessment Template Wiring (`ReportAssembler`, `SimulationRunner`, `app`)**:
+  - Wired Gradio checkboxes for "Included Report Sections" and "Assessment Template / Type" to `ReportAssembler.assemble_report`.
+  - Sections excluded by user configuration or assessment template are marked `is_applicable=False` with descriptive reasons ("Excluded by user configuration" or template exclusion).
+  - Assessment templates ("Standard", "Executive Summary Only", "Capacity Focus", etc.) structure reports according to engineering operational focus.
+  - Wired "Analysis & Simulation Mode" dropdown to the effective performance factor (`eff_pf`), dynamically toggling between full performance (`AN_HSR_HSR_UP_100` / 1.00) and degraded performance (`AN_HSR_HSR_UP_95` / 0.95).
+- **A3 Landscape PDF Layout Engine (`PdfReportRenderer`)**:
+  - Transitioned formal PDF report output from A4 portrait to `landscape(A3)` (1190.55 × 841.89 pt).
+  - Scaled embedded charts to full A3 printable frame (1080 × 540 pt, 2:1 aspect ratio) and widened engineering tables across 1118 pt printable width.
+  - Updated `NumberedCanvas` header and footer coordinates to span the complete A3 landscape width dynamically.
+- **Extended Dynamic Engineering Narratives (`ReportAssembler`)**:
+  - Dynamically generated domain narrative text across 7 key report sections (Conclusions & Recommendations, TVS Assessment, Block-Length Sensitivity, Mixed-Traffic Matrix, Station Platform Occupation, Longest Resource Occupations, and Stochastic Reliability).
+  - Replaced static text with calculations and findings derived from simulation trajectories, headway bottlenecks, and physical corridor geometry.
+
+---
+
 ## [1.5.1] — 2026-10-19
 
 ### Fixed

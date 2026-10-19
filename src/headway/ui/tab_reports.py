@@ -18,7 +18,11 @@ from headway.reporting.html_renderer import HtmlReportRenderer
 from headway.reporting.json_export import JsonReportExporter
 from headway.reporting.pdf_renderer import PdfReportRenderer
 from headway.reporting.report_assembly import ReportAssembler, ReportSectionId, ReportType
-from headway.reporting.report_config import ReportConfig
+from headway.reporting.report_config import (
+    ReportConfig,
+    TEMPLATE_FRIENDLY_NAMES,
+    TEMPLATE_SECTIONS,
+)
 from headway.reporting.report_models import ReportDocument
 from headway.reporting.report_package import ReportPackageExporter
 from headway.ui.error_handling import create_error_html, create_success_html, format_exception_for_ui
@@ -43,10 +47,22 @@ def create_reports_tab() -> Dict[str, Any]:
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("#### Report Configuration")
+                template_choices = [
+                    "Standard",
+                    "Detailed Engineering (All Sections)",
+                    "Executive Summary Only",
+                    "Capacity Focus",
+                    "Headway Assessment",
+                    "Mixed Traffic",
+                    "TVS Assessment",
+                    "Stochastic Assessment",
+                    "Scenario Comparison",
+                    "Validation Report",
+                ]
                 components["rep_type_dropdown"] = gr.Dropdown(
                     label="Assessment Template / Type",
-                    choices=[t.value for t in ReportType],
-                    value=ReportType.DETAILED_ENGINEERING.value,
+                    choices=template_choices,
+                    value="Standard",
                 )
                 components["rep_title_input"] = gr.Textbox(
                     label="Report Title",
@@ -123,9 +139,53 @@ def create_reports_tab() -> Dict[str, Any]:
     def _ensure_report_doc() -> Optional[ReportDocument]:
         doc = session_state.latest_report_doc
         if not doc and session_state.latest_result_package:
-            doc = ReportAssembler.assemble_report(package=session_state.latest_result_package)
+            doc = ReportAssembler.assemble_report(
+                package=session_state.latest_result_package,
+                config=session_state.report_config,
+            )
             session_state.latest_report_doc = doc
         return doc
+
+    def handle_template_change(template_str: str) -> List[str]:
+        r_type = TEMPLATE_FRIENDLY_NAMES.get(template_str)
+        if r_type is None:
+            try:
+                r_type = ReportType(template_str)
+            except ValueError:
+                r_type = ReportType.DETAILED_ENGINEERING
+        allowed_secs = TEMPLATE_SECTIONS.get(r_type, set(ReportSectionId))
+        selected = [s.value for s in allowed_secs if s.value in ALL_SECTIONS]
+        session_state.report_config = ReportConfig(
+            report_type=r_type,
+            running_direction=session_state.selected_running_direction,
+            included_sections=list(allowed_secs),
+        )
+        return selected
+
+    def handle_sections_change(selected_sections: List[str], template_str: str) -> None:
+        r_type = TEMPLATE_FRIENDLY_NAMES.get(template_str)
+        if r_type is None:
+            try:
+                r_type = ReportType(template_str)
+            except ValueError:
+                r_type = ReportType.DETAILED_ENGINEERING
+        sec_enums = [ReportSectionId(s) for s in selected_sections if s in ALL_SECTIONS]
+        session_state.report_config = ReportConfig(
+            report_type=r_type,
+            running_direction=session_state.selected_running_direction,
+            included_sections=sec_enums,
+        )
+
+    components["rep_type_dropdown"].change(
+        fn=handle_template_change,
+        inputs=[components["rep_type_dropdown"]],
+        outputs=[components["rep_sections_checkboxes"]],
+    )
+    components["rep_sections_checkboxes"].change(
+        fn=handle_sections_change,
+        inputs=[components["rep_sections_checkboxes"], components["rep_type_dropdown"]],
+        outputs=[],
+    )
 
     def assemble_and_preview(
         report_type_str: str,
@@ -142,15 +202,23 @@ def create_reports_tab() -> Dict[str, Any]:
             return msg, "<div style='padding: 20px; color: #DC2626;'>No active simulation results to preview.</div>"
 
         try:
+            r_type = TEMPLATE_FRIENDLY_NAMES.get(report_type_str)
+            if r_type is None:
+                try:
+                    r_type = ReportType(report_type_str)
+                except ValueError:
+                    r_type = ReportType.DETAILED_ENGINEERING
+
             sec_enums = [ReportSectionId(s) for s in selected_sections if s in ALL_SECTIONS]
             cfg = ReportConfig(
-                report_type=ReportType(report_type_str),
+                report_type=r_type,
                 running_direction=pkg.running_direction,
                 included_sections=sec_enums,
                 title=title or "Railway Headway & Line Capacity Assessment",
                 author=author or "Lead Operations Planning Engineer",
                 project_name=session_state.project_id or "Railway Corridors",
             )
+            session_state.report_config = cfg
 
             doc = ReportAssembler.assemble_report(package=pkg, config=cfg)
             session_state.latest_report_doc = doc

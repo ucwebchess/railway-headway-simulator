@@ -43,6 +43,10 @@ def create_simulation_tab() -> Dict[str, Any]:
                 components["sim_mode_dropdown"] = gr.Dropdown(
                     choices=[
                         "Full Integrated Suite (All Analyses)",
+                        "AN_HSR_HSR_UP_100 (Full Performance - Factor 1.00)",
+                        "AN_HSR_HSR_UP_95 (Degraded Performance - Factor 0.95)",
+                        "AN_HSR_HSR_UP_100",
+                        "AN_HSR_HSR_UP_95",
                         "Technical Minimum Headway (Pairwise)",
                         "Mixed-Traffic Headway Matrix",
                         "Multi-Train Operational Simulation",
@@ -153,11 +157,13 @@ def create_simulation_tab() -> Dict[str, Any]:
 
         # Execute simulation pipeline synchronously or via runner
         try:
+            active_cfg = getattr(session_state, "report_config", None)
             package, report_doc = SimulationRunner.run_simulation_pipeline(
                 project=session_state.current_project,
                 running_direction=dir_enum,
                 simulation_mode=mode_str,
                 scenario_id=session_state.active_scenario_id,
+                report_config=active_cfg,
             )
 
             # Store in session state
