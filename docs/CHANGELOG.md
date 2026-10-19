@@ -23,6 +23,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.1] — 2026-10-19
+
+### Fixed
+- **DEF-06 — UIC 406 Signalling Timing Components (`SimulationRunner`)**:
+  - Enriched `BlockingTimeDecomposition` with `setup_time_s`, `approach_time_s`, and `release_time_s` from the signalling system per UIC 406. Trajectory-derived components are preserved byte-identically.
+  - Origin blocks receive 0.0 s approach time (train starts from rest); non-origin blocks receive sighting + reaction time (e.g., 10.0 s on the HSR corridor).
+  - Technical minimum headway on the reference 140 km corridor increased from 228.0 s (occupancy only) to **244.0 s** (UIC 406 blocking time), controlled by terminal block `BLK_UP_092`.
+- **DEF-07 — Reporting Layer Audit & Rewire (`ReportAssembler`, `charts_blocking`, `tables`)**:
+  - The reporting layer now acts as a strict consumer of `package.metadata["blocking_intervals"]`. Removed legacy fallback logic that defaulted chainage and length to 0.00.
+  - **Section 4 (Chart)** now displays the full 7-component stack (including Setup, Approach, and Release) and correctly highlights the controlling resource.
+  - **Section 10 (Table)** now populates physical geometry (Chainage, Length) and all 7 timing components from the enriched metadata. The controlling block is marked with a ★ and "YES".
+  - Added loud failure `ERR_REPORT_MISSING_BLOCKING_INTERVALS` if the report assembly is invoked without blocking intervals.
+- **DEF-08 — Pairwise Conflict Geometry Enrichment (`headway_solver`, `tables`)**:
+  - Enriched Section 5 (Pairwise Critical Conflict Ranking) with physical geometry (Chainage, Length).
+  - Added temporal columns (`Leader Release`, `Follower Start`, `Time Gap`, `Slack`, `Classification`) to explicitly show why identical single-track resources conflict (temporal separation) and identify the controlling bottleneck with a ★.
+- **DEF-09 — Tunnel Ventilation Section (TVS) Assessment Physics (`simulation_runner`, `charts_tvs`)**:
+  - Replaced static/synthetic TVS placeholders with dynamic physical occupancy calculations interpolated from the microscopic train trajectory.
+  - TVS chart now renders sequential, overlapping Gantt-style bars, correctly accounting for train length, dynamic braking curves (durations lengthen near the terminal station), and post-clearance release delays.
+  - Fixed Y-axis category ordering to render sequentially (`TVS_01` to `TVS_14`) rather than lexicographically.
+
+---
+
 ## [1.5.0] — 2026-10-18
 
 ### Fixed
