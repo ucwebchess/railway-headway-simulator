@@ -37,25 +37,25 @@ def create_simulation_tab() -> Dict[str, Any]:
                 DirectionSelector.render_banner(session_state.selected_running_direction)
             )
 
+        choices, pf_map, init_choice, init_pf = session_state.get_analysis_choices()
+        components["state_pf_map"] = gr.State(value=pf_map)
+
         with gr.Row():
             with gr.Column(scale=1):
-                gr.Markdown("#### Simulation Mode")
+                gr.Markdown("#### Simulation Target & Mode")
                 components["sim_mode_dropdown"] = gr.Dropdown(
-                    choices=[
-                        "Full Integrated Suite (All Analyses)",
-                        "AN_HSR_HSR_UP_100 (Full Performance - Factor 1.00)",
-                        "AN_HSR_HSR_UP_95 (Degraded Performance - Factor 0.95)",
-                        "AN_HSR_HSR_UP_100",
-                        "AN_HSR_HSR_UP_95",
-                        "Technical Minimum Headway (Pairwise)",
-                        "Mixed-Traffic Headway Matrix",
-                        "Multi-Train Operational Simulation",
-                        "Capacity & Block Length Sensitivity",
-                        "TVS Tunnel Ventilation Assessment",
-                        "Stochastic Monte Carlo Reliability",
-                    ],
-                    value="Full Integrated Suite (All Analyses)",
+                    choices=choices,
+                    value=init_choice,
                     label="Analysis & Simulation Mode",
+                    info="Dynamically loaded from project analyses (DEF-10)",
+                )
+                components["param_performance_factor"] = gr.Slider(
+                    minimum=0.50,
+                    maximum=1.00,
+                    step=0.01,
+                    value=init_pf,
+                    label="Operational Performance Factor (PF)",
+                    info="Scales tractive effort and service braking deceleration (0.50 to 1.00). Overrides Analysis selection.",
                 )
                 components["active_scenario_display"] = gr.Textbox(
                     label="Active Scenario Target",
@@ -136,6 +136,26 @@ def create_simulation_tab() -> Dict[str, Any]:
         outputs=[components["direction_banner_html"], components["sim_status_banner"]],
     )
 
+    # Mode dropdown change updates the explicit performance factor slider (DEF-10 / DEF-11)
+    def handle_mode_change(choice: str, pf_map: Dict[str, float]) -> float:
+        if pf_map and choice in pf_map:
+            return float(pf_map[choice])
+        if hasattr(session_state, "analysis_pf_map") and choice in session_state.analysis_pf_map:
+            return float(session_state.analysis_pf_map[choice])
+        if "(PF: " in str(choice):
+            try:
+                val_str = str(choice).split("(PF: ")[1].rstrip(")")
+                return float(val_str)
+            except Exception:
+                pass
+        return 1.00
+
+    components["sim_mode_dropdown"].change(
+        fn=handle_mode_change,
+        inputs=[components["sim_mode_dropdown"], components["state_pf_map"]],
+        outputs=[components["param_performance_factor"]],
+    )
+
     # Run simulation handler
     def handle_run_simulation(
         dir_str: str,
@@ -144,6 +164,7 @@ def create_simulation_tab() -> Dict[str, Any]:
         dur_val: float,
         margin_val: float,
         rep_val: int,
+        pf_val: float = 1.0,
     ) -> Tuple[float, str, str, str]:
         if not session_state.current_project:
             err = create_error_html({
@@ -164,6 +185,7 @@ def create_simulation_tab() -> Dict[str, Any]:
                 simulation_mode=mode_str,
                 scenario_id=session_state.active_scenario_id,
                 report_config=active_cfg,
+                performance_factor=float(pf_val) if pf_val is not None else None,
             )
 
             # Store in session state
@@ -183,6 +205,7 @@ def create_simulation_tab() -> Dict[str, Any]:
             log_text = (
                 f"[{time.strftime('%H:%M:%S')}] Simulation {package.run_id} finished successfully.\n"
                 f"[{time.strftime('%H:%M:%S')}] Direction: {dir_enum.value}\n"
+                f"[{time.strftime('%H:%M:%S')}] Performance Factor: {kpis.performance_factor_str} ({kpis.performance_factor_source})\n"
                 f"[{time.strftime('%H:%M:%S')}] Controlling Bottleneck: {kpis.controlling_bottleneck_id}\n"
                 f"[{time.strftime('%H:%M:%S')}] Technical Minimum Headway: {kpis.technical_headway_s:.1f} s\n"
                 f"[{time.strftime('%H:%M:%S')}] Theoretical Capacity: {kpis.theoretical_capacity_tph:.1f} trains/hour\n"
@@ -209,6 +232,7 @@ def create_simulation_tab() -> Dict[str, Any]:
             components["param_duration"],
             components["param_margin"],
             components["param_replications"],
+            components["param_performance_factor"],
         ],
         outputs=[
             components["sim_progress_bar"],
@@ -229,3 +253,29 @@ def create_simulation_tab() -> Dict[str, Any]:
     )
 
     return components
+
+
+def update_simulation_analyses(project: Optional[Any] = None) -> Tuple[Any, Dict[str, float], float]:
+    """Dynamically populate dropdown choices, state mapping, and slider from project.analysis.analyses (DEF-10)."""
+    prj = project or session_state.current_project
+    choices: List[str] = []
+    pf_map: Dict[str, float] = {}
+
+    if prj and getattr(prj, "analysis", None) and getattr(prj.analysis, "analyses", None):
+        for an in prj.analysis.analyses:
+            label = f"{an.analysis_id} (PF: {float(an.performance_factor):.2f})"
+            choices.append(label)
+            pf_map[label] = float(an.performance_factor)
+
+    if not choices:
+        default_label = "AN_DEFAULT (PF: 1.00)"
+        choices = [default_label]
+        pf_map[default_label] = 1.00
+
+    init_choice = choices[0]
+    init_pf = pf_map[init_choice]
+
+    # Also update session_state cache
+    session_state.analysis_pf_map = dict(pf_map)
+
+    return gr.Dropdown(choices=choices, value=init_choice), pf_map, init_pf

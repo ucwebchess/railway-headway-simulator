@@ -23,6 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.1] — 2026-10-19
+
+### Fixed
+- **DEF-10 — Dynamic Analysis & Simulation Mode Dropdown (`tab_simulation`, `state`, `app`)**:
+  - Dynamically populates the "Analysis & Simulation Mode" dropdown choices directly from `project.analysis.analyses` loaded from the Excel Analyses tab, formatted as `{analysis_id} (PF: {performance_factor:.2f})`.
+  - Removed fragile token-matching logic (`"95"`, `"100"`) from `simulation_runner.py`.
+  - Stored dropdown choice to performance factor mapping in Gradio state and reactive session state, immediately updating the explicit performance factor slider upon dropdown selection.
+- **DEF-11 — Explicit Performance Factor Slider & Physics Override (`tab_simulation`, `simulation_runner`)**:
+  - Added dedicated Gradio slider `param_performance_factor` (0.50 to 1.00, step 0.01, default 1.00) in the Simulation tab.
+  - Wired slider directly into `SimulationRunner.run_simulation_pipeline`, making explicit user input the authoritative source of truth.
+  - Simplified effective performance factor resolution in `simulation_runner.py`, removing convoluted Tier 1–6 precedence fallback logic.
+- **Headway Sensitivity Callout & Fixed vs. Variable Breakdown (`report_assembly`)**:
+  - Added dynamic narrative callout in Section 18 (Engineering Conclusions) and Section 3 (Seven-Component Blocking Time) decomposing the controlling bottleneck into fixed overhead (station dwell + signalling setup/approach/release) and variable running time.
+  - Explains the physical damping effect where fixed dwell and signalling overhead (e.g., 137.0 s out of 244.0 s, 56.1%) dampen the sensitivity of line headway relative to full journey duration.
+
+---
+
 ## [1.6.0] — 2026-10-19
 
 ### Added

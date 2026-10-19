@@ -41,6 +41,7 @@ class AppState:
     latest_report_doc: Optional[ReportDocument] = None
     report_config: Optional[Any] = None
     reports_dir: Path = field(default_factory=lambda: Path(os.environ.get("HEADWAY_STORAGE_DIR", Path.cwd() / "storage")) / "reports")
+    analysis_pf_map: Dict[str, float] = field(default_factory=dict)
 
     # Logging and Diagnostics
     session_logs: List[str] = field(default_factory=list)
@@ -72,6 +73,7 @@ class AppState:
         self.latest_result_package = None
         self.latest_report_doc = None
         self.report_config = None
+        self.analysis_pf_map.clear()
         self.session_logs = [f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Session reset."]
         self.last_updated = datetime.now(timezone.utc).isoformat()
 
@@ -107,10 +109,31 @@ class AppState:
         except Exception:
             self.scenario_manager = None
 
+        # Populate analysis performance factor map (DEF-10)
+        self.update_analysis_pf_map()
+
         self.last_updated = datetime.now(timezone.utc).isoformat()
         self.session_logs.append(
             f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Loaded project '{self.project_name}' ({self.project_id})."
         )
+
+    def update_analysis_pf_map(self) -> Dict[str, float]:
+        """Populates analysis_pf_map from current_project.analysis.analyses."""
+        self.analysis_pf_map = {}
+        if self.current_project and getattr(self.current_project, "analysis", None) and getattr(self.current_project.analysis, "analyses", None):
+            for an in self.current_project.analysis.analyses:
+                label = f"{an.analysis_id} (PF: {float(an.performance_factor):.2f})"
+                self.analysis_pf_map[label] = float(an.performance_factor)
+        return self.analysis_pf_map
+
+    def get_analysis_choices(self) -> Tuple[List[str], Dict[str, float], str, float]:
+        """Returns dropdown choices, mapping dict, default choice, and default PF."""
+        self.update_analysis_pf_map()
+        if self.analysis_pf_map:
+            choices = list(self.analysis_pf_map.keys())
+            return choices, dict(self.analysis_pf_map), choices[0], self.analysis_pf_map[choices[0]]
+        default_label = "AN_DEFAULT (PF: 1.00)"
+        return [default_label], {default_label: 1.00}, default_label, 1.00
 
     def load_example(self, example_name: str) -> Tuple[bool, str]:
         """Loads an official example project."""
