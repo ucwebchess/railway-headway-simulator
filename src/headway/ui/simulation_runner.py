@@ -616,17 +616,94 @@ class SimulationRunner:
                 )
 
         tvs_events = []
+        train_len = train_len_m
+        samples = train_leader.trajectory_samples if train_leader else []
+
         for tvs in infra.tvs_sections:
+            s_coords = []
+            for inv in (tvs.link_intervals or []):
+                try:
+                    s1 = simulated_route.physical_to_route_distance(inv.link_id, inv.start_offset_m)
+                    s2 = simulated_route.physical_to_route_distance(inv.link_id, inv.end_offset_m)
+                    if s1 is not None:
+                        s_coords.append(s1)
+                    if s2 is not None:
+                        s_coords.append(s2)
+                except Exception:
+                    pass
+
+            if not s_coords:
+                cum_link_dist = 0.0
+                for lnk in infra.track_links:
+                    for inv in (tvs.link_intervals or []):
+                        if lnk.link_id == inv.link_id:
+                            s_coords.append(cum_link_dist + inv.start_offset_m)
+                            s_coords.append(cum_link_dist + inv.end_offset_m)
+                    cum_link_dist += lnk.length_m
+
+            if not s_coords:
+                continue
+
+            s_entry = min(s_coords)
+            s_exit = max(s_coords)
+            tvs_len = max(1.0, s_exit - s_entry)
+
+            entry_time_s = None
+            exit_time_s = None
+            target_front_exit = s_exit + train_len
+
+            if samples:
+                for idx, s in enumerate(samples):
+                    if s.front_distance_m >= s_entry and entry_time_s is None:
+                        if idx > 0:
+                            prev_s = samples[idx - 1]
+                            d_diff = s.front_distance_m - prev_s.front_distance_m
+                            frac = (s_entry - prev_s.front_distance_m) / d_diff if d_diff > 1e-4 else 0.0
+                            frac = max(0.0, min(1.0, frac))
+                            entry_time_s = round(prev_s.time_s + frac * (s.time_s - prev_s.time_s), 2)
+                        else:
+                            entry_time_s = round(s.time_s, 2)
+
+                    if (s.rear_distance_m >= s_exit or s.front_distance_m >= target_front_exit) and exit_time_s is None:
+                        if idx > 0:
+                            prev_s = samples[idx - 1]
+                            d_diff = s.front_distance_m - prev_s.front_distance_m
+                            frac = (target_front_exit - prev_s.front_distance_m) / d_diff if d_diff > 1e-4 else 0.0
+                            frac = max(0.0, min(1.0, frac))
+                            exit_time_s = round(prev_s.time_s + frac * (s.time_s - prev_s.time_s), 2)
+                        else:
+                            exit_time_s = round(s.time_s, 2)
+
+            if entry_time_s is None:
+                entry_time_s = 0.0
+            if exit_time_s is None or exit_time_s <= entry_time_s:
+                avg_speed = 88.89
+                if samples:
+                    mid_s = [s for s in samples if s.front_distance_m >= s_entry]
+                    if mid_s and mid_s[0].speed_ms > 1.0:
+                        avg_speed = mid_s[0].speed_ms
+                exit_time_s = round(entry_time_s + (tvs_len + train_len) / avg_speed, 2)
+
+            rel_delay = float(getattr(tvs, "release_delay_s", 0.0) or 0.0)
+            release_time_s = round(exit_time_s + rel_delay, 2)
+
             tvs_events.append(
                 {
                     "tvs_id": tvs.tvs_id,
                     "train_id": "TRN_LEADER",
-                    "entry_time_s": 40.0,
-                    "exit_time_s": 85.0,
-                    "release_time_s": 93.0,
+                    "entry_time_s": entry_time_s,
+                    "exit_time_s": exit_time_s,
+                    "start_time_s": entry_time_s,
+                    "end_time_s": exit_time_s,
+                    "release_time_s": release_time_s,
                     "waiting_duration_s": 0.0,
+                    "start_chainage_m": round(s_entry, 1),
+                    "end_chainage_m": round(s_exit, 1),
+                    "length_m": round(tvs_len, 1),
                 }
             )
+
+        tvs_events.sort(key=lambda e: (e["entry_time_s"], e["start_chainage_m"]))
 
         provenance_records = []
         cum_km = 0.0

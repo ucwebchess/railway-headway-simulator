@@ -640,3 +640,110 @@ class TestReportIntegration:
         assert fmt_r1["Route Chainage (km)"] == "138.35"
         assert "CONTROLLING" in fmt_r1["Classification"]
 
+    def test_reporting_tvs_assessment_hsr_corridor(self) -> None:
+        """DEF-09: Assert Section 13 TVS chart contains 14 distinct sequential TVS traces on 07_hsr_140km."""
+        from headway.data.canonical import ResourceInterval, TVSSection
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        # In 07_hsr_140km, links LNK_0180 to LNK_0221 (42 links of 313m each = 13,146m) form the 14 TVS zones (3 links each)
+        proj.infrastructure.tvs_sections = [
+            TVSSection(
+                tvs_id=f"TVS_{i+1:02d}",
+                tunnel_id="TUNNEL_01",
+                track_id="TRK_01",
+                link_intervals=[
+                    ResourceInterval(
+                        link_id=f"LNK_{180 + i * 3 + k:04d}",
+                        start_offset_m=0.0,
+                        end_offset_m=313.0,
+                    )
+                    for k in range(3)
+                ],
+                release_delay_s=15.0,
+            )
+            for i in range(14)
+        ]
+
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        sec_tvs = doc.get_section(ReportSectionId.TVS_ASSESSMENT)
+        assert sec_tvs is not None
+        assert sec_tvs.is_applicable
+
+        fig_tvs = doc.figures_data[sec_tvs.figure_keys[0]]
+
+        # The Section 13 TVS chart data contains 14 distinct TVS section traces
+        occ_traces = [t for t in fig_tvs.data if "Physical Occupation" in (t.name or "")]
+        assert len(occ_traces) == 14
+
+        # Distinct sections count on Y-axis
+        tvs_ids = [str(t.y[0]) for t in occ_traces]
+        assert len(set(tvs_ids)) == 14
+        assert tvs_ids[0] == "TVS_01"
+        assert tvs_ids[-1] == "TVS_14"
+
+        # Start times are strictly increasing along route
+        start_times = [float(t.base[0]) for t in occ_traces]
+        for i in range(len(start_times) - 1):
+            assert start_times[i] < start_times[i + 1], f"start_times[{i}] ({start_times[i]}) not < start_times[{i+1}] ({start_times[i+1]})"
+
+        # End time > start time and duration > 0
+        durations = [float(t.x[0]) for t in occ_traces]
+        for i, dur in enumerate(durations):
+            assert dur > 0.0
+            end_t = start_times[i] + dur
+            assert end_t > start_times[i]
+
+        # Duration scales correctly with TVS length and train speed (train decelerates near STN_03)
+        assert durations[-1] > durations[0]
+
+        # Y-axis ordering check
+        categoryarray = list(fig_tvs.layout.yaxis.categoryarray)
+        expected_sections = [f"TVS_{i+1:02d}" for i in range(14)]
+        assert categoryarray == expected_sections
+        assert fig_tvs.layout.yaxis.autorange == "reversed"
+
+    def test_reporting_tvs_not_applicable_when_no_tunnels(self) -> None:
+        """DEF-09: Assert Section 13 is marked not applicable when project has no tunnels or TVS sections."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj.infrastructure.tvs_sections = []
+        proj.infrastructure.tunnels = []
+
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        sec_tvs = doc.get_section(ReportSectionId.TVS_ASSESSMENT)
+        assert sec_tvs is not None
+        assert sec_tvs.is_applicable is False
+        assert sec_tvs.not_applicable_reason is not None
+
+    def test_reporting_tvs_loud_failure_when_infra_exists_but_trajectory_missing(self) -> None:
+        """DEF-09: Assert loud error is raised when TVS infrastructure is present but simulation trajectory is missing."""
+        from headway.data.canonical import ResourceInterval, TVSSection
+        from headway.ui.file_manager import FileManager
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj.infrastructure.tvs_sections = [
+            TVSSection(
+                tvs_id="TVS_01",
+                tunnel_id="TUNNEL_01",
+                track_id="TRK_01",
+                link_intervals=[ResourceInterval(link_id="LNK_03", start_offset_m=56000.0, end_offset_m=57000.0)],
+            )
+        ]
+
+        pkg = _create_synthetic_full_package()
+        pkg.metadata["tvs_events"] = []
+        pkg.metadata["project"] = proj
+        pkg.trajectories = {}
+
+        with pytest.raises(ReportingError) as exc_info:
+            ReportAssembler.assemble_report(pkg, project=proj)
+
+        assert "ERR_REPORT_MISSING_TVS_EVENTS" in str(exc_info.value.error_code)
+
+

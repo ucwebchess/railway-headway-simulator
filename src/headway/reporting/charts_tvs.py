@@ -11,7 +11,7 @@ Satisfies:
 - P13-TVS-007: Reverse direction boundaries correctly displayed.
 """
 
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import plotly.graph_objects as go
 
 from headway.infrastructure.direction import RunningDirection
@@ -29,22 +29,42 @@ def create_tvs_occupation_figure(
     if not tvs_events:
         layout = get_plotly_layout(
             title=title,
-            xaxis_title="Time (s)",
-            yaxis_title="TVS Section",
+            xaxis_title="Simulation Time (s)",
+            yaxis_title="Tunnel Ventilation Section (TVS)",
             running_direction=running_direction,
         )
         fig.update_layout(layout)
         return fig
 
-    tvs_sections = sorted({e.get("tvs_id", "TVS") for e in tvs_events})
+    # Sort TVS events by physical chainage / entry time / natural key
+    def _tvs_sort_key(e: Dict[str, Any]) -> Tuple[float, int, str]:
+        t_id = str(e.get("tvs_id", "TVS"))
+        chainage = e.get("start_chainage_m")
+        if chainage is None:
+            chainage = e.get("entry_time_s", e.get("start_time_s", 0.0))
+        digits = "".join(ch for ch in t_id if ch.isdigit())
+        num = int(digits) if digits else 0
+        return (float(chainage), num, t_id)
 
-    for event in tvs_events:
+    sorted_events = sorted(tvs_events, key=_tvs_sort_key)
+    if running_direction == RunningDirection.REVERSE:
+        sorted_events = list(reversed(sorted_events))
+
+    seen = set()
+    tvs_sections = []
+    for e in sorted_events:
+        tid = e.get("tvs_id", "TVS")
+        if tid not in seen:
+            seen.add(tid)
+            tvs_sections.append(tid)
+
+    for idx, event in enumerate(sorted_events):
         tvs_id = event.get("tvs_id", "TVS")
         train_id = event.get("train_id", "Train")
-        entry_s = event.get("entry_time_s", 0.0)
-        exit_s = event.get("exit_time_s", 0.0)
-        release_s = event.get("release_time_s", exit_s)
-        wait_s = event.get("waiting_duration_s", 0.0)
+        entry_s = float(event.get("entry_time_s", event.get("start_time_s", 0.0)))
+        exit_s = float(event.get("exit_time_s", event.get("end_time_s", entry_s)))
+        release_s = float(event.get("release_time_s", exit_s))
+        wait_s = float(event.get("waiting_duration_s", 0.0))
 
         # 1. Waiting at holding signal before TVS entry (if any)
         if wait_s > 0:
@@ -78,7 +98,7 @@ def create_tvs_occupation_figure(
                     f"Exit: {exit_s:.1f} s<br>"
                     f"Duration: {occ_dur:.1f} s<extra></extra>"
                 ),
-                showlegend=(event == tvs_events[0]),
+                showlegend=(idx == 0),
             )
         )
 
@@ -94,7 +114,7 @@ def create_tvs_occupation_figure(
                     orientation="h",
                     marker=dict(color=ChartColors.COMPONENT_RELEASE),
                     hovertemplate=f"TVS Release Timer: {rel_dur:.1f} s<br>Full Release: {release_s:.1f} s<extra></extra>",
-                    showlegend=(event == tvs_events[0]),
+                    showlegend=(idx == 0),
                 )
             )
 
@@ -107,7 +127,7 @@ def create_tvs_occupation_figure(
         height=max(450, len(tvs_sections) * 45 + 180),
     )
     fig.update_layout(layout)
-    fig.update_yaxes(categoryorder="array", categoryarray=tvs_sections)
+    fig.update_yaxes(categoryorder="array", categoryarray=tvs_sections, autorange="reversed")
     return fig
 
 
