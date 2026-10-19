@@ -54,6 +54,7 @@ class TechnicalHeadwaySolver:
         custom_dispatch_min_s: Optional[float] = None,
         performance_factor: float = 1.0,
         performance_factor_source: str = "default",
+        resource_geometry: Optional[Dict[str, float]] = None,
     ) -> HeadwayResult:
         """P08-HW-006 & 007: Solves technical minimum headway H_min = max(H_dispatch, max H_{u,v})."""
         min_dispatch = (
@@ -72,6 +73,32 @@ class TechnicalHeadwaySolver:
             leader_timeline=leader_timeline,
             follower_timeline=follower_timeline,
         )
+
+        # Build resource geometry map from intervals and optional resource_geometry
+        geom_map: Dict[str, float] = {}
+        for iv in (leader_timeline.intervals or []) + (follower_timeline.intervals or []):
+            if getattr(iv, "physical_start_offset_m", None) is not None and iv.resource_id not in geom_map:
+                geom_map[iv.resource_id] = float(iv.physical_start_offset_m)
+        if resource_geometry:
+            geom_map.update({k: float(v) for k, v in resource_geometry.items()})
+
+        for c in conflicts:
+            res_id = c.leader_resource_id or c.follower_resource_id
+            if (c.physical_location_m is None or c.physical_location_m == 0.0) and res_id in geom_map:
+                c.physical_location_m = geom_map[res_id]
+            elif c.physical_location_m is None:
+                if c.leader_usage and getattr(c.leader_usage, "physical_start_offset_m", None) is not None:
+                    c.physical_location_m = float(c.leader_usage.physical_start_offset_m)
+                elif c.follower_usage and getattr(c.follower_usage, "physical_start_offset_m", None) is not None:
+                    c.physical_location_m = float(c.follower_usage.physical_start_offset_m)
+
+            loc_m = c.physical_location_m if c.physical_location_m is not None else 0.0
+            c.route_chainage_km = round(loc_m / 1000.0, 6)
+
+            if c.leader_usage and getattr(c.leader_usage, "physical_start_offset_m", None) is None and c.leader_resource_id in geom_map:
+                c.leader_usage.physical_start_offset_m = geom_map[c.leader_resource_id]
+            if c.follower_usage and getattr(c.follower_usage, "physical_start_offset_m", None) is None and c.follower_resource_id in geom_map:
+                c.follower_usage.physical_start_offset_m = geom_map[c.follower_resource_id]
 
         if conflicts:
             max_conflict_hw = max(c.required_headway_s for c in conflicts)
@@ -96,6 +123,7 @@ class TechnicalHeadwaySolver:
             follower_timeline=follower_timeline,
             headway_s=h_min,
             controlling_conflicts=controlling_conflicts,
+            geom_map=geom_map,
         )
 
         # Verification status check
@@ -137,11 +165,13 @@ class TechnicalHeadwaySolver:
         follower_timeline: BlockingTimeline,
         headway_s: float,
         controlling_conflicts: List[ResourceConflict],
+        geom_map: Optional[Dict[str, float]] = None,
     ) -> List[StairwayBlockData]:
         """P08-STAIR: Generates shifted and unshifted stairway comparison rows."""
         controlling_res_ids = {c.leader_resource_id for c in controlling_conflicts}.union(
             {c.follower_resource_id for c in controlling_conflicts}
         )
+        geom = geom_map or {}
 
         stairway: List[StairwayBlockData] = []
         # Group by resource ID across both timelines
@@ -155,8 +185,12 @@ class TechnicalHeadwaySolver:
             f_iv = follower_by_res.get(rid)
 
             pos_start = (l_iv.physical_start_offset_m if l_iv else None) or (
-                f_iv.physical_start_offset_m if f_iv else 0.0
-            ) or 0.0
+                f_iv.physical_start_offset_m if f_iv else None
+            )
+            if pos_start is None and rid in geom:
+                pos_start = geom[rid]
+            pos_start = pos_start or 0.0
+
             pos_end = (l_iv.physical_end_offset_m if l_iv else None) or (
                 f_iv.physical_end_offset_m if f_iv else pos_start + 1000.0
             ) or (pos_start + 1000.0)

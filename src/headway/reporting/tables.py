@@ -126,18 +126,48 @@ class EngineeringTable:
 def create_conflict_ranking_table(
     headway_result: HeadwayResult,
     top_n: Optional[int] = None,
+    geometry_lookup: Optional[Dict[str, float]] = None,
 ) -> EngineeringTable:
     """P13-TBL-001: Pairwise conflict ranking table."""
     conflicts = headway_result.conflict_ranking or headway_result.controlling_conflicts
     controlling_res_ids = {c.leader_resource_id for c in headway_result.controlling_conflicts}
+
+    # Extract geometry map if available from headway_result.blocking_intervals or geometry_lookup
+    geom_map: Dict[str, float] = {}
+    if geometry_lookup:
+        geom_map.update(geometry_lookup)
+    if hasattr(headway_result, "blocking_intervals") and headway_result.blocking_intervals:
+        for iv in headway_result.blocking_intervals:
+            if getattr(iv, "physical_start_offset_m", None) is not None and iv.resource_id not in geom_map:
+                geom_map[iv.resource_id] = float(iv.physical_start_offset_m)
 
     raw_rows = []
     formatted_rows = []
 
     for idx, c in enumerate(conflicts, start=1):
         is_ctrl = c.leader_resource_id in controlling_res_ids
-        loc_m = getattr(c, "physical_location_m", None) or getattr(c, "conflict_point_m", 0.0) or 0.0
+
+        loc_m = getattr(c, "physical_location_m", None)
+        if (loc_m is None or loc_m == 0.0) and geom_map:
+            loc_m = geom_map.get(c.leader_resource_id) or geom_map.get(c.follower_resource_id)
+        if loc_m is None:
+            if c.leader_usage and getattr(c.leader_usage, "physical_start_offset_m", None) is not None:
+                loc_m = c.leader_usage.physical_start_offset_m
+            elif c.follower_usage and getattr(c.follower_usage, "physical_start_offset_m", None) is not None:
+                loc_m = c.follower_usage.physical_start_offset_m
+        if loc_m is None:
+            loc_m = getattr(c, "conflict_point_m", 0.0) or 0.0
+        loc_m = float(loc_m)
+
+        chainage_km = getattr(c, "route_chainage_km", None)
+        if chainage_km is None or (chainage_km == 0.0 and loc_m > 0.0):
+            chainage_km = loc_m / 1000.0
+        chainage_km = float(chainage_km)
+
         fol_start = getattr(c, "follower_start_time_s", None) or getattr(c, "follower_unshifted_start_time_s", 0.0) or 0.0
+        fol_start = float(fol_start)
+        rel_time = float(c.leader_release_time_s)
+        time_gap_s = round(rel_time - fol_start, 3)
 
         raw_rows.append(
             {
@@ -146,9 +176,10 @@ def create_conflict_ranking_table(
                 "Follower Resource": c.follower_resource_id,
                 "Conflict Type": getattr(c, "bottleneck_type", "RESOURCE_CONFLICT") or "RESOURCE_CONFLICT",
                 "Physical Location (m)": loc_m,
-                "Route Chainage (km)": loc_m / 1000.0,
-                "Leader Release (s)": c.leader_release_time_s,
+                "Route Chainage (km)": chainage_km,
+                "Leader Release (s)": rel_time,
                 "Follower Start (s)": fol_start,
+                "Time Gap (s)": time_gap_s,
                 "Required Headway (s)": c.required_headway_s,
                 "Slack (s)": c.slack_s,
                 "Classification": "CONTROLLING" if is_ctrl else "NON_CONTROLLING",
@@ -162,9 +193,10 @@ def create_conflict_ranking_table(
                 "Follower Resource": c.follower_resource_id,
                 "Conflict Type": getattr(c, "bottleneck_type", "RESOURCE_CONFLICT") or "RESOURCE_CONFLICT",
                 "Physical Location (m)": f"{loc_m:.1f}",
-                "Route Chainage (km)": f"{(loc_m / 1000.0):.2f}",
-                "Leader Release (s)": f"{c.leader_release_time_s:.1f}",
+                "Route Chainage (km)": f"{chainage_km:.2f}",
+                "Leader Release (s)": f"{rel_time:.1f}",
                 "Follower Start (s)": f"{fol_start:.1f}",
+                "Time Gap (s)": f"{time_gap_s:.1f}",
                 "Required Headway (s)": f"{c.required_headway_s:.1f}",
                 "Slack (s)": f"{c.slack_s:.1f}",
                 "Classification": "★ CONTROLLING" if is_ctrl else "NON_CONTROLLING",
@@ -184,6 +216,10 @@ def create_conflict_ranking_table(
         formatted_dataframe=df_fmt,
         running_direction=headway_result.running_direction,
     )
+
+
+# Backward-compatible and prompt alias
+create_pairwise_conflict_table = create_conflict_ranking_table
 
 
 def create_longest_occupation_table(
