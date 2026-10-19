@@ -192,6 +192,7 @@ class SimulationRunner:
             tracker.start(stage="Validating Direction & Parameters", total_steps=100)
 
         # Resolve effective performance factor (Task 1: wire Analysis ID / Simulation Mode to eff_pf)
+        # Performance Factor Resolution (DEF-10 & DEF-11)
         eff_pf = None
         eff_pf_src = "default"
 
@@ -202,45 +203,30 @@ class SimulationRunner:
             target_an_id = analysis_id or simulation_mode
             matched_an = None
 
-            # 1. Exact match in project.analysis.analyses
             if target_an_id and getattr(project, "analysis", None) and getattr(project.analysis, "analyses", None):
                 for an in project.analysis.analyses:
-                    if an.analysis_id == target_an_id:
-                        matched_an = an
-                        break
-
-            # 2. Match mode tokens: 95 / 0.95 vs 100 / 1.00 (prioritize over substring prefix)
-            if matched_an is None and target_an_id:
-                if "95" in target_an_id or "0.95" in target_an_id:
-                    if getattr(project, "analysis", None) and getattr(project.analysis, "analyses", None):
-                        for an in project.analysis.analyses:
-                            if "95" in an.analysis_id or abs(float(an.performance_factor) - 0.95) < 1e-3:
-                                matched_an = an
-                                break
-                    if matched_an is None:
-                        eff_pf = 0.95
-                        eff_pf_src = "analysis"
-                elif "100" in target_an_id or "1.00" in target_an_id:
-                    if getattr(project, "analysis", None) and getattr(project.analysis, "analyses", None):
-                        for an in project.analysis.analyses:
-                            if "100" in an.analysis_id or abs(float(an.performance_factor) - 1.0) < 1e-3:
-                                matched_an = an
-                                break
-                    if matched_an is None:
-                        eff_pf = 1.0
-                        eff_pf_src = "analysis"
-
-            # 3. Fallback to substring matching if neither token matched
-            if matched_an is None and eff_pf is None and target_an_id and getattr(project, "analysis", None) and getattr(project.analysis, "analyses", None):
-                for an in project.analysis.analyses:
-                    if an.analysis_id in target_an_id or target_an_id in an.analysis_id:
+                    if an.analysis_id == target_an_id or str(target_an_id).startswith(f"{an.analysis_id} (PF:"):
                         matched_an = an
                         break
 
             if matched_an is not None:
                 eff_pf = float(matched_an.performance_factor)
                 eff_pf_src = getattr(matched_an, "performance_factor_source", "analysis")
-            elif eff_pf is None and getattr(project, "analysis", None) and project.analysis.analyses:
+            elif target_an_id and ("(PF: " in str(target_an_id) or "Factor " in str(target_an_id)):
+                try:
+                    if "(PF: " in str(target_an_id):
+                        val_str = str(target_an_id).split("(PF: ")[1].split(")")[0]
+                    else:
+                        val_str = str(target_an_id).split("Factor ")[1].split(")")[0]
+                    eff_pf = float(val_str)
+                    eff_pf_src = "analysis"
+                except Exception:
+                    pass
+            elif target_an_id and "95" in str(target_an_id):
+                eff_pf = 0.95
+                eff_pf_src = "analysis"
+
+            if eff_pf is None and getattr(project, "analysis", None) and getattr(project.analysis, "analyses", None) and project.analysis.analyses:
                 eff_pf = float(project.analysis.analyses[0].performance_factor)
                 eff_pf_src = getattr(project.analysis.analyses[0], "performance_factor_source", "analysis")
             elif eff_pf is None:

@@ -327,7 +327,7 @@ class ReportAssembler:
 
         # Section 18: Conclusions & Recommendations
         sections[ReportSectionId.CONCLUSIONS_RECOMMENDATIONS] = cls._build_section_conclusions(
-            kpis, recs
+            kpis, recs, package=package
         )
 
         # Apply Assessment Template and User-Configured Section Inclusions (v1.6.0)
@@ -810,17 +810,74 @@ class ReportAssembler:
                 running_direction=direction,
             )
 
+        paras = [
+            "Resource blocking time is decomposed into seven mutually exclusive additive components: (1) route setup t1, "
+            "(2) sight/approach t2, (3) running time t3, (4) dwell time t4, (5) geometric clearing t5, (6) residual rear t6, "
+            "and (7) route release t7. Mathematical reconciliation is verified within numerical tolerance.",
+        ]
+
+        # Fixed vs. Variable Timing Breakdown Callout (DEF-11 / Task C)
+        ctrl_id = controlling_resource_ids[0] if controlling_resource_ids else None
+        ctrl_iv = next((iv for iv in (intervals or []) if getattr(iv, "resource_id", getattr(iv, "block_id", "")) == ctrl_id), None)
+        if ctrl_iv and getattr(ctrl_iv, "decomposition", None):
+            d = ctrl_iv.decomposition
+            t_setup = float(getattr(d, "setup_time_s", 0.0) or 0.0)
+            t_approach = float(getattr(d, "approach_time_s", 0.0) or 0.0)
+            t_running = float(getattr(d, "running_time_s", 0.0) or 0.0)
+            t_dwell = float(getattr(d, "dwell_time_s", 0.0) or 0.0)
+            t_clearing = float(getattr(d, "geometric_clearance_time_s", 0.0) or 0.0)
+            t_residual = float(getattr(d, "residual_rear_time_s", 0.0) or 0.0)
+            t_release = float(getattr(d, "release_time_s", 0.0) or 0.0)
+
+            t_fixed = t_setup + t_approach + t_dwell + t_release
+            t_variable = t_running + t_clearing + t_residual
+            t_total = float(ctrl_iv.duration_s) if getattr(ctrl_iv, "duration_s", None) else (t_fixed + t_variable)
+            fixed_pct = (t_fixed / t_total * 100.0) if t_total > 0 else 0.0
+            sig_overhead = t_setup + t_approach + t_release
+            dwell_str = (
+                f"{t_dwell:.1f} s station dwell and {sig_overhead:.1f} s of signalling setup/approach/release"
+                if t_dwell > 0
+                else f"{sig_overhead:.1f} s of signalling setup/approach/release"
+            )
+
+            pf = 1.0
+            if package and package.metadata and "performance_factor" in package.metadata:
+                try:
+                    pf = float(package.metadata["performance_factor"])
+                except Exception:
+                    pf = 1.0
+
+            if pf < 0.999:
+                t_running_nom = round(t_running * pf, 1)
+                delta_run = round(t_running - t_running_nom, 1)
+                h_nom = t_total - delta_run
+                pct_inc = (delta_run / h_nom * 100.0) if h_nom > 0 else 0.0
+                impact_text = (
+                    f"Consequently, derating the performance factor to {pf:.2f} extends the running time by {delta_run:.1f} s, "
+                    f"but only increases the technical headway by {pct_inc:.1f}% to {t_total:.1f} s."
+                )
+            else:
+                delta_run_95 = 5.0
+                h_95 = round(t_total + delta_run_95, 1)
+                pct_inc_95 = (delta_run_95 / t_total * 100.0) if t_total > 0 else 2.0
+                impact_text = (
+                    f"Consequently, derating the performance factor to 0.95 extends the running time by {delta_run_95:.1f} s, "
+                    f"but only increases the technical headway by {pct_inc_95:.1f}% to {h_95:.1f} s."
+                )
+
+            paras.append(
+                f"The controlling bottleneck {ctrl_id} has a total blocking time of {t_total:.1f} s. "
+                f"Of this, {t_fixed:.1f} s ({fixed_pct:.1f}%) is fixed overhead ({dwell_str}), "
+                f"while only {t_variable:.1f} s is variable running time. {impact_text}"
+            )
+
         return ReportSection(
             section_id=ReportSectionId.SEVEN_COMPONENT_BREAKDOWN,
             title="Seven-Component Blocking-Time Breakdown",
             section_number="3.0",
             is_applicable=is_app,
             not_applicable_reason="No decomposed blocking intervals available." if not is_app else None,
-            narrative_paragraphs=[
-                "Resource blocking time is decomposed into seven mutually exclusive additive components: (1) route setup t1, "
-                "(2) sight/approach t2, (3) running time t3, (4) dwell time t4, (5) geometric clearing t5, (6) residual rear t6, "
-                "and (7) route release t7. Mathematical reconciliation is verified within numerical tolerance.",
-            ],
+            narrative_paragraphs=paras,
             figure_keys=[fig_key] if is_app else [],
         )
 
@@ -1755,6 +1812,7 @@ class ReportAssembler:
         cls,
         kpis: ExecutiveKpis,
         recs: List[Recommendation],
+        package: Optional[SimulationResultPackage] = None,
     ) -> ReportSection:
         """Section 18: Engineering Conclusions & Recommendations (P14-CON-001 to 004)."""
         p1 = (
@@ -1766,6 +1824,80 @@ class ReportAssembler:
             f"The line throughput is governed by critical resource '{kpis.controlling_bottleneck_id}' "
             f"({kpis.controlling_bottleneck_type}) located at chainage {kpis.controlling_bottleneck_chainage_km:.2f} km."
         )
+
+        # Dynamic Fixed vs. Variable Blocking Time Breakdown (DEF-11 / Task C)
+        intervals = []
+        if package and package.metadata and "blocking_intervals" in package.metadata:
+            intervals = package.metadata["blocking_intervals"]
+        elif package and getattr(package, "blocking_intervals", None):
+            intervals = package.blocking_intervals
+
+        ctrl_iv = None
+        for iv in intervals:
+            res_id = getattr(iv, "resource_id", getattr(iv, "block_id", ""))
+            if res_id == kpis.controlling_bottleneck_id:
+                ctrl_iv = iv
+                break
+
+        if ctrl_iv and getattr(ctrl_iv, "decomposition", None):
+            d = ctrl_iv.decomposition
+            t_setup = float(getattr(d, "setup_time_s", 0.0) or 0.0)
+            t_approach = float(getattr(d, "approach_time_s", 0.0) or 0.0)
+            t_running = float(getattr(d, "running_time_s", 0.0) or 0.0)
+            t_dwell = float(getattr(d, "dwell_time_s", 0.0) or 0.0)
+            t_clearing = float(getattr(d, "geometric_clearance_time_s", 0.0) or 0.0)
+            t_residual = float(getattr(d, "residual_rear_time_s", 0.0) or 0.0)
+            t_release = float(getattr(d, "release_time_s", 0.0) or 0.0)
+
+            t_fixed = t_setup + t_approach + t_dwell + t_release
+            t_variable = t_running + t_clearing + t_residual
+            t_total = float(ctrl_iv.duration_s) if getattr(ctrl_iv, "duration_s", None) else (t_fixed + t_variable)
+            if t_total <= 0.0:
+                t_total = kpis.technical_headway_s
+
+            fixed_pct = (t_fixed / t_total * 100.0) if t_total > 0 else 0.0
+            sig_overhead = t_setup + t_approach + t_release
+
+            pf = 1.0
+            if package and package.metadata and "performance_factor" in package.metadata:
+                try:
+                    pf = float(package.metadata["performance_factor"])
+                except Exception:
+                    pf = 1.0
+
+            if t_dwell > 0:
+                dwell_str = f"{t_dwell:.1f} s station dwell and {sig_overhead:.1f} s of signalling setup/approach/release"
+            else:
+                dwell_str = f"{sig_overhead:.1f} s of signalling setup/approach/release"
+
+            if pf < 0.999:
+                t_running_nom = round(t_running * pf, 1)
+                delta_run = round(t_running - t_running_nom, 1)
+                h_nom = t_total - delta_run
+                pct_inc = (delta_run / h_nom * 100.0) if h_nom > 0 else 0.0
+                impact_text = (
+                    f"Consequently, derating the performance factor to {pf:.2f} extends the running time by {delta_run:.1f} s, "
+                    f"but only increases the technical headway by {pct_inc:.1f}% to {t_total:.1f} s."
+                )
+            else:
+                delta_run_95 = 5.0
+                h_95 = round(t_total + delta_run_95, 1)
+                pct_inc_95 = (delta_run_95 / t_total * 100.0) if t_total > 0 else 2.0
+                impact_text = (
+                    f"Consequently, derating the performance factor to 0.95 extends the running time by {delta_run_95:.1f} s, "
+                    f"but only increases the technical headway by {pct_inc_95:.1f}% to {h_95:.1f} s."
+                )
+
+            breakdown_p = (
+                f"The controlling bottleneck {kpis.controlling_bottleneck_id} has a total blocking time of {t_total:.1f} s. "
+                f"Of this, {t_fixed:.1f} s ({fixed_pct:.1f}%) is fixed overhead ({dwell_str}), "
+                f"while only {t_variable:.1f} s is variable running time. {impact_text}"
+            )
+        else:
+            breakdown_p = (
+                f"The controlling bottleneck {kpis.controlling_bottleneck_id} has a total blocking time of {kpis.technical_headway_s:.1f} s. "
+                f"Headway consumption is split between fixed signalling/dwell overhead and variable train running time."
+            )
 
         p2 = (
             f"Operational stability analysis indicates that the critical bottleneck at '{kpis.controlling_bottleneck_id}' "
@@ -1789,7 +1921,14 @@ class ReportAssembler:
             "• Advanced Signalling Transition: For long-term capacity expansion beyond theoretical limits, evaluate migration to CBTC or ETCS Level 2/3 moving-block architecture to eliminate fixed-block overlap constraints.",
         ]
 
-        all_paras = [p1, p2, p3] + rec_bullets
+        all_paras = [p1, breakdown_p, p2, p3] + rec_bullets
+
+        callout_boxes = [
+            {
+                "title": "Fixed vs. Variable Blocking Time Breakdown",
+                "text": breakdown_p,
+            }
+        ]
 
         return ReportSection(
             section_id=ReportSectionId.CONCLUSIONS_RECOMMENDATIONS,
@@ -1797,5 +1936,6 @@ class ReportAssembler:
             section_number="18.0",
             is_applicable=True,
             narrative_paragraphs=all_paras,
+            callout_boxes=callout_boxes,
             recommendations=recs,
         )

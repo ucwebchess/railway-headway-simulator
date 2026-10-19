@@ -258,3 +258,48 @@ class TestV160ExtendedDynamicNarratives:
         assert "Monte Carlo" in combined
         assert "P95" in combined
         assert "standard deviation" in combined.lower()
+
+    def test_explicit_performance_factor_overrides_dropdown_and_analysis(self) -> None:
+        """Verify that passing explicit performance_factor overrides dropdown and analysis configuration (DEF-11)."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+        from headway.infrastructure.direction import RunningDirection
+
+        project, _, _ = FileManager.load_example_project("07_hsr_140km")
+
+        # Pass dropdown selection with nominal 1.00 label, but override with explicit slider value 0.85
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.FORWARD,
+            simulation_mode="AN_HSR_HSR_UP (PF: 1.00)",
+            performance_factor=0.85,
+        )
+
+        assert doc.executive_kpis.performance_factor == 0.85
+        assert doc.executive_kpis.performance_factor_str == "85%"
+        assert pkg.metadata.get("performance_factor") == 0.85
+
+    def test_section_18_fixed_vs_variable_blocking_breakdown(self) -> None:
+        """Verify Section 18 properly calculates and displays the fixed vs variable percentage breakdown (DEF-11 / Task C)."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+        from headway.infrastructure.direction import RunningDirection
+
+        project, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.FORWARD,
+            performance_factor=1.00,
+        )
+
+        sec18 = doc.get_section(ReportSectionId.CONCLUSIONS_RECOMMENDATIONS)
+        assert sec18 is not None
+        assert sec18.is_applicable is True
+
+        combined_text = " ".join(sec18.narrative_paragraphs)
+        assert "controlling bottleneck BLK_UP_092" in combined_text
+        assert "137.0 s (56.1%) is fixed overhead" in combined_text
+        assert "120.0 s station dwell and 17.0 s of signalling setup/approach/release" in combined_text
+        assert "107.0 s is variable running time" in combined_text
+        assert "derating the performance factor to 0.95" in combined_text
+        assert "increases the technical headway by 2.0% to 249.0 s" in combined_text

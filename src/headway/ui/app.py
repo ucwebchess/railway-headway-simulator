@@ -30,7 +30,7 @@ def create_app(app_config: Optional[Any] = None) -> gr.Blocks:
         gr.Blocks instance configured with custom theme, CSS, and tabs.
     """
     with gr.Blocks(
-        title="Railway Headway & Capacity Simulator — Professional Assessment Platform (1.6.0)",
+        title="Railway Headway & Capacity Simulator — Professional Assessment Platform (1.6.1)",
     ) as app:
         # Header banner
         with gr.Row(elem_classes=["app-header"]):
@@ -48,7 +48,7 @@ def create_app(app_config: Optional[Any] = None) -> gr.Blocks:
                     <div style="text-align: right; font-size: 12px; color: #64748b; padding-top: 8px;">
                         <div><strong>Engine:</strong> Microscopic ODE (Euler/RK4)</div>
                         <div><strong>Status:</strong> Ready</div>
-                        <div><strong>Version:</strong> 1.6.0 (Release)</div>
+                        <div><strong>Version:</strong> 1.6.1 (Release)</div>
                     </div>
                     """
                 )
@@ -58,10 +58,10 @@ def create_app(app_config: Optional[Any] = None) -> gr.Blocks:
         # 10 Top-Level Navigation Tabs
         with gr.Tabs(elem_id="main_navigation_tabs") as main_tabs:
             with gr.TabItem("1. Project Dashboard", id="tab_dashboard"):
-                create_dashboard_tab()
+                dashboard_comps = create_dashboard_tab()
 
             with gr.TabItem("2. Data Import", id="tab_import"):
-                create_data_import_tab()
+                import_comps = create_data_import_tab()
 
             with gr.TabItem("3. Data Validation", id="tab_validation"):
                 create_validation_tab()
@@ -78,14 +78,72 @@ def create_app(app_config: Optional[Any] = None) -> gr.Blocks:
             with gr.TabItem("7. Scenario Manager", id="tab_scenarios"):
                 create_scenarios_tab()
 
-            with gr.TabItem("8. Simulation Control", id="tab_simulation"):
-                create_simulation_tab()
+            with gr.TabItem("8. Simulation Control", id="tab_simulation") as tab_sim_item:
+                sim_comps = create_simulation_tab()
 
             with gr.TabItem("9. Results & Comparison", id="tab_results"):
                 create_results_tab()
 
             with gr.TabItem("10. Reports & Export", id="tab_reports"):
                 create_reports_tab()
+
+        # Dynamic Analysis Dropdown Synchronization (DEF-10)
+        from headway.ui.tab_simulation import update_simulation_analyses
+        from headway.ui.state import session_state
+
+        def sync_sim_analyses():
+            return update_simulation_analyses(session_state.current_project)
+
+        tab_sim_item.select(
+            fn=sync_sim_analyses,
+            inputs=[],
+            outputs=[
+                sim_comps["sim_mode_dropdown"],
+                sim_comps["state_pf_map"],
+                sim_comps["param_performance_factor"],
+            ],
+        )
+
+        if "btn_load_example" in import_comps:
+            import_comps["btn_load_example"].click(
+                fn=sync_sim_analyses,
+                inputs=[],
+                outputs=[
+                    sim_comps["sim_mode_dropdown"],
+                    sim_comps["state_pf_map"],
+                    sim_comps["param_performance_factor"],
+                ],
+            )
+        if "btn_import_excels" in import_comps:
+            import_comps["btn_import_excels"].click(
+                fn=sync_sim_analyses,
+                inputs=[],
+                outputs=[
+                    sim_comps["sim_mode_dropdown"],
+                    sim_comps["state_pf_map"],
+                    sim_comps["param_performance_factor"],
+                ],
+            )
+        if "btn_import_zip" in import_comps:
+            import_comps["btn_import_zip"].click(
+                fn=sync_sim_analyses,
+                inputs=[],
+                outputs=[
+                    sim_comps["sim_mode_dropdown"],
+                    sim_comps["state_pf_map"],
+                    sim_comps["param_performance_factor"],
+                ],
+            )
+        if "btn_load_example_quick" in dashboard_comps:
+            dashboard_comps["btn_load_example_quick"].click(
+                fn=sync_sim_analyses,
+                inputs=[],
+                outputs=[
+                    sim_comps["sim_mode_dropdown"],
+                    sim_comps["state_pf_map"],
+                    sim_comps["param_performance_factor"],
+                ],
+            )
 
     return app
 
