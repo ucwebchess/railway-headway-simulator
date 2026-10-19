@@ -14,7 +14,7 @@ Satisfies:
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 import pandas as pd
 
@@ -292,9 +292,22 @@ def create_resource_timing_table(
     records: Union[Sequence[ResourceTimingRecord], Sequence[ResourceBlockingInterval]],
     running_direction: RunningDirection = RunningDirection.FORWARD,
     controlling_resource_ids: Optional[Sequence[str]] = None,
+    geometry_lookup: Optional[Dict[str, Tuple[float, float]]] = None,
 ) -> EngineeringTable:
     """P13-OCC-001: Detailed resource blocking breakdown table."""
     if records and isinstance(records[0], ResourceBlockingInterval):
+        cum_chainage_m = 0.0
+        for bi in records:
+            if bi.physical_start_offset_m is None or bi.physical_end_offset_m is None or bi.physical_end_offset_m == bi.physical_start_offset_m:
+                if geometry_lookup and bi.resource_id in geometry_lookup:
+                    s_m, len_m = geometry_lookup[bi.resource_id]
+                    bi.physical_start_offset_m = s_m
+                    bi.physical_end_offset_m = s_m + len_m
+                else:
+                    bi.physical_start_offset_m = cum_chainage_m
+                    bi.physical_end_offset_m = cum_chainage_m + 1000.0
+            cum_chainage_m = bi.physical_end_offset_m or (cum_chainage_m + 1000.0)
+
         from headway.reporting.visualization_adapters import VisualizationAdapter
         records = VisualizationAdapter.adapt_resource_timing(records, controlling_resource_ids)
 

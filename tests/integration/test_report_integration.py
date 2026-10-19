@@ -26,6 +26,7 @@ from headway.analysis.conflict_detection import ConflictType, ResourceConflict
 from headway.analysis.headway_results import HeadwayResult, MixedTrafficHeadwayMatrix
 from headway.analysis.monte_carlo import MonteCarloExecutionResult
 from headway.analysis.statistics import StatisticalSummary
+from headway.core.exceptions import ReportingError
 from headway.data.canonical import Platform, Station, TrackLink, TVSSection
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.csv_export import CsvReportExporter
@@ -117,6 +118,8 @@ def _create_synthetic_full_package(
                 end_time_s=end,
                 train_id="TRN_INTEG_01",
                 decomposition=decomp,
+                physical_start_offset_m=idx * 600.0,
+                physical_end_offset_m=(idx + 1) * 600.0,
             )
         )
 
@@ -268,16 +271,19 @@ def _create_synthetic_full_package(
         "waiting_duration_s": 0.0,
     }
 
-    prov = ResourceProvenanceRecord(
-        resource_id="BLK_03",
-        resource_type="TRACK_BLOCK",
-        physical_chainage_km=0.9,
-        resource_length_m=600.0,
-        geometry_source="INTEG_MODEL",
-        dataset_id="DS_INTEG_01",
-        dataset_version="2.1.0",
-        is_baseline_geometry=True,
-    )
+    prov_records = [
+        ResourceProvenanceRecord(
+            resource_id=f"BLK_{idx:02d}",
+            resource_type="TRACK_BLOCK",
+            physical_chainage_km=round(idx * 0.6, 3),
+            resource_length_m=600.0,
+            geometry_source="INTEG_MODEL",
+            dataset_id="DS_INTEG_01",
+            dataset_version="2.1.0",
+            is_baseline_geometry=True,
+        )
+        for idx in range(1, 6)
+    ]
 
     return SimulationResultPackage(
         run_id="RUN_INTEG_01",
@@ -293,7 +299,9 @@ def _create_synthetic_full_package(
         scenario_comparison_report=report_cmp,
         metadata={
             "platform_records": [plt],
-            "provenance_records": [prov],
+            "provenance_records": prov_records,
+            "blocking_intervals": intervals,
+            "controlling_bottleneck_id": "BLK_03",
             "stochastic_headway_samples": [90.0 + k * 0.4 for k in range(30)],
             "tvs_events": [tvs_ev],
         },
@@ -429,3 +437,156 @@ class TestReportIntegration:
         cmp_tbl = cmp_sec.tables[0]
         assert "SCEN_INTEG_CBTC" in cmp_tbl.to_html()
         assert "-20.0" in cmp_tbl.to_html() or "-22.2" in cmp_tbl.to_html()
+
+    def test_reporting_blocking_intervals_decomposition_and_geometry_synthetic(self) -> None:
+        """Phase 4c: Assert reporting layer consumes package.metadata['blocking_intervals'] with non-zero values."""
+        pkg = _create_synthetic_full_package(direction=RunningDirection.FORWARD, headway_s=90.0)
+        doc = ReportAssembler.assemble_report(pkg)
+
+        # 1. Section 4 / 3 (Chart): Check Seven-Component Breakdown chart (or Stairway equivalent)
+        chart_sec = (
+            doc.sections.get(ReportSectionId.SEVEN_COMPONENT_BREAKDOWN)
+            or doc.sections.get(ReportSectionId.BLOCKING_STAIRWAY)
+        )
+        assert chart_sec is not None
+        assert chart_sec.is_applicable
+
+        fig_seven = doc.figures_data.get("fig_seven_components")
+        assert fig_seven is not None
+        traces_by_name = {t.name: t for t in fig_seven.data}
+
+        assert "Setup (t1)" in traces_by_name
+        assert "Approach (t2)" in traces_by_name
+        assert "Release (t7)" in traces_by_name
+
+        setup_vals = [float(y) for y in traces_by_name["Setup (t1)"].y]
+        approach_vals = [float(y) for y in traces_by_name["Approach (t2)"].y]
+        release_vals = [float(y) for y in traces_by_name["Release (t7)"].y]
+
+        assert any(v > 0.0 for v in setup_vals), "Setup times in chart data must be non-zero"
+        assert any(v > 0.0 for v in approach_vals), "Approach times in chart data must be non-zero"
+        assert any(v > 0.0 for v in release_vals), "Release times in chart data must be non-zero"
+
+        # Also verify stairway chart data exists and has intervals
+        stair_sec = doc.sections.get(ReportSectionId.BLOCKING_STAIRWAY)
+        assert stair_sec is not None
+        assert stair_sec.is_applicable
+        fig_stair = doc.figures_data.get("fig_blocking_stairway")
+        assert fig_stair is not None
+        assert len(fig_stair.data) >= 2
+
+        # 2. Section 10 (Table): Detailed Resource Occupation Timing Breakdown Table
+        table_sec = (
+            doc.sections.get(getattr(ReportSectionId, "DETAILED_RESOURCE_OCCUPATION_TABLE", None))
+            or doc.sections.get(ReportSectionId.DETAILED_RESOURCE_TIMING)
+        )
+        assert table_sec is not None
+        assert table_sec.is_applicable
+        assert len(table_sec.tables) > 0
+
+        timing_table = table_sec.tables[0]
+        raw_df = timing_table.raw_dataframe
+        formatted_df = timing_table.formatted_dataframe
+
+        # Ensure rows contain non-zero values for Setup, Approach, Release, Chainage, and Length
+        assert (raw_df["Setup (s)"] > 0.0).any(), "Table Setup (s) must contain non-zero values"
+        assert (raw_df["Approach (s)"] > 0.0).any(), "Table Approach (s) must contain non-zero values"
+        assert (raw_df["Release (s)"] > 0.0).any(), "Table Release (s) must contain non-zero values"
+        assert (raw_df["Chainage (km)"] > 0.0).any(), "Table Chainage (km) must contain non-zero values"
+        assert (raw_df["Length (m)"] > 0.0).all(), "Table Length (m) must be non-zero for all rows"
+
+        # In formatted dataframe as well
+        assert any(float(v) > 0.0 for v in formatted_df["Setup (s)"])
+        assert any(float(v) > 0.0 for v in formatted_df["Approach (s)"])
+        assert any(float(v) > 0.0 for v in formatted_df["Release (s)"])
+        assert any(float(v) > 0.0 for v in formatted_df["Chainage (km)"])
+        assert all(float(v) > 0.0 for v in formatted_df["Length (m)"])
+
+        # 3. Sum of 7 components in the table equals Total Blocking time
+        comp_cols = [
+            "Setup (s)",
+            "Approach (s)",
+            "Running (s)",
+            "Dwell (s)",
+            "Clearance (s)",
+            "Residual Rear (s)",
+            "Release (s)",
+        ]
+        sums = raw_df[comp_cols].sum(axis=1)
+        diffs = (sums - raw_df["Total Blocking (s)"]).abs()
+        assert (diffs < 1e-3).all(), f"Component sum mismatch found: max diff = {diffs.max()}"
+
+    def test_reporting_blocking_intervals_hsr_corridor(self) -> None:
+        """Phase 4c: Assert full 140 km HSR corridor report consumes metadata blocking intervals."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        # 1. Section 4 / 3 (Chart)
+        sec_chart = doc.get_section(ReportSectionId.SEVEN_COMPONENT_BREAKDOWN)
+        assert sec_chart is not None
+        assert sec_chart.is_applicable
+        fig_seven = doc.figures_data[sec_chart.figure_keys[0]]
+        traces_by_name = {t.name: t for t in fig_seven.data}
+
+        assert "Setup (t1)" in traces_by_name
+        assert "Approach (t2)" in traces_by_name
+        assert "Release (t7)" in traces_by_name
+
+        setup_vals = [float(y) for y in traces_by_name["Setup (t1)"].y]
+        approach_vals = [float(y) for y in traces_by_name["Approach (t2)"].y]
+        release_vals = [float(y) for y in traces_by_name["Release (t7)"].y]
+
+        assert any(v > 0.0 for v in setup_vals)
+        assert any(v > 0.0 for v in approach_vals)
+        assert any(v > 0.0 for v in release_vals)
+
+        # 2. Section 10 (Table)
+        sec_table = doc.get_section(ReportSectionId.DETAILED_RESOURCE_TIMING)
+        assert sec_table is not None
+        assert sec_table.is_applicable
+        timing_table = sec_table.tables[0]
+        raw_df = timing_table.raw_dataframe
+
+        assert len(raw_df) == 92
+        assert (raw_df["Length (m)"] > 0.0).all()
+        assert (raw_df["Setup (s)"] > 0.0).all()
+        assert (raw_df["Approach (s)"] > 0.0).any()
+        assert (raw_df["Release (s)"] > 0.0).all()
+        assert (raw_df["Chainage (km)"] > 0.0).any()
+
+        # Controlling bottleneck BLK_UP_092
+        controlling_rows = raw_df[raw_df["Resource ID"] == "BLK_UP_092"]
+        assert len(controlling_rows) == 1
+        assert bool(controlling_rows.iloc[0]["Controlling"]) is True
+        formatted_df = timing_table.formatted_dataframe
+        fmt_ctrl = formatted_df[formatted_df["Resource ID"].str.contains("BLK_UP_092")]
+        assert len(fmt_ctrl) == 1
+        assert fmt_ctrl.iloc[0]["Controlling"] == "YES"
+
+        # Sum of 7 components equals Total Blocking (s) for every row
+        comp_cols = [
+            "Setup (s)",
+            "Approach (s)",
+            "Running (s)",
+            "Dwell (s)",
+            "Clearance (s)",
+            "Residual Rear (s)",
+            "Release (s)",
+        ]
+        sums = raw_df[comp_cols].sum(axis=1)
+        diffs = (sums - raw_df["Total Blocking (s)"]).abs()
+        assert (diffs < 1e-3).all(), f"Component sum mismatch found: max diff = {diffs.max()}"
+
+    def test_reporting_missing_blocking_intervals_raises_loud_error(self) -> None:
+        """Phase 4c: Assert assemble_report raises ERR_REPORT_MISSING_BLOCKING_INTERVALS when missing."""
+        pkg = _create_synthetic_full_package()
+        pkg.metadata["blocking_intervals"] = []
+        pkg.blocking_intervals = []
+
+        with pytest.raises(ReportingError) as exc_info:
+            ReportAssembler.assemble_report(pkg)
+
+        assert "ERR_REPORT_MISSING_BLOCKING_INTERVALS" in str(exc_info.value.error_code)
