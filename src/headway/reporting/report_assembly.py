@@ -153,6 +153,37 @@ class ReportAssembler:
                     iv.physical_end_offset_m = cum_chainage_m + 1000.0
             cum_chainage_m = iv.physical_end_offset_m or (cum_chainage_m + 1000.0)
 
+        # Build comprehensive resource geometry lookup (start chainage in metres)
+        geometry_lookup: Dict[str, float] = {}
+        for iv in blocking_intervals:
+            if iv.physical_start_offset_m is not None and iv.resource_id not in geometry_lookup:
+                geometry_lookup[iv.resource_id] = float(iv.physical_start_offset_m)
+        for res_id, p in prov_map.items():
+            if res_id not in geometry_lookup:
+                geometry_lookup[res_id] = float(p.physical_chainage_km * 1000.0)
+        for res_id, (s_m, _) in proj_geom.items():
+            if res_id not in geometry_lookup:
+                geometry_lookup[res_id] = float(s_m)
+
+        # Enrich pairwise conflict records in headway results with physical geometry
+        hw_results_list = list((package.headway_results or {}).values())
+
+        for hw in hw_results_list:
+            all_confs = list(hw.controlling_conflicts or []) + list(hw.conflict_ranking or [])
+            for c in all_confs:
+                res_id = c.leader_resource_id or c.follower_resource_id
+                loc_m = geometry_lookup.get(res_id)
+                if loc_m is None and c.follower_resource_id:
+                    loc_m = geometry_lookup.get(c.follower_resource_id)
+                if loc_m is None:
+                    loc_m = getattr(c, "physical_location_m", None) or getattr(c, "conflict_point_m", 0.0) or 0.0
+                c.physical_location_m = float(loc_m)
+                c.route_chainage_km = round(float(loc_m) / 1000.0, 6)
+                if c.leader_usage and getattr(c.leader_usage, "physical_start_offset_m", None) is None:
+                    c.leader_usage.physical_start_offset_m = float(loc_m)
+                if c.follower_usage and getattr(c.follower_usage, "physical_start_offset_m", None) is None:
+                    c.follower_usage.physical_start_offset_m = float(loc_m)
+
         # 1. Metadata
         metadata = ReportMetadata(
             report_id=r_id,
@@ -226,7 +257,7 @@ class ReportAssembler:
 
         # Section 4: Pairwise Conflict Ranking
         sections[ReportSectionId.CONFLICT_RANKING] = cls._build_section_conflict_ranking(
-            primary_hw, cfg.top_n_conflicts
+            primary_hw, cfg.top_n_conflicts, geometry_lookup=geometry_lookup
         )
 
         # Section 5: Longest Individual Occupations
@@ -766,12 +797,20 @@ class ReportAssembler:
         cls,
         primary_hw: Optional[HeadwayResult],
         top_n: int,
+        geometry_lookup: Optional[Dict[str, float]] = None,
     ) -> ReportSection:
         """Section 4: Pairwise Conflict Ranking Table (P14-SEC04-001)."""
         is_app = primary_hw is not None and bool(primary_hw.controlling_conflicts or primary_hw.conflict_ranking)
         tables: List[EngineeringTable] = []
         if is_app and primary_hw:
-            tables.append(create_conflict_ranking_table(primary_hw, top_n=top_n))
+            if geometry_lookup:
+                for c in list(primary_hw.controlling_conflicts or []) + list(primary_hw.conflict_ranking or []):
+                    res_id = c.leader_resource_id or c.follower_resource_id
+                    if res_id in geometry_lookup:
+                        loc_m = float(geometry_lookup[res_id])
+                        c.physical_location_m = loc_m
+                        c.route_chainage_km = round(loc_m / 1000.0, 6)
+            tables.append(create_conflict_ranking_table(primary_hw, top_n=top_n, geometry_lookup=geometry_lookup))
 
         return ReportSection(
             section_id=ReportSectionId.CONFLICT_RANKING,

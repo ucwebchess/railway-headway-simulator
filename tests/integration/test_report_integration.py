@@ -590,3 +590,53 @@ class TestReportIntegration:
             ReportAssembler.assemble_report(pkg)
 
         assert "ERR_REPORT_MISSING_BLOCKING_INTERVALS" in str(exc_info.value.error_code)
+
+    def test_reporting_pairwise_conflict_geometry_hsr_corridor(self) -> None:
+        """DEF-08: Assert Pairwise Critical Conflict Ranking rows contain non-zero geometry on 07_hsr_140km."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        sec_conflict = doc.get_section(ReportSectionId.CONFLICT_RANKING)
+        assert sec_conflict is not None
+        assert sec_conflict.is_applicable
+        conflict_table = sec_conflict.tables[0]
+        assert "Conflict" in conflict_table.title or "CONFLICT" in conflict_table.table_id
+
+        raw_df = conflict_table.raw_dataframe
+        assert len(raw_df) > 0
+        assert "Physical Location (m)" in raw_df.columns
+        assert "Route Chainage (km)" in raw_df.columns
+        assert "Time Gap (s)" in raw_df.columns
+
+        # Rank 1 conflict is the controlling bottleneck BLK_UP_092
+        r1 = raw_df.iloc[0]
+        assert r1["Leader Resource"] == "BLK_UP_092"
+        assert r1["Physical Location (m)"] > 100_000.0
+        assert r1["Route Chainage (km)"] > 100.0
+        assert pytest.approx(138.346, abs=0.1) == r1["Route Chainage (km)"]
+        assert pytest.approx(138346.0, abs=100.0) == r1["Physical Location (m)"]
+        assert r1["Classification"] == "CONTROLLING"
+
+        # Assert non-zero physical location and route chainage exist across table rows
+        assert (raw_df["Physical Location (m)"] > 0.0).any()
+        assert (raw_df["Route Chainage (km)"] > 0.0).any()
+
+        # Chainage km equals Location m / 1000 within tolerance
+        chainage_check = (raw_df["Route Chainage (km)"] - (raw_df["Physical Location (m)"] / 1000.0)).abs()
+        assert (chainage_check < 1e-4).all()
+
+        # Time gap equals Leader Release minus Follower Start
+        time_gap_check = (raw_df["Time Gap (s)"] - (raw_df["Leader Release (s)"] - raw_df["Follower Start (s)"])).abs()
+        assert (time_gap_check < 1e-3).all()
+
+        # Formatted dataframe checks
+        fmt_df = conflict_table.formatted_dataframe
+        fmt_r1 = fmt_df.iloc[0]
+        assert fmt_r1["Leader Resource"] == "BLK_UP_092"
+        assert fmt_r1["Physical Location (m)"] == "138346.0"
+        assert fmt_r1["Route Chainage (km)"] == "138.35"
+        assert "CONTROLLING" in fmt_r1["Classification"]
+
