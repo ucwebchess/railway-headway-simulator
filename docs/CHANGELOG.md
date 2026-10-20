@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.0] — 2026-10-21
+
+### Added
+- **TVS Chart Direct Annotations (Task 1)**: Displayed TVS zone identifiers (`TVS_01`, `TVS_02`, etc.) directly adjacent to the occupation bars (`textposition="outside"`) on Section 13 TVS occupation figure for instant readability.
+- **TVS Capacity Impact Table (Task 2)**: Added `create_tvs_capacity_table` comparing TVS Ventilation minimum headway against Signalling minimum headway, with theoretical throughput (tph) and governing constraint status.
+- **Dynamic TVS Narrative Generation (Task 2)**: Added dynamic operational assessment narrative beneath the TVS capacity table evaluating whether signalling or TVS single-train emergency clearance governs corridor throughput.
+
+---
+
 ## [1.7.0] — 2026-10-19
 
 ### Added
