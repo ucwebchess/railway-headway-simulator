@@ -65,11 +65,11 @@ def test_axis_layout_stairway():
 
     fig = create_blocking_stairway_figure(hw_res)
 
-    assert fig.layout.xaxis.title.text == "Signalling Block Resource"
+    assert "Route Distance" in fig.layout.xaxis.title.text
     assert fig.layout.yaxis.title.text == "Time [s]"
-    assert len(fig.layout.xaxis.categoryarray) == 2
-    assert "BLK_01" in fig.layout.xaxis.categoryarray
-    assert "BLK_02" in fig.layout.xaxis.categoryarray
+    assert fig.layout.yaxis.autorange == "reversed"
+    assert len(fig.data) >= 2
+    assert len(fig.data[0].x) == 2
 
 
 def test_axis_layout_platform_occupation():

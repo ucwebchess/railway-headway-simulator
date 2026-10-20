@@ -39,7 +39,9 @@ from headway.reporting.charts_speed import (
     create_curvature_profile_figure,
     create_gradient_profile_figure,
     create_speed_distance_figure,
+    create_speed_profile_dataframe,
     create_track_alignment_combined_figure,
+    generate_speed_profile_csv,
 )
 from headway.reporting.charts_station import create_platform_occupation_figure
 from headway.reporting.charts_stochastic import (
@@ -77,6 +79,8 @@ from headway.reporting.tables import (
     create_resource_timing_table,
     create_scenario_comparison_table,
     create_station_stopping_table,
+    create_stochastic_headway_table,
+    create_tvs_assessment_table,
 )
 
 
@@ -737,6 +741,26 @@ class ReportAssembler:
             sec_kpis["total_service_duration_str"] = dur_str
             sec_kpis["Total Service Duration (End-to-End)"] = dur_str
 
+        callout_boxes = []
+        if has_traj:
+            try:
+                import base64
+                first_traj = next(iter(package.trajectories.values()))
+                csv_data = generate_speed_profile_csv(
+                    first_traj,
+                    permissible_speed_envelope=envelope,
+                    track_links=track_links,
+                    running_direction=direction,
+                )
+                b64_csv = base64.b64encode(csv_data.encode("utf-8")).decode("ascii")
+                callout_boxes.append({
+                    "title": "Speed Profile & Permissible Envelope CSV Export",
+                    "text": "Complete time-distance speed profile data with civil speed limits is available for engineering analysis.",
+                    "html": f'<div style="margin-top: 8px;"><a href="data:text/csv;base64,{b64_csv}" download="speed_profile_{first_traj.train_id}.csv" style="display: inline-block; padding: 6px 14px; background-color: #1E3A8A; color: #FFFFFF; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;">📥 Download Speed Profile CSV</a></div>',
+                })
+            except Exception:
+                pass
+
         return ReportSection(
             section_id=ReportSectionId.SPEED_GRADIENT_CURVATURE,
             title="Speed Profile, Gradients and Track Curvature",
@@ -749,6 +773,7 @@ class ReportAssembler:
                 f"Directional alignment enforces gradient sign inversion for REVERSE operations where applicable.",
             ],
             kpis=sec_kpis,
+            callout_boxes=callout_boxes,
             figure_keys=[fig_key] if has_traj else [],
         )
 
@@ -1635,6 +1660,10 @@ class ReportAssembler:
                 "Compares signalling technical headway against TVS clearance times to determine governing tunnel constraints.",
             ]
 
+        tvs_tables: List[EngineeringTable] = []
+        if is_app and tvs_data:
+            tvs_tables.append(create_tvs_assessment_table(tvs_data, running_direction=direction))
+
         return ReportSection(
             section_id=ReportSectionId.TVS_ASSESSMENT,
             title="Tunnel Ventilation Section (TVS) Assessment",
@@ -1646,6 +1675,7 @@ class ReportAssembler:
                 else None
             ),
             narrative_paragraphs=narrative_paras,
+            tables=tvs_tables,
             figure_keys=[fig_key] if is_app else [],
         )
 
@@ -1742,6 +1772,16 @@ class ReportAssembler:
                 "departure jitter, and tractive utilization. Computes percentile headways (P90, P95, P99) and Wilson score confidence intervals.",
             ]
 
+        stoch_tables: List[EngineeringTable] = []
+        if is_app:
+            sample_vals = package.metadata.get("stochastic_headway_samples", []) if package.metadata else []
+            hw_stat = next((s for s in summaries if "headway" in getattr(s, "metric_name", "").lower()), None)
+            stoch_tables.append(create_stochastic_headway_table(
+                samples=sample_vals,
+                summary=hw_stat,
+                running_direction=direction,
+            ))
+
         return ReportSection(
             section_id=ReportSectionId.STOCHASTIC_RELIABILITY,
             title="Stochastic Headway and Operational Reliability",
@@ -1749,6 +1789,7 @@ class ReportAssembler:
             is_applicable=is_app,
             not_applicable_reason="No Monte Carlo stochastic simulation executed for this scenario." if not is_app else None,
             narrative_paragraphs=narrative_paras,
+            tables=stoch_tables,
             figure_keys=[fig_key] if is_app else [],
         )
 

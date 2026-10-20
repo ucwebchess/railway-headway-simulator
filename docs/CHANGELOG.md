@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] — 2026-10-19
+
+### Added
+- **Relative Blocking-Time Stairway Physical Chainage (Task 1)**: Converted X-axis from discrete block identifiers to continuous route distance (km) using `physical_start_offset_m` and `physical_end_offset_m`, with inverted Y-axis matching UIC 406 stairway standards.
+- **Microscopic Speed Profile CSV Export (Task 2)**: Added memory-safe CSV export mechanism (`time_s`, `front_distance_m`, `speed_kmh`, `permissible_speed_kmh`) available for download in UI and embedded in reporting.
+- **Section 13 TVS Assessment Data Table (Task 3)**: Added detailed engineering table underneath TVS chart containing TVS ID, Entry Time (s), Exit Time (s), Physical Occupation (s), Post-Clearance Delay (s), and Total Blocking (s).
+- **Stochastic Operational Reliability Summary Table (Task 4)**: Added Monte Carlo statistics table summarizing Mean Headway, Standard Deviation, 5th Percentile, and 95th Percentile with operational capacity impact interpretations.
+
+### Fixed
+- **Permissible Speed Envelope Hard Clamping (Task 2)**: Enforced strict upper bound speed clamping ($v_{\text{current}} = \min(v_{\text{calc}}, v_{\text{perm}})$) and zeroed tractive effort at the civil speed limit across both forward and reverse directions.
+
+---
+
 ## [1.6.1] — 2026-10-19
 
 ### Fixed

@@ -10,8 +10,10 @@ Satisfies:
 - P13-GRD-001 to 005: Gradient and curvature profiles with directional sign handling.
 """
 
+import io
 from typing import Any, Dict, List, Optional, Sequence, Union
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -352,3 +354,85 @@ def create_track_alignment_combined_figure(
     fig.update_yaxes(title_text="Gradient (‰)", row=2, col=1)
     fig.update_xaxes(title_text="Route Distance (km)", row=2, col=1)
     return fig
+
+
+def create_speed_profile_dataframe(
+    trajectory: TrainTrajectory,
+    permissible_speed_envelope: Optional[Sequence[Dict[str, float]]] = None,
+    track_links: Optional[Sequence[TrackLink]] = None,
+    rolling_stock_max_speed_kmh: Optional[float] = None,
+    running_direction: Optional[RunningDirection] = None,
+) -> pd.DataFrame:
+    """Build DataFrame of speed profile and permissible envelope (Task 2 / RHS-PHYS-001).
+
+    Columns: time_s, front_distance_m, speed_kmh, permissible_speed_kmh
+    """
+    if not trajectory or not trajectory.samples:
+        return pd.DataFrame(
+            columns=["time_s", "front_distance_m", "speed_kmh", "permissible_speed_kmh"]
+        )
+
+    eff_dir = running_direction or trajectory.running_direction
+    env = permissible_speed_envelope
+    if env is None and track_links:
+        env = compute_permissible_speed_envelope(
+            track_links=track_links,
+            rolling_stock_max_speed_kmh=rolling_stock_max_speed_kmh,
+            running_direction=eff_dir,
+        )
+
+    env_pts = list(env or [])
+
+    rows = []
+    for s in trajectory.samples:
+        t_s = round(float(s.time_s), 3)
+        dist_m = round(float(s.front_distance_m), 2)
+        v_kmh = round(float(s.speed_kmh), 2)
+
+        # Lookup permissible speed at dist_m along route
+        perm_kmh = v_kmh
+        if env_pts:
+            matching = [p["max_speed_kmh"] for p in env_pts if p.get("route_distance_m", 0.0) <= dist_m + 1e-4]
+            if matching:
+                perm_kmh = matching[-1]
+            else:
+                perm_kmh = env_pts[0].get("max_speed_kmh", v_kmh)
+        elif rolling_stock_max_speed_kmh is not None:
+            perm_kmh = round(rolling_stock_max_speed_kmh, 2)
+
+        # Enforce physical constraint: simulated speed <= permissible speed
+        v_kmh = min(v_kmh, perm_kmh)
+
+        rows.append({
+            "time_s": t_s,
+            "front_distance_m": dist_m,
+            "speed_kmh": v_kmh,
+            "permissible_speed_kmh": round(float(perm_kmh), 2),
+        })
+
+    return pd.DataFrame(rows, columns=["time_s", "front_distance_m", "speed_kmh", "permissible_speed_kmh"])
+
+
+def generate_speed_profile_csv(
+    trajectory: TrainTrajectory,
+    permissible_speed_envelope: Optional[Sequence[Dict[str, float]]] = None,
+    track_links: Optional[Sequence[TrackLink]] = None,
+    rolling_stock_max_speed_kmh: Optional[float] = None,
+    running_direction: Optional[RunningDirection] = None,
+) -> str:
+    """Export Speed Profile data as CSV string (Task 2 / RHS-PHYS-001).
+
+    Columns: time_s, front_distance_m, speed_kmh, permissible_speed_kmh
+    Uses io.StringIO and pandas to_csv for safe, in-memory serialization.
+    """
+    df = create_speed_profile_dataframe(
+        trajectory=trajectory,
+        permissible_speed_envelope=permissible_speed_envelope,
+        track_links=track_links,
+        rolling_stock_max_speed_kmh=rolling_stock_max_speed_kmh,
+        running_direction=running_direction,
+    )
+    buffer = io.StringIO()
+    df.to_csv(buffer, index=False)
+    return buffer.getvalue()
+

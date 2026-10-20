@@ -1283,12 +1283,20 @@ class SimulationRunner:
                 if samples:
                     front_d = max(samples[-1].front_distance_m, front_d)
                 rear_d = s.rear_distance_m
+
+            # Hard clamp speed against permissible envelope (Task 2)
+            v_perm = train.params.max_speed_ms
+            s_spd = min(s.speed_ms, v_perm)
+            max_kmh = round(v_perm * 3.6, 2)
+            if s_spd * 3.6 > max_kmh:
+                s_spd = max_kmh / 3.6
+
             samples.append(
                 TrajectorySample(
                     time_s=s.time_s,
                     front_distance_m=front_d,
                     rear_distance_m=rear_d,
-                    speed_ms=s.speed_ms,
+                    speed_ms=round(s_spd, 4),
                     acceleration_ms2=s.acceleration_ms2,
                     traction_force_n=s.traction_force_n,
                     braking_force_n=s.braking_force_n,

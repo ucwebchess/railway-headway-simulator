@@ -30,7 +30,7 @@ def create_blocking_stairway_figure(
     title: str = "Blocking-Time Stairway Diagram & Critical Conflict",
     blocking_intervals: Optional[Sequence[ResourceBlockingInterval]] = None,
 ) -> go.Figure:
-    """P13-BTS-001 to 007: Generate interactive Plotly blocking stairway with shifted follower."""
+    """P13-BTS-001 to 007 & Task 1: Generate UIC 406 continuous blocking stairway along physical distance (km) with inverted time axis."""
     fig = go.Figure()
 
     running_dir = headway_result.running_direction
@@ -41,103 +41,178 @@ def create_blocking_stairway_figure(
     )
     shift_s = headway_result.headway_s
 
-    controlling_res_ids = {c.leader_resource_id for c in headway_result.controlling_conflicts}
+    controlling_res_ids = {c.leader_resource_id for c in (headway_result.controlling_conflicts or [])}
 
-    # Distinct resources in route order (filtering follower if both are present in intervals)
-    resource_order = []
+    # Distinct leader intervals in route order
     seen = set()
     leader_intervals = []
     for bi in intervals:
         if getattr(bi, "train_id", None) == "TRN_FOLLOWER":
             continue
         if bi.resource_id not in seen:
-            resource_order.append(bi.resource_id)
             seen.add(bi.resource_id)
             leader_intervals.append(bi)
 
     if not leader_intervals:
         leader_intervals = list(intervals)
-        for bi in intervals:
-            if bi.resource_id not in seen:
-                resource_order.append(bi.resource_id)
-                seen.add(bi.resource_id)
 
+    # In REVERSE running direction, resources are traversed in reverse physical order if needed
     if running_dir == RunningDirection.REVERSE:
-        resource_order = list(reversed(resource_order))
+        has_offsets = any(bi.physical_start_offset_m is not None for bi in leader_intervals)
+        if has_offsets and len(leader_intervals) > 1:
+            leader_intervals.sort(key=lambda b: (b.physical_start_offset_m or 0.0), reverse=True)
 
-    # 1. Leader blocking intervals
-    for bi in leader_intervals:
+    # Build continuous distance array in km
+    x_starts_km = []
+    widths_km = []
+    durations_s = []
+    leader_starts_s = []
+    follower_starts_s = []
+
+    leader_colors = []
+    leader_line_colors = []
+    leader_line_widths = []
+
+    follower_colors = []
+    follower_line_colors = []
+    follower_line_widths = []
+
+    leader_customdata = []
+    follower_customdata = []
+
+    cum_dist_km = 0.0
+
+    for idx, bi in enumerate(leader_intervals):
+        if bi.physical_start_offset_m is not None and bi.physical_end_offset_m is not None:
+            s_m = float(bi.physical_start_offset_m)
+            e_m = float(bi.physical_end_offset_m)
+            start_km = round(min(s_m, e_m) / 1000.0, 3)
+            end_km = round(max(s_m, e_m) / 1000.0, 3)
+            w_km = max(0.05, round(end_km - start_km, 3))
+        else:
+            start_km = round(cum_dist_km, 3)
+            w_km = 1.0
+            end_km = start_km + w_km
+            cum_dist_km += w_km
+
+        dur = round(bi.duration_s, 2)
+        start_t = round(bi.start_time_s, 2)
+        end_t = round(bi.end_time_s, 2)
+        shifted_start_t = round(start_t + shift_s, 2)
+        shifted_end_t = round(shifted_start_t + dur, 2)
+
         is_controlling = bi.resource_id in controlling_res_ids
-        color = ChartColors.CONTROLLING_BORDER if is_controlling else ChartColors.LEADER_TRAIN
-        opacity = 0.85 if is_controlling else 0.55
 
         d = bi.decomposition
         setup = d.setup_time_s if d else 0.0
         appr = d.approach_time_s if d else 0.0
         rel = d.release_time_s if d else 0.0
 
-        # Vertical bar spanning time from start_time to end_time
-        fig.add_trace(
-            go.Bar(
-                name="Leader Block",
-                x=[bi.resource_id],
-                y=[bi.duration_s],
-                base=[bi.start_time_s],
-                orientation="v",
-                customdata=[[setup, appr, rel]],
-                marker=dict(
-                    color=color,
-                    opacity=opacity,
-                    line=dict(color=ChartColors.PRIMARY_NAVY, width=1.5 if is_controlling else 0.5),
-                ),
-                hovertemplate=(
-                    f"<b>Leader Train ({headway_result.leader_service_id})</b><br>"
-                    f"Resource: {bi.resource_id}<br>"
-                    f"Start: {bi.start_time_s:.1f} s<br>"
-                    f"End: {bi.end_time_s:.1f} s<br>"
-                    f"Duration: {bi.duration_s:.1f} s<br>"
-                    f"Setup: {setup:.1f} s | Approach: {appr:.1f} s | Release: {rel:.1f} s<extra></extra>"
-                ),
-                showlegend=(bi == leader_intervals[0]),
-            )
+        x_starts_km.append(start_km)
+        widths_km.append(w_km)
+        durations_s.append(dur)
+        leader_starts_s.append(start_t)
+        follower_starts_s.append(shifted_start_t)
+
+        # Leader styling
+        if is_controlling:
+            leader_colors.append(ChartColors.CONTROLLING_BORDER)
+            leader_line_colors.append(ChartColors.PRIMARY_NAVY)
+            leader_line_widths.append(2.0)
+        else:
+            leader_colors.append(ChartColors.LEADER_TRAIN)
+            leader_line_colors.append(ChartColors.PRIMARY_NAVY)
+            leader_line_widths.append(0.75)
+
+        # Follower styling
+        if is_controlling:
+            follower_colors.append(ChartColors.CRITICAL_RED)
+            follower_line_colors.append(ChartColors.CRITICAL_RED)
+            follower_line_widths.append(2.0)
+        else:
+            follower_colors.append(ChartColors.FOLLOWER_TRAIN)
+            follower_line_colors.append(ChartColors.FOLLOWER_TRAIN)
+            follower_line_widths.append(0.75)
+
+        leader_customdata.append([
+            bi.resource_id,
+            start_km,
+            end_km,
+            start_t,
+            end_t,
+            dur,
+            round(setup, 1),
+            round(appr, 1),
+            round(rel, 1),
+            "CONTROLLING BOTTLENECK" if is_controlling else "Normal",
+        ])
+
+        follower_customdata.append([
+            bi.resource_id,
+            start_km,
+            end_km,
+            shifted_start_t,
+            shifted_end_t,
+            dur,
+            round(setup, 1),
+            round(appr, 1),
+            round(rel, 1),
+            "CONTROLLING BOTTLENECK" if is_controlling else "Normal",
+        ])
+
+    # 1. Leader Train blocking stairway trace
+    fig.add_trace(
+        go.Bar(
+            name=f"Leader Train ({headway_result.leader_service_id})",
+            x=x_starts_km,
+            width=widths_km,
+            y=durations_s,
+            base=leader_starts_s,
+            offset=0,
+            opacity=0.65,
+            marker=dict(
+                color=leader_colors,
+                line=dict(color=leader_line_colors, width=leader_line_widths),
+            ),
+            customdata=leader_customdata,
+            hovertemplate=(
+                f"<b>Leader Train ({headway_result.leader_service_id})</b><br>"
+                "Resource: %{customdata[0]} (%{customdata[9]})<br>"
+                "Chainage: %{customdata[1]:.3f} km – %{customdata[2]:.3f} km<br>"
+                "Start: %{customdata[3]:.1f} s<br>"
+                "End: %{customdata[4]:.1f} s<br>"
+                "Duration: %{customdata[5]:.1f} s<br>"
+                "Setup: %{customdata[6]:.1f} s | Approach: %{customdata[7]:.1f} s | Release: %{customdata[8]:.1f} s<extra></extra>"
+            ),
         )
+    )
 
-    # 2. Shifted Follower blocking intervals
-    for bi in leader_intervals:
-        shifted_start = bi.start_time_s + shift_s
-        is_controlling = bi.resource_id in controlling_res_ids
-        color = ChartColors.CRITICAL_RED if is_controlling else ChartColors.FOLLOWER_TRAIN
-        opacity = 0.85 if is_controlling else 0.45
-
-        d = bi.decomposition
-        setup = d.setup_time_s if d else 0.0
-        appr = d.approach_time_s if d else 0.0
-        rel = d.release_time_s if d else 0.0
-
-        fig.add_trace(
-            go.Bar(
-                name="Shifted Follower Block",
-                x=[bi.resource_id],
-                y=[bi.duration_s],
-                base=[shifted_start],
-                orientation="v",
-                customdata=[[setup, appr, rel]],
-                marker=dict(
-                    color=color,
-                    opacity=opacity,
-                    line=dict(color=ChartColors.CRITICAL_RED, width=1.5 if is_controlling else 0.5),
-                ),
-                hovertemplate=(
-                    f"<b>Follower Train ({headway_result.follower_service_id}) [Shifted +{shift_s:.1f}s]</b><br>"
-                    f"Resource: {bi.resource_id}<br>"
-                    f"Start: {shifted_start:.1f} s<br>"
-                    f"End: {(shifted_start + bi.duration_s):.1f} s<br>"
-                    f"Duration: {bi.duration_s:.1f} s<br>"
-                    f"Setup: {setup:.1f} s | Approach: {appr:.1f} s | Release: {rel:.1f} s<extra></extra>"
-                ),
-                showlegend=(bi == leader_intervals[0]),
-            )
+    # 2. Shifted Follower Train blocking stairway trace
+    fig.add_trace(
+        go.Bar(
+            name=f"Follower Train ({headway_result.follower_service_id}) [Shifted +{shift_s:.1f}s]",
+            x=x_starts_km,
+            width=widths_km,
+            y=durations_s,
+            base=follower_starts_s,
+            offset=0,
+            opacity=0.55,
+            marker=dict(
+                color=follower_colors,
+                line=dict(color=follower_line_colors, width=follower_line_widths),
+            ),
+            customdata=follower_customdata,
+            hovertemplate=(
+                f"<b>Follower Train ({headway_result.follower_service_id}) [Shifted +{shift_s:.1f}s]</b><br>"
+                "Resource: %{customdata[0]} (%{customdata[9]})<br>"
+                "Chainage: %{customdata[1]:.3f} km – %{customdata[2]:.3f} km<br>"
+                "Start: %{customdata[3]:.1f} s<br>"
+                "End: %{customdata[4]:.1f} s<br>"
+                "Duration: %{customdata[5]:.1f} s<br>"
+                "Setup: %{customdata[6]:.1f} s | Approach: %{customdata[7]:.1f} s | Release: %{customdata[8]:.1f} s<extra></extra>"
+            ),
         )
+    )
 
     # Annotate critical headway shift
     bn_desc = headway_result.controlling_bottleneck_description
@@ -148,16 +223,14 @@ def create_blocking_stairway_figure(
 
     layout = get_plotly_layout(
         title=title,
-        xaxis_title="Signalling Block Resource",
+        xaxis_title="Route Distance (km)",
         yaxis_title="Time [s]",
         running_direction=running_dir,
         barmode="overlay",
-        width=max(800, len(resource_order) * 45 + 200),
         height=550,
     )
     fig.update_layout(layout)
-    fig.update_xaxes(categoryorder="array", categoryarray=resource_order)
-    fig.update_yaxes(categoryarray=resource_order)
+    fig.update_yaxes(autorange="reversed")
 
     fig.add_annotation(
         text=hw_annotation,

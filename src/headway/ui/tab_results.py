@@ -15,7 +15,11 @@ from headway.reporting.charts_blocking import create_blocking_stairway_figure, c
 from headway.reporting.charts_capacity import create_block_sensitivity_figure
 from headway.reporting.charts_headway import create_mixed_traffic_heatmap, create_time_distance_figure
 from headway.reporting.charts_scenario import create_bottleneck_migration_figure, create_scenario_kpi_comparison_figure
-from headway.reporting.charts_speed import create_speed_distance_figure, create_track_alignment_combined_figure
+from headway.reporting.charts_speed import (
+    create_speed_distance_figure,
+    create_track_alignment_combined_figure,
+    generate_speed_profile_csv,
+)
 from headway.reporting.charts_station import create_platform_occupation_figure
 from headway.reporting.charts_stochastic import create_stochastic_histogram_figure
 from headway.reporting.charts_tvs import create_tvs_occupation_figure
@@ -53,6 +57,7 @@ def create_results_tab() -> Dict[str, Any]:
             components["btn_refresh_results"] = gr.Button("🔄 Refresh Results from Last Run", variant="primary")
             components["export_xlsx_btn"] = gr.Button("📊 Export Results to Excel (.xlsx)", variant="secondary")
             components["export_json_btn"] = gr.Button("📑 Export Results to JSON (.json)", variant="secondary")
+            components["export_speed_csv_btn"] = gr.Button("📈 Export Speed Profile CSV (.csv)", variant="secondary")
 
         components["export_file_download"] = gr.HTML(label="Export File Download Ready", visible=False)
 
@@ -368,6 +373,34 @@ def create_results_tab() -> Dict[str, Any]:
 
     components["export_json_btn"].click(
         fn=export_json_results,
+        inputs=[],
+        outputs=[components["export_file_download"]],
+    )
+
+    def export_speed_csv_results() -> Any:
+        pkg = session_state.latest_result_package
+        if not pkg or not pkg.trajectories:
+            return gr.update(value="<div style='color: #DC2626;'>No trajectory results available to export.</div>", visible=True)
+        primary_traj = next(iter(pkg.trajectories.values()))
+        env = pkg.metadata.get("permissible_speed_envelope") if pkg.metadata else None
+        track_links = pkg.metadata.get("track_links") if pkg.metadata else None
+        csv_str = generate_speed_profile_csv(
+            primary_traj,
+            permissible_speed_envelope=env,
+            track_links=track_links,
+            running_direction=session_state.selected_running_direction,
+        )
+        out_dir = Path(session_state.reports_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"Speed_Profile_{pkg.run_id}_{primary_traj.train_id}.csv"
+        out_path.write_text(csv_str, encoding="utf-8")
+        download_html = FileManager.create_base64_download_link(
+            out_path, label=f"Download Speed Profile CSV ({out_path.name})"
+        )
+        return gr.update(value=download_html, visible=True)
+
+    components["export_speed_csv_btn"].click(
+        fn=export_speed_csv_results,
         inputs=[],
         outputs=[components["export_file_download"]],
     )
