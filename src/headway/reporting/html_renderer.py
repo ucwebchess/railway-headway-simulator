@@ -204,10 +204,11 @@ class HtmlReportRenderer:
 
             # Callout boxes
             for cb in s.callout_boxes:
+                body_content = cb.get("html") or html.escape(cb.get("text", ""))
                 html_parts.append(f"""
                 <div class='callout-box'>
                     <div class='callout-title'>{html.escape(cb.get('title', 'Note'))}</div>
-                    <div class='callout-body'>{html.escape(cb.get('text', ''))}</div>
+                    <div class='callout-body'>{body_content}</div>
                 </div>
                 """)
 

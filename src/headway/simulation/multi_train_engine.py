@@ -424,7 +424,7 @@ class MultiTrainSimulator:
         v_brake_sq = 2.0 * b_service * dist_to_eoa
         v_brake_limit = math.sqrt(max(0.0, v_brake_sq))
 
-        # Permissible line speed
+        # Permissible line speed (Task 2 / RHS-PHYS-001)
         v_line_limit = train.params.max_speed_ms
         v_target = min(v_line_limit, v_brake_limit)
 
@@ -501,6 +501,11 @@ class MultiTrainSimulator:
                 train.dynamic_mode = DynamicMode.SERVICE_BRAKING
                 train.operational_state = OperationalState.RUNNING
                 target_dec = train.params.max_service_deceleration_ms2 * train.performance_factor
+            elif curr_v >= v_line_limit:
+                train.dynamic_mode = DynamicMode.CRUISING
+                train.operational_state = OperationalState.RUNNING
+                # At the limit, traction force drops to zero (Task 2 / RHS-PHYS-001)
+                tract_n = 0.0
             elif curr_v >= v_line_limit - 0.05:
                 train.dynamic_mode = DynamicMode.CRUISING
                 train.operational_state = OperationalState.RUNNING
@@ -528,10 +533,14 @@ class MultiTrainSimulator:
                 new_s = curr_s + curr_v * dt + 0.5 * a_req * (dt ** 2)
                 new_v = max(0.0, curr_v + a_req * dt)
 
-            # Guard: cap against controller overshoot beyond permissible line limit
-            tolerance = 1e-4
-            if new_v > v_line_limit + tolerance:
-                new_v = v_line_limit
+            # Hard clamp: simulated speed must never exceed permissible speed envelope (Task 2 / RHS-PHYS-001)
+            v_permissible = v_line_limit
+            new_v = min(new_v, v_permissible)
+
+            # Strict guard against floating point overshoot in km/h
+            max_kmh = round(v_permissible * 3.6, 2)
+            if new_v * 3.6 > max_kmh:
+                new_v = max_kmh / 3.6
 
             if eoa_m < route_len and new_s >= eoa_m:
                 new_s = max(0.0, eoa_m - 0.1)
@@ -642,13 +651,20 @@ class MultiTrainSimulator:
             if train.operational_state == OperationalState.STANDSTILL and train.actual_departure_time_s is None:
                 continue
 
+            # Hard clamp speed in recorded samples against permissible line limit (Task 2)
+            v_perm = train.params.max_speed_ms
+            rec_speed = min(train.current_speed_ms, v_perm)
+            max_kmh = round(v_perm * 3.6, 2)
+            if rec_speed * 3.6 > max_kmh:
+                rec_speed = max_kmh / 3.6
+
             # Record TrajectorySample
             train.trajectory_samples.append(
                 TrajectorySample(
                     time_s=round(self.current_time_s, 3),
                     front_distance_m=round(train.current_position_m, 2),
                     rear_distance_m=round(train.rear_position_m, 2),
-                    speed_ms=round(train.current_speed_ms, 3),
+                    speed_ms=round(rec_speed, 4),
                     acceleration_ms2=round(train.current_acceleration_ms2, 3),
                     traction_force_n=0.0,
                     braking_force_n=0.0,
@@ -671,8 +687,8 @@ class MultiTrainSimulator:
                     time_s=round(self.current_time_s, 3),
                     route_distance_m=round(train.current_position_m, 2),
                     physical_chainage_m=None,
-                    speed_ms=round(train.current_speed_ms, 3),
-                    speed_kmh=round(train.current_speed_ms * 3.6, 2),
+                    speed_ms=round(rec_speed, 4),
+                    speed_kmh=round(rec_speed * 3.6, 2),
                     operational_state=train.operational_state,
                     accumulated_delay_s=round(sum(train.accumulated_delay_by_cause.values()), 2),
                 )

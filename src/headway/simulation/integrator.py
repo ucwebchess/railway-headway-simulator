@@ -281,8 +281,13 @@ class MicroscopicSimulator:
                 cur_mode = DynamicMode.SERVICE_BRAKING
                 cur_op = OperationalState.RUNNING
                 target_dec = self.params.max_service_deceleration_ms2 * self.performance_factor
+            elif cur_v >= v_limit:
+                # At/above permissible speed limit: traction force drops to zero (Task 2 / RHS-PHYS-001)
+                cur_mode = DynamicMode.CRUISING
+                cur_op = OperationalState.RUNNING
+                tract_n = 0.0
             elif cur_v >= v_limit - 0.05:
-                # Cruising at permissible speed limit
+                # Cruising near permissible speed limit: balance resistance
                 cur_mode = DynamicMode.CRUISING
                 cur_op = OperationalState.RUNNING
                 tract_n = max(0.0, res_eval.total_resistance_n)
@@ -310,6 +315,13 @@ class MicroscopicSimulator:
             else:
                 s_next = cur_s + cur_v * step_dt + 0.5 * a * (step_dt ** 2)
                 v_next = max(0.0, cur_v + a * step_dt)
+
+            # Hard clamp: simulated speed must never exceed permissible speed envelope (Task 2 / RHS-PHYS-001)
+            v_permissible = min(v_limit, get_permissible_speed(min(route_len, s_next)))
+            v_next = min(v_next, v_permissible)
+            max_kmh = round(v_permissible * 3.6, 2)
+            if v_next * 3.6 > max_kmh:
+                v_next = max_kmh / 3.6
 
             # P04-NUM-006: Step subdivision for stop targets (stations or route end)
             for t in active_targets:
