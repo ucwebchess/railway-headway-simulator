@@ -705,6 +705,99 @@ class TestReportIntegration:
         assert categoryarray == expected_sections
         assert fig_tvs.layout.yaxis.autorange == "reversed"
 
+        # v1.8.0 Task 1: TVS chart trace text annotation check
+        annotated_traces = [t for t in fig_tvs.data if getattr(t, "text", None)]
+        assert len(annotated_traces) == 14
+        annotated_tvs_ids = [str(t.text[0]) for t in annotated_traces]
+        assert annotated_tvs_ids == [f"TVS_{i+1:02d}" for i in range(14)]
+
+    def test_tvs_capacity_impact_table(self) -> None:
+        """v1.8.0 Task 2/3: Assert TVS capacity impact table exists and calculates throughput correctly."""
+        from headway.data.canonical import ResourceInterval, TVSSection
+        from headway.reporting.report_models import ReportSectionId
+        from headway.reporting.tables import create_tvs_capacity_table
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        # 1. Integration check on corridor pipeline
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj.infrastructure.tvs_sections = [
+            TVSSection(
+                tvs_id=f"TVS_{i+1:02d}",
+                tunnel_id="TUNNEL_01",
+                track_id="TRK_01",
+                link_intervals=[
+                    ResourceInterval(
+                        link_id=f"LNK_{180 + i * 3 + k:04d}",
+                        start_offset_m=0.0,
+                        end_offset_m=313.0,
+                    )
+                    for k in range(3)
+                ],
+                release_delay_s=15.0,
+            )
+            for i in range(14)
+        ]
+
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+        sec_tvs = doc.get_section(ReportSectionId.TVS_ASSESSMENT)
+        assert sec_tvs is not None
+        assert sec_tvs.is_applicable
+
+        # Verify capacity table exists in Section 13
+        cap_tbls = [t for t in sec_tvs.tables if t.table_id == "TBL_TVS_CAPACITY"]
+        assert len(cap_tbls) == 1
+        tbl = cap_tbls[0]
+        df = tbl.raw_dataframe
+
+        # Check required columns
+        expected_cols = ["Constraint Type", "Governing Zone/Resource", "Minimum Headway (s)", "Theoretical Throughput (tph)", "Status"]
+        assert list(df.columns) == expected_cols
+
+        # Check row count (at least 2, 3 with combined)
+        assert len(df) >= 2
+        tvs_row = df[df["Constraint Type"] == "TVS Ventilation"].iloc[0]
+        sig_row = df[df["Constraint Type"] == "Signalling"].iloc[0]
+
+        # Verify TVS row metrics
+        h_tvs = float(tvs_row["Minimum Headway (s)"])
+        assert h_tvs > 0.0
+        expected_tph_tvs = round(3600.0 / h_tvs, 1)
+        assert float(tvs_row["Theoretical Throughput (tph)"]) == expected_tph_tvs
+
+        # Verify Signalling row metrics
+        h_sig = float(sig_row["Minimum Headway (s)"])
+        assert h_sig > 0.0
+        expected_tph_sig = round(3600.0 / h_sig, 1)
+        assert float(sig_row["Theoretical Throughput (tph)"]) == expected_tph_sig
+
+        # Signalling headway (244.0s) > TVS headway (41.3s), so Signalling governs
+        assert h_sig > h_tvs
+        assert sig_row["Status"] == "GOVERNING CONSTRAINT"
+        assert tvs_row["Status"] == "Non-Governing"
+
+        # Verify dynamic narrative in Section 13
+        narrative_text = " ".join(sec_tvs.narrative_paragraphs)
+        assert "The TVS system imposes a minimum headway of" in narrative_text
+        assert "Because the signalling headway" in narrative_text
+        assert "non-governing under normal operations" in narrative_text
+
+        # 2. Synthetic verification of TVS-governing scenario
+        synth_tbl = create_tvs_capacity_table(
+            tvs_headway_s=300.0,
+            signalling_headway_s=180.0,
+            tvs_governing_zone="TVS_CRITICAL",
+            signalling_governing_resource="SIG_BLK_01",
+        )
+        synth_df = synth_tbl.raw_dataframe
+        synth_tvs = synth_df[synth_df["Constraint Type"] == "TVS Ventilation"].iloc[0]
+        synth_sig = synth_df[synth_df["Constraint Type"] == "Signalling"].iloc[0]
+
+        assert synth_tvs["Status"] == "GOVERNING CONSTRAINT"
+        assert synth_sig["Status"] == "Non-Governing"
+        assert float(synth_tvs["Theoretical Throughput (tph)"]) == 12.0
+        assert float(synth_sig["Theoretical Throughput (tph)"]) == 20.0
+
     def test_reporting_tvs_not_applicable_when_no_tunnels(self) -> None:
         """DEF-09: Assert Section 13 is marked not applicable when project has no tunnels or TVS sections."""
         from headway.ui.file_manager import FileManager

@@ -219,7 +219,7 @@ class TestV170ReportingPolish:
         # Section 13 (TVS Assessment)
         sec_tvs = doc.get_section(ReportSectionId.TVS_ASSESSMENT)
         assert sec_tvs.is_applicable
-        assert len(sec_tvs.tables) == 1
+        assert len(sec_tvs.tables) >= 1
         assert sec_tvs.tables[0].table_id == "TBL_TVS_ASSESSMENT"
 
         # Section 15 (Stochastic Reliability)

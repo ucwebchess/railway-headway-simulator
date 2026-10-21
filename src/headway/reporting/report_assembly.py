@@ -81,6 +81,7 @@ from headway.reporting.tables import (
     create_station_stopping_table,
     create_stochastic_headway_table,
     create_tvs_assessment_table,
+    create_tvs_capacity_table,
 )
 
 
@@ -1597,6 +1598,9 @@ class ReportAssembler:
             figures_data[fig_key] = create_tvs_occupation_figure(tvs_data, running_direction=direction)
 
         narrative_paras: List[str] = []
+        callout_boxes: List[Dict[str, str]] = []
+        tvs_tables: List[EngineeringTable] = []
+
         if is_app:
             num_zones = len(tvs_data)
             durations = [
@@ -1609,10 +1613,11 @@ class ReportAssembler:
 
             gov_event = max(
                 tvs_data,
-                key=lambda e: float(e.get("duration_s", float(e.get("exit_time_s", 0.0)) - float(e.get("entry_time_s", 0.0))))
+                key=lambda e: float(e.get("release_time_s", e.get("exit_time_s", 0.0))) - float(e.get("entry_time_s", 0.0))
             )
             gov_id = gov_event.get("tvs_id", "TVS_UNKNOWN")
             gov_dur = float(gov_event.get("duration_s", float(gov_event.get("exit_time_s", 0.0)) - float(gov_event.get("entry_time_s", 0.0))))
+            H_tvs = float(gov_event.get("release_time_s", gov_event.get("exit_time_s", 0.0))) - float(gov_event.get("entry_time_s", 0.0))
             gov_start_km = float(gov_event.get("start_chainage_m", 0.0)) / 1000.0
             gov_end_km = float(gov_event.get("end_chainage_m", 0.0)) / 1000.0
             gov_len_m = float(gov_event.get("length_m", (gov_end_km - gov_start_km) * 1000.0))
@@ -1624,18 +1629,34 @@ class ReportAssembler:
             total_tunnel_len_km = sum(float(e.get("length_m", 0.0)) for e in tvs_data) / 1000.0
 
             primary_hw = next(iter(package.headway_results.values())) if package.headway_results else None
-            sig_hw_s = float(getattr(primary_hw, "headway_s", 244.0)) if primary_hw else 244.0
+            meta = package.metadata or {}
+            H_sig_val = meta.get("technical_minimum_headway_s")
+            if H_sig_val is not None:
+                H_sig = float(H_sig_val)
+            elif primary_hw is not None:
+                H_sig = float(getattr(primary_hw, "headway_s", 244.0))
+            else:
+                H_sig = 244.0
 
-            if gov_dur <= sig_hw_s:
+            gov_sig = meta.get("controlling_bottleneck_id")
+            if not gov_sig and primary_hw and primary_hw.controlling_conflicts:
+                gov_sig = primary_hw.controlling_conflicts[0].leader_resource_id
+            if not gov_sig:
+                gov_sig = "Signalling Bottleneck"
+
+            H_eff = max(H_tvs, H_sig)
+            throughput = round(3600.0 / H_eff, 1) if H_eff > 0 else 0.0
+
+            if gov_dur <= H_sig:
                 comparison_verdict = (
                     f"The governing TVS clearance duration of {gov_dur:.1f} s is substantially shorter than "
-                    f"the technical signalling line headway of {sig_hw_s:.1f} s (slack margin: {sig_hw_s - gov_dur:.1f} s). "
+                    f"the technical signalling line headway of {H_sig:.1f} s (slack margin: {H_sig - gov_dur:.1f} s). "
                     f"Consequently, the single-train TVS rule is non-governing and fully absorbed within nominal signalling headway."
                 )
             else:
                 comparison_verdict = (
-                    f"The governing TVS clearance duration of {gov_dur:.1f} s exceeds the technical signalling headway of {sig_hw_s:.1f} s "
-                    f"(deficit: {gov_dur - sig_hw_s:.1f} s). Under emergency single-train restrictions, TVS clearance governs line throughput."
+                    f"The governing TVS clearance duration of {gov_dur:.1f} s exceeds the technical signalling headway of {H_sig:.1f} s "
+                    f"(deficit: {gov_dur - H_sig:.1f} s). Under emergency single-train restrictions, TVS clearance governs line throughput."
                 )
 
             p1 = (
@@ -1654,15 +1675,42 @@ class ReportAssembler:
                 f"with a peak occupation duration of {gov_dur:.1f} s. {comparison_verdict}"
             )
             narrative_paras = [p1, p2, p3]
+
+            # Dynamic narrative beneath table
+            if H_tvs > H_sig:
+                dyn_narrative = (
+                    f"**WARNING:** The TVS ventilation requirements impose a minimum headway of {H_tvs:.1f} s, "
+                    f"which exceeds the signalling headway ({H_sig:.1f} s). Under emergency single-train restrictions, "
+                    f"TVS clearance becomes the governing constraint, limiting line capacity to {throughput} trains/hour."
+                )
+            else:
+                dyn_narrative = (
+                    f"The TVS system imposes a minimum headway of {H_tvs:.1f} s. "
+                    f"Because the signalling headway ({H_sig:.1f} s) is larger, "
+                    f"the TVS zones are non-governing under normal operations."
+                )
+            narrative_paras.append(dyn_narrative)
+
+            callout_boxes.append({
+                "title": "TVS Operational Capacity Assessment",
+                "text": dyn_narrative,
+            })
+
+            tvs_tables.append(create_tvs_assessment_table(tvs_data, running_direction=direction))
+            tvs_tables.append(
+                create_tvs_capacity_table(
+                    tvs_headway_s=H_tvs,
+                    signalling_headway_s=H_sig,
+                    tvs_governing_zone=gov_id,
+                    signalling_governing_resource=gov_sig,
+                    running_direction=direction,
+                )
+            )
         else:
             narrative_paras = [
                 "Evaluates emergency tunnel ventilation zone restrictions enforcing the single-train rule invariant. "
                 "Compares signalling technical headway against TVS clearance times to determine governing tunnel constraints.",
             ]
-
-        tvs_tables: List[EngineeringTable] = []
-        if is_app and tvs_data:
-            tvs_tables.append(create_tvs_assessment_table(tvs_data, running_direction=direction))
 
         return ReportSection(
             section_id=ReportSectionId.TVS_ASSESSMENT,
@@ -1675,6 +1723,7 @@ class ReportAssembler:
                 else None
             ),
             narrative_paragraphs=narrative_paras,
+            callout_boxes=callout_boxes,
             tables=tvs_tables,
             figure_keys=[fig_key] if is_app else [],
         )

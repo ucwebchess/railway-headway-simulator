@@ -83,6 +83,9 @@ def create_tvs_occupation_figure(
 
         # 2. In-Tunnel Occupancy
         occ_dur = max(0.0, exit_s - entry_s)
+        rel_dur = max(0.0, release_s - exit_s)
+        has_release = rel_dur > 0
+
         fig.add_trace(
             go.Bar(
                 name="TVS In-Tunnel Physical Occupation",
@@ -90,6 +93,10 @@ def create_tvs_occupation_figure(
                 y=[tvs_id],
                 base=[entry_s],
                 orientation="h",
+                text=[tvs_id] if not has_release else None,
+                textposition="outside" if not has_release else None,
+                textfont=dict(size=10, color=ChartColors.PRIMARY_NAVY) if not has_release else None,
+                cliponaxis=False,
                 marker=dict(color=ChartColors.SECONDARY_BLUE),
                 hovertemplate=(
                     f"<b>Train: {train_id}</b><br>"
@@ -103,8 +110,7 @@ def create_tvs_occupation_figure(
         )
 
         # 3. Post-Clearance TVS Release Delay Timer
-        rel_dur = max(0.0, release_s - exit_s)
-        if rel_dur > 0:
+        if has_release:
             fig.add_trace(
                 go.Bar(
                     name="TVS Post-Clearance Release Delay",
@@ -112,6 +118,10 @@ def create_tvs_occupation_figure(
                     y=[tvs_id],
                     base=[exit_s],
                     orientation="h",
+                    text=[tvs_id],
+                    textposition="outside",
+                    textfont=dict(size=10, color=ChartColors.PRIMARY_NAVY),
+                    cliponaxis=False,
                     marker=dict(color=ChartColors.COMPONENT_RELEASE),
                     hovertemplate=f"TVS Release Timer: {rel_dur:.1f} s<br>Full Release: {release_s:.1f} s<extra></extra>",
                     showlegend=(idx == 0),
