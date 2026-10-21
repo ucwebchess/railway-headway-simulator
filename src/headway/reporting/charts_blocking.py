@@ -56,11 +56,8 @@ def create_blocking_stairway_figure(
     if not leader_intervals:
         leader_intervals = list(intervals)
 
-    # In REVERSE running direction, resources are traversed in reverse physical order if needed
-    if running_dir == RunningDirection.REVERSE:
-        has_offsets = any(bi.physical_start_offset_m is not None for bi in leader_intervals)
-        if has_offsets and len(leader_intervals) > 1:
-            leader_intervals.sort(key=lambda b: (b.physical_start_offset_m or 0.0), reverse=True)
+    # Ensure leader intervals are sorted in chronological order of occupation
+    leader_intervals.sort(key=lambda b: (b.start_time_s, b.resource_id))
 
     # Build continuous distance array in km
     x_starts_km = []
@@ -231,6 +228,8 @@ def create_blocking_stairway_figure(
     )
     fig.update_layout(layout)
     fig.update_yaxes(autorange="reversed")
+    if running_dir == RunningDirection.REVERSE:
+        fig.update_xaxes(autorange="reversed")
 
     fig.add_annotation(
         text=hw_annotation,

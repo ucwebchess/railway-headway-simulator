@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.2] — 2026-10-21
+
+### Fixed
+- **Forward Trajectory Station Stops (Task 1)**: Corrected station dwell registration and deceleration braking curves so all 5 stations (including `STN_ADS` at 4.4 km) are properly stopped at in the Forward direction.
+- **Reverse Trajectory Direction & Mirrored Stops (Task 2)**: Aligned reverse trajectory simulation so stations and chainages are correctly mirrored from origin to destination across reverse operations.
+- **Reverse Stairway Diagram Orientation (Task 3)**: Fixed Y-axis time direction and X-axis distance mapping in blocking stairway charts so time consistently increases downwards.
+
+---
+
 ## [1.8.1] — 2026-10-21
 
 ### Fixed

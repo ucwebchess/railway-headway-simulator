@@ -56,6 +56,15 @@ def hsr_sim_results(hsr_project):
     )
 
 
+@pytest.fixture(scope="module")
+def hsr_rev_sim_results(hsr_project):
+    """Run full simulation pipeline once on Example 07 in REVERSE direction."""
+    return SimulationRunner.run_simulation_pipeline(
+        project=hsr_project,
+        running_direction=RunningDirection.REVERSE,
+    )
+
+
 class TestSimulationRunnerE2E:
     """Comprehensive end-to-end validation suite for SimulationRunner microscopic engine."""
 
@@ -575,5 +584,138 @@ class TestSimulationRunnerE2E:
                 running_direction=RunningDirection.FORWARD,
             )
         assert "ERR_HEADWAY_INFEASIBLE" in str(exc_info.value)
+
+    def test_def14_forward_trajectory_has_exactly_five_dwells(self, hsr_sim_results):
+        """DEF-14 Task 1/4: Assert Forward simulation on 140 km corridor has exactly 5 dwell periods."""
+        pkg, doc = hsr_sim_results
+        traj = pkg.trajectories["TRN_LEADER"]
+        assert traj is not None
+        assert len(traj.samples) > 0
+
+        dwell_events = [
+            e for e in getattr(traj, "events", [])
+            if "STATION_ARRIVED" in str(getattr(e.event_type, "value", e.event_type))
+        ]
+        assert len(dwell_events) == 5, f"Expected 5 station arrived events, got {len(dwell_events)}"
+
+        zero_samples = [s for s in traj.samples if s.speed_ms == 0.0]
+        clusters = []
+        for s in zero_samples:
+            if s.front_distance_m >= 139999.0 or s.time_s == 0.0:
+                continue
+            if not clusters or abs(s.front_distance_m - clusters[-1][-1].front_distance_m) > 50.0:
+                clusters.append([s])
+            else:
+                clusters[-1].append(s)
+
+        assert len(clusters) == 5, f"Expected exactly 5 distinct station dwell clusters in forward run, got {len(clusters)}"
+        for c in clusters:
+            dwell_duration = c[-1].time_s - c[0].time_s
+            assert dwell_duration >= 60.0, f"Dwell cluster at {c[0].front_distance_m}m lasted {dwell_duration}s < 60s"
+
+    def test_def14_reverse_trajectory_has_five_dwells_and_mirrored_chainage(self, hsr_rev_sim_results):
+        """DEF-14 Task 2/4: Assert Reverse simulation on 140 km corridor has 5 dwells, monotonic decrease 140k -> 0m."""
+        pkg, doc = hsr_rev_sim_results
+        traj = pkg.trajectories["TRN_LEADER"]
+        assert traj is not None
+        assert len(traj.samples) > 0
+
+        # 1. Assert distance begins at physical end (140,000m) and ends at physical start (0m)
+        assert traj.samples[0].front_distance_m == pytest.approx(140000.0, abs=100.0)
+        assert traj.samples[-1].front_distance_m == pytest.approx(0.0, abs=50.0)
+
+        # 2. Assert monotonic distance decrease
+        for i in range(len(traj.samples) - 1):
+            assert traj.samples[i].front_distance_m >= traj.samples[i + 1].front_distance_m, (
+                f"Non-monotonic decrease at index {i}: {traj.samples[i].front_distance_m} < {traj.samples[i+1].front_distance_m}"
+            )
+
+        # 3. Assert exactly 5 dwell periods
+        dwell_events = [
+            e for e in getattr(traj, "events", [])
+            if "STATION_ARRIVED" in str(getattr(e.event_type, "value", e.event_type))
+        ]
+        assert len(dwell_events) == 5, f"Expected 5 station arrived events in reverse, got {len(dwell_events)}"
+
+        zero_samples = [s for s in traj.samples if s.speed_ms == 0.0]
+        clusters = []
+        for s in zero_samples:
+            if s.front_distance_m <= 1.0 or s.time_s == 0.0:
+                continue
+            if not clusters or abs(s.front_distance_m - clusters[-1][-1].front_distance_m) > 50.0:
+                clusters.append([s])
+            else:
+                clusters[-1].append(s)
+
+        assert len(clusters) == 5, f"Expected exactly 5 distinct station dwell clusters in reverse run, got {len(clusters)}"
+        for c in clusters:
+            dwell_duration = c[-1].time_s - c[0].time_s
+            assert dwell_duration >= 60.0, f"Dwell cluster at {c[0].front_distance_m}m lasted {dwell_duration}s < 60s"
+
+    def test_def14_reverse_stairway_chart_y_axis_and_x_axis(self, hsr_rev_sim_results):
+        """DEF-14 Task 3/4: Assert Reverse Stairway chart has time increasing from 0 to max, 0 at top."""
+        from headway.reporting.charts_blocking import create_blocking_stairway_figure
+
+        pkg, doc = hsr_rev_sim_results
+        hw = next(iter(pkg.headway_results.values()))
+        fig = create_blocking_stairway_figure(hw)
+
+        assert fig.layout.yaxis.autorange == "reversed"
+        assert fig.layout.xaxis.autorange == "reversed"
+
+        leader_trace = next(t for t in fig.data if "Leader" in t.name)
+        assert len(leader_trace.base) > 0
+        start_times = [float(b) for b in leader_trace.base]
+        assert start_times[0] <= 10.0
+        assert start_times[-1] > 2000.0
+        for i in range(len(start_times) - 1):
+            assert start_times[i] <= start_times[i + 1]
+
+    def test_def14_user_corridor_with_stn_ads_five_dwells_forward_and_reverse(self, hsr_project):
+        """DEF-14 Task 1/2: Verify user corridor with STN_ADS (4.4km), STN_YAS (24.21km), STN_MKT (101.79km)."""
+        from headway.data.canonical import Station, Platform, StationStop
+
+        p = copy.deepcopy(hsr_project)
+        p.infrastructure.stations = [
+            Station(station_id="STN_ADR", name="Al-Dar Station", chainage_km=0.47),
+            Station(station_id="STN_ADS", name="Al-Dar South Station", chainage_km=4.4),
+            Station(station_id="STN_YAS", name="Yas Station", chainage_km=24.21),
+            Station(station_id="STN_MKT", name="Makkah Terminus", chainage_km=101.79),
+            Station(station_id="STN_DJD", name="Al-Djeddah Station", chainage_km=139.25),
+        ]
+        p.infrastructure.platforms = [
+            Platform(platform_id="PLT_ADR", station_id="STN_ADR", link_id="LNK_0002", start_offset_m=50.0, end_offset_m=300.0, length_m=250.0),
+            Platform(platform_id="PLT_ADS", station_id="STN_ADS", link_id="LNK_0015", start_offset_m=15.0, end_offset_m=265.0, length_m=250.0),
+            Platform(platform_id="PLT_YAS", station_id="STN_YAS", link_id="LNK_0078", start_offset_m=10.0, end_offset_m=260.0, length_m=250.0),
+            Platform(platform_id="PLT_MKT", station_id="STN_MKT", link_id="LNK_0326", start_offset_m=10.0, end_offset_m=260.0, length_m=250.0),
+            Platform(platform_id="PLT_DJD", station_id="STN_DJD", link_id="LNK_0445", start_offset_m=50.0, end_offset_m=300.0, length_m=250.0),
+        ]
+        p.operations.service_patterns[0].stops = [
+            StationStop(station_id="STN_ADR", platform_id="PLT_ADR", dwell_time_s=120.0, min_dwell_s=60.0),
+            StationStop(station_id="STN_ADS", platform_id="PLT_ADS", dwell_time_s=120.0, min_dwell_s=60.0),
+            StationStop(station_id="STN_YAS", platform_id="PLT_YAS", dwell_time_s=120.0, min_dwell_s=60.0),
+            StationStop(station_id="STN_MKT", platform_id="PLT_MKT", dwell_time_s=120.0, min_dwell_s=60.0),
+            StationStop(station_id="STN_DJD", platform_id="PLT_DJD", dwell_time_s=120.0, min_dwell_s=60.0),
+        ]
+
+        # 1. Forward run
+        pkg_fwd, _ = SimulationRunner.run_simulation_pipeline(p, RunningDirection.FORWARD)
+        traj_fwd = pkg_fwd.trajectories["TRN_LEADER"]
+        fwd_stops = [
+            e.description for e in getattr(traj_fwd, "events", [])
+            if "STATION_ARRIVED" in str(getattr(e.event_type, "value", e.event_type))
+        ]
+        assert len(fwd_stops) == 5
+        assert any("STN_ADS" in s for s in fwd_stops), f"STN_ADS not found in forward stops: {fwd_stops}"
+
+        # 2. Reverse run
+        pkg_rev, _ = SimulationRunner.run_simulation_pipeline(p, RunningDirection.REVERSE)
+        traj_rev = pkg_rev.trajectories["TRN_LEADER"]
+        rev_stops = [
+            e.description for e in getattr(traj_rev, "events", [])
+            if "STATION_ARRIVED" in str(getattr(e.event_type, "value", e.event_type))
+        ]
+        assert len(rev_stops) == 5
+        assert any("STN_ADS" in s for s in rev_stops), f"STN_ADS not found in reverse stops: {rev_stops}"
 
 

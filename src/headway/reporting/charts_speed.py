@@ -142,7 +142,24 @@ def create_speed_distance_figure(
 
     # 3. Plot permissible speed envelope as red dashed line
     if permissible_speed_envelope:
-        env_x = [pt.get("route_distance_m", 0.0) / 1000.0 for pt in permissible_speed_envelope]
+        is_reverse = (eff_dir == RunningDirection.REVERSE)
+        traj_is_decreasing = any(
+            t.samples and len(t.samples) > 1 and t.samples[0].front_distance_m > t.samples[-1].front_distance_m
+            for t in traj_list
+        )
+        if is_reverse and traj_is_decreasing:
+            tot_d = 0.0
+            if track_links:
+                tot_d = sum(float(l.length_m) for l in track_links)
+            elif traj_list and traj_list[0].samples:
+                tot_d = max(s.front_distance_m for s in traj_list[0].samples)
+            elif permissible_speed_envelope:
+                tot_d = max(p.get("route_distance_m", 0.0) for p in permissible_speed_envelope)
+
+            env_x = [round(max(0.0, tot_d - pt.get("route_distance_m", 0.0)) / 1000.0, 4) for pt in permissible_speed_envelope]
+        else:
+            env_x = [pt.get("route_distance_m", 0.0) / 1000.0 for pt in permissible_speed_envelope]
+
         env_y = [pt.get("max_speed_kmh", 0.0) for pt in permissible_speed_envelope]
         fig.add_trace(
             go.Scatter(
@@ -202,6 +219,8 @@ def create_speed_distance_figure(
         running_direction=eff_dir,
     )
     fig.update_layout(layout)
+    if eff_dir == RunningDirection.REVERSE and traj_is_decreasing:
+        fig.update_xaxes(autorange="reversed")
     return fig
 
 
@@ -382,6 +401,20 @@ def create_speed_profile_dataframe(
         )
 
     env_pts = list(env or [])
+    is_reverse = (eff_dir == RunningDirection.REVERSE)
+    traj_is_decreasing = bool(
+        trajectory.samples
+        and len(trajectory.samples) > 1
+        and trajectory.samples[0].front_distance_m > trajectory.samples[-1].front_distance_m
+    )
+    tot_len = 0.0
+    if is_reverse and traj_is_decreasing:
+        if track_links:
+            tot_len = sum(float(l.length_m) for l in track_links)
+        elif trajectory.samples:
+            tot_len = trajectory.samples[0].front_distance_m
+        elif env_pts:
+            tot_len = max(p.get("route_distance_m", 0.0) for p in env_pts)
 
     rows = []
     for s in trajectory.samples:
@@ -390,9 +423,10 @@ def create_speed_profile_dataframe(
         v_kmh = round(float(s.speed_kmh), 2)
 
         # Lookup permissible speed at dist_m along route
+        route_lookup_d = max(0.0, tot_len - dist_m) if (is_reverse and traj_is_decreasing) else dist_m
         perm_kmh = v_kmh
         if env_pts:
-            matching = [p["max_speed_kmh"] for p in env_pts if p.get("route_distance_m", 0.0) <= dist_m + 1e-4]
+            matching = [p["max_speed_kmh"] for p in env_pts if p.get("route_distance_m", 0.0) <= route_lookup_d + 1e-4]
             if matching:
                 perm_kmh = matching[-1]
             else:
