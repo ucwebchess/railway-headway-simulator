@@ -1,18 +1,37 @@
 """Constrained Block-Length Sensitivity Analysis.
 
-Milestone P10 / RHS-P10-001 & v1.9.0:
-Evaluates line headway and capacity response across 26 discrete cases:
-['AS-BUILT', '200m', '400m', ..., '5000m'], pinned to the measured AS-BUILT baseline.
-Handles block lengths shorter than train length (202m) gracefully.
+Milestone P10 / RHS-P10-001 & v1.9.1:
+Evaluates line headway and capacity response across 16 discrete cases:
+['AS-BUILT', '25m', '50m', '75m', '100m', '150m', '200m', '400m', '600m', '800m', '1000m', '1200m', '1400m', '1600m', '1800m', '2000m'],
+pinned to the measured AS-BUILT baseline.
+Handles block lengths shorter than train length (202m) gracefully via multi-block occupancy.
 """
 
 import math
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from headway.analysis.capacity_models import (
     SensitivityPointResult,
     SensitivityStudyResult,
 )
+
+CONSTRAINED_LENGTHS_M: List[int] = [
+    25,
+    50,
+    75,
+    100,
+    150,
+    200,
+    400,
+    600,
+    800,
+    1000,
+    1200,
+    1400,
+    1600,
+    1800,
+    2000,
+]
 
 
 def calculate_block_length_sensitivity(
@@ -26,11 +45,12 @@ def calculate_block_length_sensitivity(
     baseline_block_length_m: float = 1500.0,
     study_id: str = "SENS_BLOCK_LENGTH",
     min_headway_floor_s: Optional[float] = None,
+    candidate_lengths_m: Optional[Sequence[int]] = None,
 ) -> SensitivityStudyResult:
-    """Calculate 26-case constrained block length sensitivity pinned to AS-BUILT baseline.
+    """Calculate 16-case constrained block length sensitivity pinned to AS-BUILT baseline.
 
     X-Axis cases:
-    ['AS-BUILT', '200m', '400m', '600m', ..., '5000m'] (exactly 26 cases).
+    ['AS-BUILT', '25m', '50m', '75m', '100m', '150m', '200m', '400m', '600m', '800m', '1000m', '1200m', '1400m', '1600m', '1800m', '2000m'] (exactly 16 cases).
     """
     if baseline_headway_s <= 0.0:
         baseline_headway_s = 180.0
@@ -40,7 +60,7 @@ def calculate_block_length_sensitivity(
         train_length_m = 202.0
 
     v = max(5.0, train_speed_kmh / 3.6)
-    candidate_lengths = [l * 200 for l in range(1, 26)]  # 200m to 5000m (25 values)
+    candidate_lengths = list(candidate_lengths_m) if candidate_lengths_m is not None else list(CONSTRAINED_LENGTHS_M)
 
     base_cap = round(3600.0 / baseline_headway_s, 1)
 
@@ -65,7 +85,7 @@ def calculate_block_length_sensitivity(
         )
     )
 
-    # Points 1 to 25: 200m to 5000m
+    # Candidate lengths (e.g. 25m to 2000m)
     for bl in candidate_lengths:
         # Graceful handling for bl < train_length_m (202m):
         # When bl < train_length_m, train spans multiple contiguous blocks

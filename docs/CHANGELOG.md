@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.1] — 2026-10-22
+
+### Changed
+- **Custom Block Length Sensitivity X-Axis (v1.9.1)**: Updated Section 9 constrained block-length sensitivity analysis to evaluate a focused 16-case non-linear sequence (`AS-BUILT`, 25m, 50m, 75m, 100m, 150m, 200m, 400m, 600m, 800m, 1000m, 1200m, 1400m, 1600m, 1800m, 2000m) to accurately analyze short-block behavior, sub-train-length spanning, and mid-range scaling.
+- **Sensitivity Chart Visual Alignment**: Adjusted dual Y-axis scaling and data label positioning to ensure short block length labels do not overlap.
+- **Narrative & Regression Tests**: Updated Section 9 narrative and integration test assertions for 16-case evaluation.
+
+---
+
 ## [1.9.0] — 2026-10-21
 
 ### Added

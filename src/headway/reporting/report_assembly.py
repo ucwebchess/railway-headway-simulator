@@ -1281,31 +1281,39 @@ class ReportAssembler:
             base_bn = study.baseline_bottleneck_id
 
             points = study.points or []
-            pts_vals = [
-                float(p.parameter_value)
-                for p in points
-                if hasattr(p, "parameter_value") and isinstance(p.parameter_value, (int, float))
-            ]
+            pts_vals = []
+            for p in points:
+                val = getattr(p, "parameter_value", None)
+                if isinstance(val, (int, float)):
+                    pts_vals.append(float(val))
+                elif isinstance(val, str) and val.endswith("m"):
+                    try:
+                        pts_vals.append(float(val[:-1]))
+                    except ValueError:
+                        pass
             pts_hw = [float(p.headway_s) for p in points if hasattr(p, "headway_s")]
             pts_cap = [float(p.capacity_trains_per_hour) for p in points if hasattr(p, "capacity_trains_per_hour")]
 
-            min_val = min(pts_vals) if pts_vals else base_val
-            max_val = max(pts_vals) if pts_vals else base_val
+            min_val = min(pts_vals) if pts_vals else 25.0
+            max_val = max(pts_vals) if pts_vals else 2000.0
+            min_val_str = f"{int(min_val)}m"
+            max_val_str = f"{int(max_val)}m"
             min_hw = min(pts_hw) if pts_hw else base_hw
             max_cap = max(pts_cap) if pts_cap else base_cap
 
             migrations = getattr(study, "migration_records", [])
 
             p1 = (
-                f"Constrained sensitivity analysis evaluates line performance response across varied {p_name.lower()}s. "
-                f"At the baseline configuration ({base_val} m), the line exhibits a technical minimum headway of {base_hw:.1f} s "
+                f"Constrained sensitivity analysis evaluates line performance response across varied {p_name.lower()}s, "
+                f"evaluating constrained block lengths from {min_val_str} to {max_val_str} with AS-BUILT baseline pinned. "
+                f"At the baseline configuration ({base_val}), the line exhibits a technical minimum headway of {base_hw:.1f} s "
                 f"and a theoretical capacity of {base_cap:.1f} tph, governed by resource '{base_bn}'."
             )
             p2 = (
-                f"Parametric sweeps across block lengths ranging from {min_val} m to {max_val} m demonstrate non-linear capacity returns. "
+                f"Parametric sweeps across block lengths ranging from {min_val_str} to {max_val_str} demonstrate non-linear capacity returns. "
                 f"The minimum achievable headway is {min_hw:.1f} s (yielding a peak theoretical capacity of {max_cap:.1f} tph). "
-                f"Shortening block lengths below approximately 1,200 m yields diminishing returns as train braking distance, "
-                f"train length (200 m), and signal sighting times become the dominant constraints."
+                f"Shortening block lengths below train length (202m) down to {min_val_str} yields diminishing returns as train braking distance, "
+                f"train length spanning across multiple short blocks, and signal sighting times become the dominant constraints."
             )
             mig_text = (
                 f"Bottleneck migration analysis indicates that as block sections are shortened, critical constraints migrate to "
