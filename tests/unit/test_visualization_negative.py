@@ -325,7 +325,7 @@ class TestVisualizationNegativeCases:
         """create_platform_occupation_figure handles empty platform list gracefully."""
         fig = create_platform_occupation_figure([])
         assert fig is not None
-        assert "Platform Track" in (fig.layout.xaxis.title.text or fig.layout.yaxis.title.text)
+        assert "Platform" in (fig.layout.xaxis.title.text or fig.layout.yaxis.title.text)
 
     def test_residual_rear_occupation_figure_handles_no_residuals(self) -> None:
         """create_platform_occupation_figure handles records with no residual intervals."""

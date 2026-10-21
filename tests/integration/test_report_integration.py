@@ -304,6 +304,7 @@ def _create_synthetic_full_package(
             "controlling_bottleneck_id": "BLK_03",
             "stochastic_headway_samples": [90.0 + k * 0.4 for k in range(30)],
             "tvs_events": [tvs_ev],
+            "scenarios": ["SCEN_INTEG_BASE", "SCEN_INTEG_CBTC"],
         },
     )
 
@@ -838,5 +839,103 @@ class TestReportIntegration:
             ReportAssembler.assemble_report(pkg, project=proj)
 
         assert "ERR_REPORT_MISSING_TVS_EVENTS" in str(exc_info.value.error_code)
+
+    def test_report_integrity_no_phantom_data_single_service_baseline(self) -> None:
+        """v1.8.1 DEF-12/13: Assert that when a project with only SCN_BASELINE and SRV_6000 is processed,
+        Section 16 (Scenario Comparison) and Section 7/9 (Mixed-Traffic Matrix) are is_applicable = False,
+        and phantom data strings (SCEN_UPGRADE, METRO_COMMUTER, METRO_EXPRESS) do not exist in ReportDocument.
+        """
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        assert len(proj.scenarios) == 1
+        assert proj.scenarios[0].scenario_id == "SCEN_BASELINE"
+        assert len(proj.operations.service_patterns) == 1
+        assert proj.operations.service_patterns[0].service_pattern_id == "SRV_6000"
+
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        # Section 16 (Scenario Comparison) must be NOT applicable
+        sec_cmp = doc.get_section(ReportSectionId.SCENARIO_COMPARISON)
+        assert sec_cmp is not None
+        assert sec_cmp.is_applicable is False
+        assert "Scenario comparison requires at least two scenarios" in (sec_cmp.not_applicable_reason or "")
+        assert len(sec_cmp.tables) == 0
+
+        # Section 7/9 (Mixed-Traffic Matrix) must be NOT applicable
+        sec_mt = doc.get_section(ReportSectionId.MIXED_TRAFFIC_MATRIX)
+        assert sec_mt is not None
+        assert sec_mt.is_applicable is False
+        assert "Mixed-traffic matrix requires at least two distinct service patterns" in (sec_mt.not_applicable_reason or "")
+        assert len(sec_mt.tables) == 0
+
+        # Entire ReportDocument must not contain phantom data strings
+        from headway.reporting.json_export import JsonReportExporter
+        doc_json = JsonReportExporter.export(doc)
+        assert "SCEN_UPGRADE" not in doc_json
+        assert "METRO_COMMUTER" not in doc_json
+        assert "METRO_EXPRESS" not in doc_json
+
+    def test_platform_occupation_chart_and_table_enhancements(self) -> None:
+        """v1.8.1 Part B: Assert platform occupation chart is stacked duration and platform table exists."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        sec_plt = doc.get_section(ReportSectionId.STATION_PLATFORM_OCCUPATION)
+        assert sec_plt is not None
+        assert sec_plt.is_applicable
+
+        # 1. Assert platform table exists
+        plt_tbls = [t for t in sec_plt.tables if t.table_id == "TBL_PLATFORM_OCCUPATION"]
+        assert len(plt_tbls) == 1
+        tbl = plt_tbls[0]
+        df = tbl.raw_dataframe
+
+        expected_cols = [
+            "Platform ID",
+            "Train ID",
+            "Arrival Time (s)",
+            "Departure Time (s)",
+            "Passenger Dwell (s)",
+            "Residual Rear (s)",
+            "Total Occupation (s)",
+        ]
+        assert list(df.columns) == expected_cols
+        assert len(df) == 5
+
+        # Check metrics calculation (Total = Dwell + Residual)
+        for _, row in df.iterrows():
+            dwell = float(row["Passenger Dwell (s)"])
+            residual = float(row["Residual Rear (s)"])
+            tot = float(row["Total Occupation (s)"])
+            assert tot == pytest.approx(dwell + residual, abs=0.1)
+
+        # 2. Assert chart traces use duration_s rather than absolute time
+        fig_key = sec_plt.figure_keys[0]
+        fig_plt = doc.figures_data[fig_key]
+        assert fig_plt.layout.barmode == "stack"
+        assert fig_plt.layout.yaxis.title.text == "Occupation Duration (s)"
+        assert fig_plt.layout.xaxis.title.text == "Platform ID"
+
+        dwell_trace = next(t for t in fig_plt.data if t.name == "Passenger Dwell")
+        assert getattr(dwell_trace, "base", None) is None  # no absolute simulation time offset
+        assert list(dwell_trace.y) == [120.0, 120.0, 120.0, 120.0, 120.0]
+
+        rear_trace = next(t for t in fig_plt.data if t.name == "Residual Rear Invariant")
+        assert getattr(rear_trace, "base", None) is None
+        assert list(rear_trace.y) == [12.0, 12.0, 12.0, 12.0, 12.0]
+
+        # 3. Assert dynamic narrative contains calculated max occupation time
+        max_tot = df["Total Occupation (s)"].max()
+        gov_row = df.loc[df["Total Occupation (s)"].idxmax()]
+        gov_plt = gov_row["Platform ID"]
+        narrative_text = " ".join(sec_plt.narrative_paragraphs)
+        assert f"The longest platform occupation occurred at {gov_plt}" in narrative_text
+        assert f"totaling {max_tot:.1f} s" in narrative_text
+
 
 

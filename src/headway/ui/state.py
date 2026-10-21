@@ -84,6 +84,13 @@ class AppState:
         source_files: Optional[Dict[str, Path]] = None,
     ) -> None:
         """Loads a new canonical project into session state and initializes scenarios."""
+        # Clear previous simulation runs, reports, and packages to prevent UI state leakage
+        self.simulation_packages.clear()
+        self.latest_result_package = None
+        self.latest_report_doc = None
+        self.analysis_pf_map.clear()
+        self.active_scenario_id = "BASELINE"
+
         self.current_project = project
         self.project_name = project.name or project.project_id
         self.project_id = project.project_id

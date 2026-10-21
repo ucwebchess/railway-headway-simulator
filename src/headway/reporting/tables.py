@@ -509,6 +509,77 @@ def create_scenario_comparison_table(
     )
 
 
+def create_platform_occupation_table(
+    records: Optional[Sequence[Any]] = None,
+    running_direction: RunningDirection = RunningDirection.FORWARD,
+) -> EngineeringTable:
+    """Milestone P13 / v1.8.1: Platform Track Occupation and Residual Rear Clearance Table.
+
+    Columns: Platform ID, Train ID, Arrival Time (s), Departure Time (s),
+             Passenger Dwell (s), Residual Rear (s), Total Occupation (s)
+    """
+    raw_rows = []
+    formatted_rows = []
+
+    if records:
+        for r in records:
+            stn_id = getattr(r, "station_id", "") or ""
+            plt_id = getattr(r, "platform_id", "") or ""
+            if stn_id and plt_id:
+                if plt_id.startswith(stn_id):
+                    full_plt_id = plt_id
+                else:
+                    full_plt_id = f"{stn_id}-{plt_id}"
+            else:
+                full_plt_id = plt_id or stn_id or "PLT"
+
+            train_id = str(getattr(r, "train_id", "TRN_01"))
+            arr_t = float(getattr(r, "arrival_time_s", 0.0))
+            dep_t = float(getattr(r, "departure_time_s", arr_t))
+            dwell_s = float(getattr(r, "dwell_duration_s", 0.0))
+            residual_s = float(getattr(r, "residual_rear_duration_s", 0.0))
+            total_occ = round(dwell_s + residual_s, 1)
+
+            raw_rows.append({
+                "Platform ID": full_plt_id,
+                "Train ID": train_id,
+                "Arrival Time (s)": round(arr_t, 1),
+                "Departure Time (s)": round(dep_t, 1),
+                "Passenger Dwell (s)": round(dwell_s, 1),
+                "Residual Rear (s)": round(residual_s, 1),
+                "Total Occupation (s)": total_occ,
+            })
+            formatted_rows.append({
+                "Platform ID": full_plt_id,
+                "Train ID": train_id,
+                "Arrival Time (s)": f"{arr_t:.1f}",
+                "Departure Time (s)": f"{dep_t:.1f}",
+                "Passenger Dwell (s)": f"{dwell_s:.1f}",
+                "Residual Rear (s)": f"{residual_s:.1f}",
+                "Total Occupation (s)": f"{total_occ:.1f}",
+            })
+
+    cols = [
+        "Platform ID",
+        "Train ID",
+        "Arrival Time (s)",
+        "Departure Time (s)",
+        "Passenger Dwell (s)",
+        "Residual Rear (s)",
+        "Total Occupation (s)",
+    ]
+    raw_df = pd.DataFrame(raw_rows, columns=cols) if raw_rows else pd.DataFrame(columns=cols)
+    fmt_df = pd.DataFrame(formatted_rows, columns=cols) if formatted_rows else pd.DataFrame(columns=cols)
+
+    return EngineeringTable(
+        table_id="TBL_PLATFORM_OCCUPATION",
+        title="Station Platform Track Occupation and Residual Rear Clearance",
+        raw_dataframe=raw_df,
+        formatted_dataframe=fmt_df,
+        running_direction=running_direction,
+    )
+
+
 def create_tvs_assessment_table(
     tvs_events: Sequence[Union[Dict[str, Any], Any]],
     running_direction: RunningDirection = RunningDirection.FORWARD,

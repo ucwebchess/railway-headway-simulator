@@ -404,7 +404,7 @@ class TestVisualizationBenchmarks:
         assert durs == sorted(durs, reverse=True)
 
     def test_p13_b014_platform_occupation_chart(self) -> None:
-        """P13-B014: Platform occupation chart renders dwell and platform clearance."""
+        """P13-B014 / v1.8.1: Platform occupation chart renders dwell and platform clearance as stacked bars."""
         rec = PlatformOccupationRecord(
             train_id="TRN_01",
             station_id="STN_A",
@@ -421,7 +421,8 @@ class TestVisualizationBenchmarks:
         )
         fig = create_platform_occupation_figure([rec])
         assert len(fig.data) >= 1
-        assert "Alpha - PLT_01" in str(fig.layout.yaxis.categoryarray)
+        assert "STN_A-PLT_01" in str(fig.layout.xaxis.categoryarray)
+        assert fig.layout.yaxis.title.text == "Occupation Duration (s)"
 
     def test_p13_b015_residual_rear_occupation_chart(self) -> None:
         """P13-B015: Residual rear occupation chart displays upstream infringement."""
