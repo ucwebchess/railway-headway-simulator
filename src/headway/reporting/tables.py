@@ -358,6 +358,8 @@ def create_resource_timing_table(
                 "Category": r.resource_category,
                 "Chainage (km)": r.route_chainage_km,
                 "Length (m)": r.resource_length_m,
+                "V_in (km/h)": r.entry_speed_kmh,
+                "V_out (km/h)": r.exit_speed_kmh,
                 "Setup (s)": r.setup_time_s,
                 "Approach (s)": r.approach_time_s,
                 "Running (s)": r.running_time_s,
@@ -377,6 +379,8 @@ def create_resource_timing_table(
                 "Category": r.resource_category,
                 "Chainage (km)": f"{r.route_chainage_km:.2f}",
                 "Length (m)": f"{r.resource_length_m:.1f}",
+                "V_in (km/h)": f"{r.entry_speed_kmh:.1f}",
+                "V_out (km/h)": f"{r.exit_speed_kmh:.1f}",
                 "Setup (s)": f"{r.setup_time_s:.1f}",
                 "Approach (s)": f"{r.approach_time_s:.1f}",
                 "Running (s)": f"{r.running_time_s:.1f}",
@@ -513,10 +517,10 @@ def create_platform_occupation_table(
     records: Optional[Sequence[Any]] = None,
     running_direction: RunningDirection = RunningDirection.FORWARD,
 ) -> EngineeringTable:
-    """Milestone P13 / v1.8.1: Platform Track Occupation and Residual Rear Clearance Table.
+    """Milestone P13 / v1.9.0: Platform Track Occupation Breakdown Table.
 
-    Columns: Platform ID, Train ID, Arrival Time (s), Departure Time (s),
-             Passenger Dwell (s), Residual Rear (s), Total Occupation (s)
+    Columns: Platform ID, Train ID, Arrival Approach (s), Passenger Dwell (s),
+             Departure Clearance (s), Total Occupation (s)
     """
     raw_rows = []
     formatted_rows = []
@@ -534,38 +538,62 @@ def create_platform_occupation_table(
                 full_plt_id = plt_id or stn_id or "PLT"
 
             train_id = str(getattr(r, "train_id", "TRN_01"))
+
+            # UIC 406 / P14-SEC06: 3-component decomposition
+            # Arrival Approach = arrival_time_s - reservation_start_s
+            # Passenger Dwell = departure_time_s - arrival_time_s
+            # Departure Clearance = final_release_s - departure_time_s
             arr_t = float(getattr(r, "arrival_time_s", 0.0))
             dep_t = float(getattr(r, "departure_time_s", arr_t))
-            dwell_s = float(getattr(r, "dwell_duration_s", 0.0))
-            residual_s = float(getattr(r, "residual_rear_duration_s", 0.0))
-            total_occ = round(dwell_s + residual_s, 1)
+            res_start_t = getattr(r, "reservation_start_s", None)
+            fin_rel_t = getattr(r, "final_release_s", None)
+
+            if res_start_t is not None:
+                approach_s = max(0.0, arr_t - float(res_start_t))
+            elif hasattr(r, "arrival_approach_s"):
+                approach_s = float(r.arrival_approach_s)
+            else:
+                approach_s = 15.0
+
+            dwell_s = max(0.0, dep_t - arr_t)
+            if dwell_s == 0.0 and hasattr(r, "dwell_duration_s"):
+                dwell_s = float(r.dwell_duration_s)
+
+            if fin_rel_t is not None:
+                clearance_s = max(0.0, float(fin_rel_t) - dep_t)
+            elif hasattr(r, "departure_clearance_s"):
+                clearance_s = float(r.departure_clearance_s)
+            else:
+                clr_t = float(getattr(r, "clearance_time_s", dep_t))
+                clearance_s = max(0.0, clr_t - dep_t)
+                if clearance_s == 0.0:
+                    clearance_s = float(getattr(r, "residual_rear_duration_s", 15.0))
+
+            total_occ = round(approach_s + dwell_s + clearance_s, 1)
 
             raw_rows.append({
                 "Platform ID": full_plt_id,
                 "Train ID": train_id,
-                "Arrival Time (s)": round(arr_t, 1),
-                "Departure Time (s)": round(dep_t, 1),
+                "Arrival Approach (s)": round(approach_s, 1),
                 "Passenger Dwell (s)": round(dwell_s, 1),
-                "Residual Rear (s)": round(residual_s, 1),
+                "Departure Clearance (s)": round(clearance_s, 1),
                 "Total Occupation (s)": total_occ,
             })
             formatted_rows.append({
                 "Platform ID": full_plt_id,
                 "Train ID": train_id,
-                "Arrival Time (s)": f"{arr_t:.1f}",
-                "Departure Time (s)": f"{dep_t:.1f}",
+                "Arrival Approach (s)": f"{approach_s:.1f}",
                 "Passenger Dwell (s)": f"{dwell_s:.1f}",
-                "Residual Rear (s)": f"{residual_s:.1f}",
+                "Departure Clearance (s)": f"{clearance_s:.1f}",
                 "Total Occupation (s)": f"{total_occ:.1f}",
             })
 
     cols = [
         "Platform ID",
         "Train ID",
-        "Arrival Time (s)",
-        "Departure Time (s)",
+        "Arrival Approach (s)",
         "Passenger Dwell (s)",
-        "Residual Rear (s)",
+        "Departure Clearance (s)",
         "Total Occupation (s)",
     ]
     raw_df = pd.DataFrame(raw_rows, columns=cols) if raw_rows else pd.DataFrame(columns=cols)
@@ -573,7 +601,7 @@ def create_platform_occupation_table(
 
     return EngineeringTable(
         table_id="TBL_PLATFORM_OCCUPATION",
-        title="Station Platform Track Occupation and Residual Rear Clearance",
+        title="Station Platform Track Occupation Breakdown",
         raw_dataframe=raw_df,
         formatted_dataframe=fmt_df,
         running_direction=running_direction,

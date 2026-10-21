@@ -432,7 +432,8 @@ class TestSimulationRunnerE2E:
         assert blk92.decomposition.setup_time_s == pytest.approx(3.0, abs=0.1)
         assert blk92.decomposition.approach_time_s == pytest.approx(10.0, abs=0.1)
         assert blk92.decomposition.release_time_s == pytest.approx(4.0, abs=0.1)
-        assert blk92.decomposition.running_time_s == pytest.approx(107.0, abs=5.0)
+        assert blk92.decomposition.running_time_s == pytest.approx(99.0, abs=5.0)
+        assert blk92.decomposition.geometric_clearance_time_s > 0.0
         assert blk92.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
         assert blk92.duration_s == pytest.approx(244.0, abs=6.0)
 

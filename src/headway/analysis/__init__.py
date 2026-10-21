@@ -105,6 +105,7 @@ from headway.analysis.resource_utilization import (
     total_interval_duration,
 )
 from headway.analysis.saturation import CapacitySaturationSearch
+from headway.analysis.block_length_sensitivity import calculate_block_length_sensitivity
 from headway.analysis.sensitivity import SensitivityAnalyzer
 from headway.analysis.stability import OperationalStabilityEvaluator
 from headway.analysis.statistics import (
@@ -187,6 +188,7 @@ __all__ = [
     "CapacityConsumptionCalculator",
     "BottleneckAnalyzer",
     "SensitivityAnalyzer",
+    "calculate_block_length_sensitivity",
     # P11 Stochastic & Monte Carlo
     "TargetObjectType",
     "SamplingScope",

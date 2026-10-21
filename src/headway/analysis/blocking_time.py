@@ -47,6 +47,8 @@ class BlockingTimeDecomposition:
     release_time_s: float = 0.0
     reconciliation_difference_s: float = 0.0
     reconciliation_note: Optional[str] = None
+    v_in_kmh: float = 0.0
+    v_out_kmh: float = 0.0
 
     @property
     def total_duration_s(self) -> float:
@@ -205,6 +207,8 @@ def decompose_blocking_interval(
     dwell_duration_s: float = 0.0,
     setup_duration_s: Optional[float] = None,
     residual_rear_duration_s: float = 0.0,
+    v_in_kmh: float = 0.0,
+    v_out_kmh: float = 0.0,
 ) -> BlockingTimeDecomposition:
     """P08-BT-007 to 016: Calculates seven non-overlapping blocking time components.
 
@@ -262,6 +266,8 @@ def decompose_blocking_interval(
         release_time_s=round(t_release, 6),
         reconciliation_difference_s=round(diff, 6),
         reconciliation_note=note,
+        v_in_kmh=round(v_in_kmh, 2),
+        v_out_kmh=round(v_out_kmh, 2),
     )
 
 
@@ -271,11 +277,23 @@ def extract_blocking_intervals_from_records(
     setup_duration_s: float = 0.0,
     dwell_durations: Optional[Dict[str, float]] = None,
     residual_durations: Optional[Dict[str, float]] = None,
+    leader_trajectory: Optional[Any] = None,
+    v_in_map: Optional[Dict[str, float]] = None,
+    v_out_map: Optional[Dict[str, float]] = None,
 ) -> List[ResourceBlockingInterval]:
     """P08-BT-002: Build ResourceBlockingIntervals directly from P05-P07 ResourceUsageRecords."""
     intervals: List[ResourceBlockingInterval] = []
     dwells = dwell_durations or {}
     residuals = residual_durations or {}
+    v_ins = v_in_map or {}
+    v_outs = v_out_map or {}
+
+    t_samples = None
+    v_samples = None
+    if leader_trajectory and hasattr(leader_trajectory, "samples") and leader_trajectory.samples:
+        import numpy as np
+        t_samples = np.array([float(s.time_s) for s in leader_trajectory.samples])
+        v_samples = np.array([float(s.speed_kmh) for s in leader_trajectory.samples])
 
     usage_counter: Dict[Tuple[str, str], int] = {}
 
@@ -296,6 +314,25 @@ def extract_blocking_intervals_from_records(
         dwell_s = dwells.get(rec.resource_id, 0.0)
         residual_s = residuals.get(rec.resource_id, 0.0)
 
+        # Speed metrics extraction (UIC 406 Part 1)
+        v_in_val = 0.0
+        v_out_val = 0.0
+        if rec.resource_id in v_ins:
+            v_in_val = float(v_ins[rec.resource_id])
+        elif t_samples is not None and len(t_samples) > 0 and entry_s is not None:
+            import numpy as np
+            v_in_val = float(np.interp(entry_s, t_samples, v_samples))
+        elif hasattr(rec, "v_in_kmh") and rec.v_in_kmh is not None:
+            v_in_val = float(rec.v_in_kmh)
+
+        if rec.resource_id in v_outs:
+            v_out_val = float(v_outs[rec.resource_id])
+        elif t_samples is not None and len(t_samples) > 0 and rec.front_exit_s is not None:
+            import numpy as np
+            v_out_val = float(np.interp(rec.front_exit_s, t_samples, v_samples))
+        elif hasattr(rec, "v_out_kmh") and rec.v_out_kmh is not None:
+            v_out_val = float(rec.v_out_kmh)
+
         decomp = decompose_blocking_interval(
             start_time_s=rel_start,
             end_time_s=rel_end,
@@ -305,6 +342,8 @@ def extract_blocking_intervals_from_records(
             dwell_duration_s=dwell_s,
             setup_duration_s=setup_duration_s,
             residual_rear_duration_s=residual_s,
+            v_in_kmh=v_in_val,
+            v_out_kmh=v_out_val,
         )
 
         key = (rec.train_id, rec.resource_id)

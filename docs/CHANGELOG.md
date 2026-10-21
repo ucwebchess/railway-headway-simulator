@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.0] — 2026-10-21
+
+### Added
+- **UIC 406 Track Clearance Split & Speeds (Part 1)**: Decomposed track block occupation into UIC 406 running time and clearance time (`running_time_s = front_exit_t - front_entry_t`, `clearance_time_s = rear_clear_t - front_exit_t`), populated entering and exiting speeds ($V_{in}, V_{out}$), updated Section 10 table, and mapped the split in Section 4 chart.
+- **Constrained Block-Length Sensitivity Analysis (Part 2)**: Re-engineered Section 9 sensitivity analysis and chart to evaluate 26 pinned cases (`AS-BUILT` followed by 200m to 5000m in 200m increments) on a dual-axis chart (Headway vs Capacity) with exact baseline pinning.
+- **Platform Occupation Decomposition (Part 3)**: Decomposed Section 6 station platform occupation into Arrival Approach, Passenger Dwell, and Departure Clearance across data models, narrative, table, and stacked chart.
+
+---
+
 ## [1.8.2] — 2026-10-21
 
 ### Fixed

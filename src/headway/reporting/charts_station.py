@@ -50,33 +50,43 @@ def create_platform_occupation_figure(
         return plt or stn or "PLT"
 
     platform_ids = [_get_plt_id(r) for r in recs]
-    dwell_durations = [float(getattr(r, "dwell_duration_s", 0.0)) for r in recs]
-    residual_durations = [float(getattr(r, "residual_rear_duration_s", 0.0)) for r in recs]
+    approach_durations = [float(getattr(r, "arrival_approach_s", 15.0)) for r in recs]
+    dwell_durations = [float(getattr(r, "passenger_dwell_s", getattr(r, "dwell_duration_s", 0.0))) for r in recs]
+    clearance_durations = [float(getattr(r, "departure_clearance_s", 15.0)) for r in recs]
 
-    # Trace 1: Passenger Dwell (Purple)
+    # Trace 1: Arrival Approach (Light Blue)
+    fig.add_trace(
+        go.Bar(
+            name="Arrival Approach",
+            x=platform_ids,
+            y=approach_durations,
+            orientation="v",
+            marker=dict(color="#5B9BD5"),
+            hovertemplate="<b>%{x}</b><br>Arrival Approach: %{y:.1f} s<extra></extra>",
+        )
+    )
+
+    # Trace 2: Passenger Dwell (Purple)
     fig.add_trace(
         go.Bar(
             name="Passenger Dwell",
             x=platform_ids,
             y=dwell_durations,
             orientation="v",
-            marker=dict(color=ChartColors.COMPONENT_DWELL),
+            marker=dict(color="#805AD5"),
             hovertemplate="<b>%{x}</b><br>Passenger Dwell: %{y:.1f} s<extra></extra>",
         )
     )
 
-    # Trace 2: Residual Rear Invariant (Orange/Red, hatched)
+    # Trace 3: Departure Clearance (Orange/Coral)
     fig.add_trace(
         go.Bar(
-            name="Residual Rear Invariant",
+            name="Departure Clearance",
             x=platform_ids,
-            y=residual_durations,
+            y=clearance_durations,
             orientation="v",
-            marker=dict(
-                color=ChartColors.COMPONENT_RESIDUAL_REAR,
-                pattern=dict(shape="/", fgcolor=ChartColors.CRITICAL_RED),
-            ),
-            hovertemplate="<b>%{x}</b><br>Residual Rear Invariant: %{y:.1f} s<extra></extra>",
+            marker=dict(color="#ED8936"),
+            hovertemplate="<b>%{x}</b><br>Departure Clearance: %{y:.1f} s<extra></extra>",
         )
     )
 
