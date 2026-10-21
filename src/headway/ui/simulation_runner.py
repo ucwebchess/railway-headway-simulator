@@ -376,23 +376,9 @@ class SimulationRunner:
                             block_dwell_map[blk.block_id] = float(st_stop.dwell_time_s)
                             break
 
-        for rec in usage_records:
-            if rec.front_exit_s is None and rec.rear_clearance_s is not None:
-                rec.front_exit_s = rec.rear_clearance_s
-
-        blocking_intervals = extract_blocking_intervals_from_records(
-            usage_records=usage_records,
-            reference_event_time_s=0.0,
-            setup_duration_s=0.0,
-            dwell_durations=block_dwell_map,
-        )
-        if not blocking_intervals:
-            raise HeadwayNoIntervalsError(
-                "ERR_HEADWAY_NO_INTERVALS: No resource blocking intervals extracted from simulation records."
-            )
-
-        # Determine origin block from route ordering (DEF-06)
+        # Determine origin block and route boundaries from route ordering (DEF-06 & UIC 406 Part 1)
         route_min_s: Dict[str, float] = {}
+        route_max_s: Dict[str, float] = {}
         for blk in blocks:
             s_coords = []
             for inv in (blk.link_intervals or []):
@@ -404,6 +390,7 @@ class SimulationRunner:
                     s_coords.append(s2)
             if s_coords:
                 route_min_s[blk.block_id] = min(s_coords)
+                route_max_s[blk.block_id] = max(s_coords)
 
         if not route_min_s:
             raise SimulationRunnerError(
@@ -412,6 +399,51 @@ class SimulationRunner:
                 error_code="ERR_ORIGIN_BLOCK_UNDETERMINED",
             )
         origin_block_id = min(route_min_s, key=route_min_s.get)
+
+        # Trajectory samples for front exit timing & speed interpolation (UIC 406 Part 1)
+        import numpy as np
+        raw_samples = train_leader_p1.trajectory_samples if train_leader_p1 else []
+        t_arr = np.array([float(s.time_s) for s in raw_samples]) if raw_samples else np.array([])
+        d_arr = np.array([float(s.front_distance_m) for s in raw_samples]) if raw_samples else np.array([])
+        v_arr = np.array([float(s.speed_ms * 3.6) for s in raw_samples]) if raw_samples else np.array([])
+
+        for rec in usage_records:
+            t_en = rec.physical_front_entry_s if rec.physical_front_entry_s is not None else rec.reservation_start_s
+            t_rear = rec.rear_clearance_s if rec.rear_clearance_s is not None else t_en
+
+            if rec.front_exit_s is None:
+                s_exit = route_max_s.get(rec.resource_id)
+                if s_exit is not None and len(d_arr) > 0:
+                    idx = next((i for i, d in enumerate(d_arr) if d >= s_exit), len(d_arr) - 1)
+                    t_ex = float(t_arr[idx])
+                    if t_rear is not None and t_ex >= t_rear:
+                        clear_buf = min(4.0, max(1.0, (t_rear - (t_en or 0.0)) * 0.05))
+                        t_ex = max(t_en or 0.0, round(t_rear - clear_buf, 1))
+                    else:
+                        t_ex = round(t_ex, 1)
+                elif t_rear is not None:
+                    t_ex = max(t_en or 0.0, round(t_rear - 3.0, 1))
+                else:
+                    t_ex = t_en or 0.0
+                rec.front_exit_s = t_ex
+
+            if len(t_arr) > 0 and len(v_arr) > 0:
+                if t_en is not None:
+                    rec.v_in_kmh = round(float(np.interp(t_en, t_arr, v_arr)), 1)
+                if rec.front_exit_s is not None:
+                    rec.v_out_kmh = round(float(np.interp(rec.front_exit_s, t_arr, v_arr)), 1)
+
+        blocking_intervals = extract_blocking_intervals_from_records(
+            usage_records=usage_records,
+            reference_event_time_s=0.0,
+            setup_duration_s=0.0,
+            dwell_durations=block_dwell_map,
+            leader_trajectory=traj_leader_p1,
+        )
+        if not blocking_intervals:
+            raise HeadwayNoIntervalsError(
+                "ERR_HEADWAY_NO_INTERVALS: No resource blocking intervals extracted from simulation records."
+            )
 
         # Resolve signalling timing parameters (DEF-06)
         sig_sys = getattr(sig, "system", None)
@@ -542,38 +574,24 @@ class SimulationRunner:
         else:
             mt_matrix = None
 
-        # 5. Sensitivity Analysis (P10)
-        base_bl = 600.0
-        sens_study = SensitivityStudyResult(
-            study_id=f"SENS_{run_id}",
-            parameter_name="block_length_m",
-            baseline_value=base_bl,
-            baseline_capacity_tph=round(3600.0 / required_hw_s, 1),
+        # 5. Sensitivity Analysis (P10 & v1.9.0 26-case redesign)
+        from headway.analysis.block_length_sensitivity import calculate_block_length_sensitivity
+
+        bl_lengths = [
+            abs(inv.end_offset_m - inv.start_offset_m)
+            for b in blocks
+            for inv in (b.link_intervals or [])
+            if inv.end_offset_m is not None and inv.start_offset_m is not None
+        ]
+        avg_base_bl = (sum(bl_lengths) / len(bl_lengths)) if bl_lengths else 1500.0
+
+        sens_study = calculate_block_length_sensitivity(
             baseline_headway_s=required_hw_s,
             baseline_bottleneck_id=bottleneck_id,
-            points=[
-                SensitivityPointResult(
-                    parameter_name="block_length_m",
-                    parameter_value=400.0,
-                    capacity_trains_per_hour=round(3600.0 / (required_hw_s - 10.0), 1),
-                    headway_s=required_hw_s - 10.0,
-                    limiting_bottleneck_id=bottleneck_id,
-                ),
-                SensitivityPointResult(
-                    parameter_name="block_length_m",
-                    parameter_value=base_bl,
-                    capacity_trains_per_hour=round(3600.0 / required_hw_s, 1),
-                    headway_s=required_hw_s,
-                    limiting_bottleneck_id=bottleneck_id,
-                ),
-                SensitivityPointResult(
-                    parameter_name="block_length_m",
-                    parameter_value=800.0,
-                    capacity_trains_per_hour=round(3600.0 / (required_hw_s + 12.0), 1),
-                    headway_s=required_hw_s + 12.0,
-                    limiting_bottleneck_id=bottleneck_id,
-                ),
-            ],
+            train_speed_kmh=round(max_speed_ms * 3.6, 1),
+            train_length_m=total_length_m if total_length_m else 202.0,
+            baseline_block_length_m=avg_base_bl,
+            study_id=f"SENS_{run_id}",
         )
 
         if tracker:
@@ -641,10 +659,13 @@ class SimulationRunner:
                                 dwell_s = float(st_stop.dwell_time_s)
                                 break
 
-                dwell_start_t = round(arr_t + 2.0, 1)
-                dwell_end_t = round(dwell_start_t + dwell_s, 1)
-                dep_t = round(dwell_end_t + 3.0, 1)
-                clear_t = round(dep_t + 10.0, 1)
+                # Approach reservation starts before physical arrival (e.g. 15.0s approach)
+                res_start_t = round(max(0.0, arr_t - 15.0), 1)
+                dwell_start_t = round(arr_t, 1)
+                dwell_end_t = round(arr_t + dwell_s, 1)
+                dep_t = round(dwell_end_t, 1)
+                clear_t = round(dep_t + 15.0, 1)
+                fin_rel_t = clear_t
                 last_dep_t = dep_t
 
                 platform_records.append(
@@ -662,8 +683,10 @@ class SimulationRunner:
                         clearance_time_s=clear_t,
                         running_direction=running_direction,
                         is_residual_rear_active=True,
-                        residual_rear_duration_s=12.0,
+                        residual_rear_duration_s=15.0,
                         upstream_infringing_resource_ids=("BLK_01",),
+                        reservation_start_s=res_start_t,
+                        final_release_s=fin_rel_t,
                     )
                 )
 

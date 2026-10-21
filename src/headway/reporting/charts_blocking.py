@@ -22,6 +22,7 @@ from headway.reporting.chart_theme import (
     ChartColors,
     get_plotly_layout,
 )
+from headway.reporting.charts_capacity import create_block_sensitivity_figure
 from headway.reporting.visualization_adapters import VisualizationAdapter
 
 

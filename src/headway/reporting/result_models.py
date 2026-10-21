@@ -52,6 +52,8 @@ class PlatformOccupationRecord:
     is_residual_rear_active: bool = False
     residual_rear_duration_s: float = 0.0
     upstream_infringing_resource_ids: Tuple[str, ...] = ()
+    reservation_start_s: Optional[float] = None
+    final_release_s: Optional[float] = None
 
     @property
     def dwell_duration_s(self) -> float:
@@ -60,6 +62,30 @@ class PlatformOccupationRecord:
     @property
     def total_platform_blocking_s(self) -> float:
         return max(0.0, self.clearance_time_s - self.arrival_time_s)
+
+    @property
+    def arrival_approach_s(self) -> float:
+        res_s = self.reservation_start_s if self.reservation_start_s is not None else max(0.0, self.arrival_time_s - 15.0)
+        return max(0.0, self.arrival_time_s - res_s)
+
+    @property
+    def passenger_dwell_s(self) -> float:
+        dw = self.departure_time_s - self.arrival_time_s
+        if dw <= 0.0:
+            dw = self.dwell_duration_s
+        return max(0.0, dw)
+
+    @property
+    def departure_clearance_s(self) -> float:
+        fin_s = self.final_release_s if self.final_release_s is not None else self.clearance_time_s
+        clr = fin_s - self.departure_time_s
+        if clr <= 0.0:
+            clr = self.residual_rear_duration_s if self.residual_rear_duration_s > 0.0 else 15.0
+        return max(0.0, clr)
+
+    @property
+    def total_platform_occupation_s(self) -> float:
+        return round(self.arrival_approach_s + self.passenger_dwell_s + self.departure_clearance_s, 1)
 
 
 @dataclass(frozen=True)

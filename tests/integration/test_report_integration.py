@@ -878,7 +878,7 @@ class TestReportIntegration:
         assert "METRO_EXPRESS" not in doc_json
 
     def test_platform_occupation_chart_and_table_enhancements(self) -> None:
-        """v1.8.1 Part B: Assert platform occupation chart is stacked duration and platform table exists."""
+        """v1.9.0 Part 3: Assert platform occupation chart has 3 traces and platform table has new 6-column format."""
         from headway.ui.file_manager import FileManager
         from headway.ui.simulation_runner import SimulationRunner
 
@@ -898,36 +898,43 @@ class TestReportIntegration:
         expected_cols = [
             "Platform ID",
             "Train ID",
-            "Arrival Time (s)",
-            "Departure Time (s)",
+            "Arrival Approach (s)",
             "Passenger Dwell (s)",
-            "Residual Rear (s)",
+            "Departure Clearance (s)",
             "Total Occupation (s)",
         ]
         assert list(df.columns) == expected_cols
         assert len(df) == 5
 
-        # Check metrics calculation (Total = Dwell + Residual)
+        # Check metrics calculation (Total = Approach + Dwell + Clearance)
         for _, row in df.iterrows():
+            app = float(row["Arrival Approach (s)"])
             dwell = float(row["Passenger Dwell (s)"])
-            residual = float(row["Residual Rear (s)"])
+            clr = float(row["Departure Clearance (s)"])
             tot = float(row["Total Occupation (s)"])
-            assert tot == pytest.approx(dwell + residual, abs=0.1)
+            assert tot == pytest.approx(app + dwell + clr, abs=0.1)
 
-        # 2. Assert chart traces use duration_s rather than absolute time
+        # 2. Assert chart traces use 3 stacked components
         fig_key = sec_plt.figure_keys[0]
         fig_plt = doc.figures_data[fig_key]
         assert fig_plt.layout.barmode == "stack"
         assert fig_plt.layout.yaxis.title.text == "Occupation Duration (s)"
         assert fig_plt.layout.xaxis.title.text == "Platform ID"
 
+        trace_names = [t.name for t in fig_plt.data]
+        assert trace_names == ["Arrival Approach", "Passenger Dwell", "Departure Clearance"]
+
+        app_trace = next(t for t in fig_plt.data if t.name == "Arrival Approach")
+        assert getattr(app_trace, "base", None) is None
+        assert list(app_trace.y) == [15.0, 15.0, 15.0, 15.0, 15.0]
+
         dwell_trace = next(t for t in fig_plt.data if t.name == "Passenger Dwell")
-        assert getattr(dwell_trace, "base", None) is None  # no absolute simulation time offset
+        assert getattr(dwell_trace, "base", None) is None
         assert list(dwell_trace.y) == [120.0, 120.0, 120.0, 120.0, 120.0]
 
-        rear_trace = next(t for t in fig_plt.data if t.name == "Residual Rear Invariant")
-        assert getattr(rear_trace, "base", None) is None
-        assert list(rear_trace.y) == [12.0, 12.0, 12.0, 12.0, 12.0]
+        clr_trace = next(t for t in fig_plt.data if t.name == "Departure Clearance")
+        assert getattr(clr_trace, "base", None) is None
+        assert list(clr_trace.y) == [15.0, 15.0, 15.0, 15.0, 15.0]
 
         # 3. Assert dynamic narrative contains calculated max occupation time
         max_tot = df["Total Occupation (s)"].max()
@@ -936,6 +943,69 @@ class TestReportIntegration:
         narrative_text = " ".join(sec_plt.narrative_paragraphs)
         assert f"The longest platform occupation occurred at {gov_plt}" in narrative_text
         assert f"totaling {max_tot:.1f} s" in narrative_text
+
+    def test_uic406_track_clearance_split_and_speeds(self) -> None:
+        """v1.9.0 Part 1: Assert clearance_time_s > 0.0 for track blocks and v_in_kmh, v_out_kmh populated."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        # Blocking intervals assertion
+        assert len(pkg.blocking_intervals) > 0
+        for bi in pkg.blocking_intervals:
+            d = bi.decomposition
+            assert d is not None
+            assert d.geometric_clearance_time_s > 0.0, f"Block {bi.resource_id} has zero clearance time"
+            assert hasattr(d, "v_in_kmh")
+            assert hasattr(d, "v_out_kmh")
+            assert d.v_out_kmh > 0.0, f"Block {bi.resource_id} has zero exit speed"
+
+        # Table assertion
+        sec10 = doc.get_section(ReportSectionId.DETAILED_RESOURCE_TIMING)
+        assert sec10 is not None
+        assert sec10.is_applicable
+        tbl10 = sec10.tables[0]
+        df10 = tbl10.raw_dataframe
+        assert "V_in (km/h)" in df10.columns
+        assert "V_out (km/h)" in df10.columns
+        assert "Clearance (s)" in df10.columns
+        assert (df10["Clearance (s)"] > 0.0).all()
+
+    def test_constrained_block_length_sensitivity_26_cases(self) -> None:
+        """v1.9.0 Part 2: Assert sensitivity chart data contains exactly 26 cases with AS-BUILT pinned."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        study = pkg.sensitivity_result
+        assert study is not None
+        assert len(study.points) == 26
+
+        expected_x = ["AS-BUILT"] + [f"{l * 200}m" for l in range(1, 26)]
+        actual_x = [str(p.parameter_value) for p in study.points]
+        assert actual_x == expected_x
+
+        # Assert AS-BUILT matches baseline
+        assert study.points[0].headway_s == study.baseline_headway_s
+        assert study.points[0].capacity_trains_per_hour == study.baseline_capacity_tph
+
+        # Assert figure data
+        sec9 = doc.get_section(ReportSectionId.BLOCK_LENGTH_SENSITIVITY)
+        assert sec9 is not None
+        assert sec9.is_applicable
+        fig_key = sec9.figure_keys[0]
+        fig = doc.figures_data[fig_key]
+        assert "Constrained Sensitivity Analysis (AS-BUILT Baseline Pinned)" in fig.layout.title.text
+
+        hw_trace = next(t for t in fig.data if t.name == "Minimum Technical Headway [s]")
+        cap_trace = next(t for t in fig.data if t.name == "Theoretical Capacity [tph]")
+        assert len(hw_trace.x) == 26
+        assert len(cap_trace.x) == 26
+        assert list(hw_trace.x) == expected_x
 
 
 

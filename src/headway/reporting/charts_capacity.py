@@ -23,110 +23,120 @@ from headway.reporting.chart_theme import ChartColors, get_plotly_layout
 def create_block_sensitivity_figure(
     sensitivity_result: SensitivityStudyResult,
     running_direction: RunningDirection = RunningDirection.FORWARD,
-    title: str = "Block-Length Sensitivity & Capacity Response Matrix",
+    title: str = "Constrained Sensitivity Analysis (AS-BUILT Baseline Pinned)",
 ) -> go.Figure:
-    """P13-SEN-001 to 006: Two-panel layout: Panel A (Headway vs Block Length), Panel B (Capacity vs Block Length)."""
-    fig = make_subplots(
-        rows=1,
-        cols=2,
-        subplot_titles=("Panel A: Technical Minimum Headway (s)", "Panel B: Theoretical Line Capacity (trains/h)"),
-        horizontal_spacing=0.12,
-    )
+    """v1.9.0 / P13-SEN: Redesigned Constrained Block-Length Sensitivity Chart.
 
-    pts = sensitivity_result.points
+    Single-panel dual Y-axis layout:
+    - Primary Y-Axis (Left): Minimum Technical Headway [s] (Solid blue line, circle markers).
+    - Secondary Y-Axis (Right): Theoretical Capacity [tph] (Dashed green line, square markers).
+    - Data labels for AS-BUILT, 1000m, 2000m, 3000m, 4000m, 5000m.
+    - Dotted orange vertical line at AS-BUILT index.
+    - Pinned AS-BUILT baseline marker.
+    """
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    pts = sensitivity_result.points if sensitivity_result else []
     if not pts:
-        layout = get_plotly_layout(title=title, xaxis_title="Parameter", yaxis_title="Metric")
+        layout = get_plotly_layout(
+            title=title,
+            xaxis_title="Block Section Length [m]",
+            yaxis_title="Minimum Technical Headway [s]",
+            running_direction=running_direction,
+        )
         fig.update_layout(layout)
         return fig
 
-    # Check if parameter values can be converted to float
-    try:
-        sorted_pts = sorted(pts, key=lambda p: float(p.parameter_value))
-        x_vals = [float(p.parameter_value) for p in sorted_pts]
-        base_x = float(sensitivity_result.baseline_value)
-        is_numeric = True
-    except (ValueError, TypeError):
-        sorted_pts = sorted(pts, key=lambda p: str(p.parameter_value))
-        x_vals = [str(p.parameter_value) for p in sorted_pts]
-        base_x = str(sensitivity_result.baseline_value)
-        is_numeric = False
+    x_labels = [str(p.parameter_value) for p in pts]
+    headway_vals = [float(p.headway_s) for p in pts]
+    capacity_vals = [float(p.capacity_trains_per_hour) for p in pts]
 
-    headway_vals = [p.headway_s for p in sorted_pts]
-    capacity_vals = [p.capacity_trains_per_hour for p in sorted_pts]
+    labeled_keys = {"AS-BUILT", "1000m", "2000m", "3000m", "4000m", "5000m"}
+    text_hw = [f"{hw:.1f} s" if x in labeled_keys else "" for x, hw in zip(x_labels, headway_vals)]
+    text_cap = [f"{cap:.1f} tph" if x in labeled_keys else "" for x, cap in zip(x_labels, capacity_vals)]
+
+    # Primary Y-Axis (Left): Minimum Technical Headway [s]
+    fig.add_trace(
+        go.Scatter(
+            x=x_labels,
+            y=headway_vals,
+            mode="lines+markers+text",
+            text=text_hw,
+            textposition="top center",
+            name="Minimum Technical Headway [s]",
+            line=dict(color="#1F77B4", width=2),
+            marker=dict(symbol="circle", size=8, color="#1F77B4"),
+            hovertemplate="Block Length: %{x}<br>Headway: %{y:.1f} s<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+
+    # Secondary Y-Axis (Right): Theoretical Capacity [tph]
+    fig.add_trace(
+        go.Scatter(
+            x=x_labels,
+            y=capacity_vals,
+            mode="lines+markers+text",
+            text=text_cap,
+            textposition="bottom center",
+            name="Theoretical Capacity [tph]",
+            line=dict(color="#2CA02C", width=2, dash="dash"),
+            marker=dict(symbol="square", size=8, color="#2CA02C"),
+            hovertemplate="Block Length: %{x}<br>Capacity: %{y:.1f} tph<extra></extra>",
+        ),
+        secondary_y=True,
+    )
+
+    # Highlight Baseline pin (preserves len(fig.data) >= 3)
+    if "AS-BUILT" in x_labels:
+        idx_ab = x_labels.index("AS-BUILT")
+        fig.add_trace(
+            go.Scatter(
+                x=["AS-BUILT"],
+                y=[headway_vals[idx_ab]],
+                mode="markers",
+                marker=dict(size=14, color="#D9534F", symbol="star"),
+                name="AS-BUILT Baseline (Pinned)",
+                hovertemplate="AS-BUILT Baseline: %{y:.1f} s<extra></extra>",
+                showlegend=False,
+            ),
+            secondary_y=False,
+        )
+
+        fig.add_vline(
+            x="AS-BUILT",
+            line_width=2,
+            line_dash="dot",
+            line_color="orange",
+        )
+    else:
+        base_x = str(sensitivity_result.baseline_value) if sensitivity_result.baseline_value is not None else (x_labels[0] if x_labels else "0")
+        base_y = float(sensitivity_result.baseline_headway_s)
+        fig.add_trace(
+            go.Scatter(
+                x=[base_x],
+                y=[base_y],
+                mode="markers",
+                marker=dict(size=14, color="#D9534F", symbol="star"),
+                name="Baseline Pinned",
+                hovertemplate="Baseline: %{y:.1f} s<extra></extra>",
+                showlegend=False,
+            ),
+            secondary_y=False,
+        )
 
     layout = get_plotly_layout(
         title=title,
-        xaxis_title=f"{sensitivity_result.parameter_name}",
-        yaxis_title="Headway (s)",
+        xaxis_title="Block Section Length [m]",
+        yaxis_title="Minimum Technical Headway [s]",
         running_direction=running_direction,
         height=550,
     )
     fig.update_layout(layout)
+    fig.update_yaxes(title_text="Minimum Technical Headway [s]", secondary_y=False)
+    fig.update_yaxes(title_text="Theoretical Capacity [tph]", secondary_y=True)
+    fig.update_xaxes(categoryorder="array", categoryarray=x_labels)
 
-    # Panel A: Headway
-    fig.add_trace(
-        go.Scatter(
-            x=x_vals,
-            y=headway_vals,
-            mode="lines+markers" if is_numeric else "markers",
-            line=dict(color=ChartColors.PRIMARY_NAVY, width=2),
-            marker=dict(size=8, color=ChartColors.PRIMARY_NAVY),
-            name="Simulated Headway",
-            hovertemplate="Parameter: %{x}<br>Headway: %{y:.1f} s<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-
-    # Highlight Baseline in Panel A
-    fig.add_trace(
-        go.Scatter(
-            x=[base_x],
-            y=[sensitivity_result.baseline_headway_s],
-            mode="markers",
-            marker=dict(size=14, color=ChartColors.CRITICAL_RED, symbol="star"),
-            name="Baseline As-Built",
-            hovertemplate="Baseline: %{x}<br>Headway: %{y:.1f} s<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-
-    # Panel B: Capacity
-    fig.add_trace(
-        go.Scatter(
-            x=x_vals,
-            y=capacity_vals,
-            mode="lines+markers" if is_numeric else "markers",
-            line=dict(color=ChartColors.SECONDARY_BLUE, width=2),
-            marker=dict(size=8, color=ChartColors.SECONDARY_BLUE),
-            name="Theoretical Capacity",
-            hovertemplate="Parameter: %{x}<br>Capacity: %{y:.1f} tph<extra></extra>",
-            showlegend=False,
-        ),
-        row=1,
-        col=2,
-    )
-
-    # Highlight Baseline in Panel B
-    fig.add_trace(
-        go.Scatter(
-            x=[base_x],
-            y=[sensitivity_result.baseline_capacity_tph],
-            mode="markers",
-            marker=dict(size=14, color=ChartColors.CRITICAL_RED, symbol="star"),
-            name="Baseline Capacity",
-            hovertemplate="Baseline: %{x}<br>Capacity: %{y:.1f} tph<extra></extra>",
-            showlegend=False,
-        ),
-        row=1,
-        col=2,
-    )
-
-    fig.update_xaxes(title_text=f"{sensitivity_result.parameter_name}", row=1, col=1)
-    fig.update_xaxes(title_text=f"{sensitivity_result.parameter_name}", row=1, col=2)
-    fig.update_yaxes(title_text="Headway (s)", row=1, col=1)
-    fig.update_yaxes(title_text="Capacity (trains/h)", row=1, col=2)
     return fig
 
 

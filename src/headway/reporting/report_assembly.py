@@ -1053,6 +1053,8 @@ class ReportAssembler:
             tables.append(create_platform_occupation_table(records, running_direction=direction))
 
             def occ_dur(r: Any) -> float:
+                if hasattr(r, "total_platform_occupation_s"):
+                    return float(r.total_platform_occupation_s)
                 arr = float(getattr(r, "arrival_time_s", 0.0))
                 clr = float(getattr(r, "clearance_time_s", getattr(r, "departure_time_s", arr)))
                 return max(0.0, clr - arr)
@@ -1061,29 +1063,25 @@ class ReportAssembler:
             top_records = sorted_records[:3]
 
             p1 = (
-                f"Station platform tracks represent critical nodal capacity constraints. This assessment evaluates "
-                f"platform track reservation, deceleration approach, scheduled passenger dwell, and departure route "
-                f"clearance across {len(records)} station platform berths in the {direction.value} direction."
+                f"Station platform tracks represent critical nodal capacity constraints. This assessment decomposes "
+                f"total platform track occupation into three non-overlapping operational components: Arrival Approach "
+                f"(signal reservation and deceleration), Passenger Dwell (boarding/alighting standstill), and Departure "
+                f"Clearance (acceleration traversal and post-clearance route release) across {len(records)} station platform berths "
+                f"in the {direction.value} direction."
             )
 
             top_lines = []
             for i, r in enumerate(top_records, 1):
                 stn_name = getattr(r, "station_name", getattr(r, "station_id", "Unknown Station"))
                 plt_id = getattr(r, "platform_id", "PLT_01")
-                arr_t = float(getattr(r, "arrival_time_s", 0.0))
-                dw_start = float(getattr(r, "dwell_start_time_s", arr_t))
-                dw_end = float(getattr(r, "dwell_end_time_s", dw_start))
-                dep_t = float(getattr(r, "departure_time_s", dw_end))
-                clr_t = float(getattr(r, "clearance_time_s", dep_t))
-
-                total_occ = clr_t - arr_t
-                approach_dur = max(0.0, dw_start - arr_t)
-                dwell_dur = max(0.0, dw_end - dw_start)
-                clearance_dur = max(0.0, clr_t - dw_end)
+                approach_dur = float(getattr(r, "arrival_approach_s", 15.0))
+                dwell_dur = float(getattr(r, "passenger_dwell_s", getattr(r, "dwell_duration_s", 0.0)))
+                clearance_dur = float(getattr(r, "departure_clearance_s", 15.0))
+                total_occ = float(getattr(r, "total_platform_occupation_s", round(approach_dur + dwell_dur + clearance_dur, 1)))
 
                 top_lines.append(
                     f"{i}) {stn_name} ({plt_id}): total occupation {total_occ:.1f} s "
-                    f"(arrival approach: {approach_dur:.1f} s, scheduled dwell: {dwell_dur:.1f} s, "
+                    f"(arrival approach: {approach_dur:.1f} s, passenger dwell: {dwell_dur:.1f} s, "
                     f"departure clearance: {clearance_dur:.1f} s)"
                 )
 
@@ -1092,36 +1090,35 @@ class ReportAssembler:
                 + "; ".join(top_lines) + "."
             )
             p3 = (
-                "Residual rear infringement and platform lock-up times dictate minimum re-occupation intervals. "
+                "Arrival approach, passenger dwell, and departure clearance components dictate the minimum platform headway. "
                 "Where platform occupation exceeds 180 s, parallel platform tracks or stepping-up operational procedures "
                 "are recommended to decouple station dwell constraints from line headway."
             )
             narrative_paras = [p1, p2, p3]
 
             # Dynamic narrative paragraph beneath the table explaining metrics
-            gov_rec = max(
-                records,
-                key=lambda r: float(getattr(r, "dwell_duration_s", 0.0)) + float(getattr(r, "residual_rear_duration_s", 0.0))
-            )
-            stn_id = getattr(gov_rec, "station_id", "") or ""
-            plt_id = getattr(gov_rec, "platform_id", "") or ""
-            if stn_id and plt_id:
-                if plt_id.startswith(stn_id):
-                    gov_plt = plt_id
+            gov_rec = sorted_records[0] if sorted_records else None
+            if gov_rec:
+                stn_id = getattr(gov_rec, "station_id", "") or ""
+                plt_id = getattr(gov_rec, "platform_id", "") or ""
+                if stn_id and plt_id:
+                    if plt_id.startswith(stn_id):
+                        gov_plt = plt_id
+                    else:
+                        gov_plt = f"{stn_id}-{plt_id}"
                 else:
-                    gov_plt = f"{stn_id}-{plt_id}"
-            else:
-                gov_plt = plt_id or stn_id or "PLT"
+                    gov_plt = plt_id or stn_id or "PLT"
 
-            gov_dwell = float(getattr(gov_rec, "dwell_duration_s", 0.0))
-            gov_residual = float(getattr(gov_rec, "residual_rear_duration_s", 0.0))
-            gov_total = round(gov_dwell + gov_residual, 1)
+                gov_approach = float(getattr(gov_rec, "arrival_approach_s", 15.0))
+                gov_dwell = float(getattr(gov_rec, "passenger_dwell_s", getattr(gov_rec, "dwell_duration_s", 0.0)))
+                gov_clearance = float(getattr(gov_rec, "departure_clearance_s", 15.0))
+                gov_total = float(getattr(gov_rec, "total_platform_occupation_s", round(gov_approach + gov_dwell + gov_clearance, 1)))
 
-            dyn_p = (
-                f"The longest platform occupation occurred at {gov_plt}, totaling {gov_total:.1f} s "
-                f"({gov_dwell:.1f} s dwell + {gov_residual:.1f} s residual rear clearance)."
-            )
-            narrative_paras.append(dyn_p)
+                dyn_p = (
+                    f"The longest platform occupation occurred at {gov_plt}, totaling {gov_total:.1f} s "
+                    f"({gov_approach:.1f} s arrival approach + {gov_dwell:.1f} s passenger dwell + {gov_clearance:.1f} s departure clearance)."
+                )
+                narrative_paras.append(dyn_p)
         else:
             narrative_paras = [
                 "Station platform tracks represent critical operational constraints. This section illustrates platform track "

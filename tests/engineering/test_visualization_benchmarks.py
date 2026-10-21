@@ -425,7 +425,7 @@ class TestVisualizationBenchmarks:
         assert fig.layout.yaxis.title.text == "Occupation Duration (s)"
 
     def test_p13_b015_residual_rear_occupation_chart(self) -> None:
-        """P13-B015: Residual rear occupation chart displays upstream infringement."""
+        """P13-B015 / v1.9.0: Departure clearance / residual rear occupation chart displays upstream infringement."""
         rec = PlatformOccupationRecord(
             train_id="TRN_01",
             station_id="STN_A",
@@ -437,14 +437,14 @@ class TestVisualizationBenchmarks:
             dwell_start_time_s=110.0,
             dwell_end_time_s=150.0,
             departure_time_s=150.0,
-            clearance_time_s=165.0,
+            clearance_time_s=190.0,
             running_direction=RunningDirection.FORWARD,
             is_residual_rear_active=True,
             residual_rear_duration_s=40.0,
             upstream_infringing_resource_ids=("LNK_UPSTREAM_01",),
         )
         fig = create_platform_occupation_figure([rec])
-        rear_trace = next(t for t in fig.data if "Residual Rear" in t.name)
+        rear_trace = next(t for t in fig.data if "Departure Clearance" in t.name or "Residual Rear" in t.name)
         assert (rear_trace.y[0] if getattr(rear_trace, "orientation", None) == "v" else rear_trace.x[0]) == 40.0
 
     def test_p13_b016_mixed_traffic_heatmap(self) -> None:
