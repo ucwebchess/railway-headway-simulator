@@ -503,25 +503,34 @@ class SimulationRunner:
             tracker.update(current_step=60, stage="Mixed-Traffic & Multi-Train Operations", status_message="Evaluating directional mixed-traffic and dispatching...")
 
         # 4. Mixed-Traffic Matrix
-        service_ids = [svc.service_pattern_id for svc in ops.service_patterns] if ops.service_patterns else ["METRO_COMMUTER", "METRO_EXPRESS"]
-        if len(service_ids) < 2:
-            service_ids = ["METRO_COMMUTER", "METRO_EXPRESS"]
+        service_ids = [svc.service_pattern_id for svc in ops.service_patterns] if (ops and ops.service_patterns) else []
+        if len(service_ids) >= 2:
+            matrix_values = {}
+            matrix_bottlenecks = {}
+            for s1 in service_ids:
+                for s2 in service_ids:
+                    spread = 4.0 if s1 != s2 else 0.0
+                    matrix_values[(s1, s2)] = required_hw_s + spread
+                    matrix_bottlenecks[(s1, s2)] = bottleneck_id
 
-        matrix_values = {}
-        matrix_bottlenecks = {}
-        for s1 in service_ids:
-            for s2 in service_ids:
-                spread = 4.0 if s1 != s2 else 0.0
-                matrix_values[(s1, s2)] = required_hw_s + spread
-                matrix_bottlenecks[(s1, s2)] = bottleneck_id
-
-        mt_matrix = MixedTrafficHeadwayMatrix(
-            matrix_id=f"MT_{run_id}",
-            running_direction=running_direction,
-            service_ids=service_ids,
-            headway_values_s=matrix_values,
-            controlling_bottlenecks=matrix_bottlenecks,
-        )
+            mt_matrix = MixedTrafficHeadwayMatrix(
+                matrix_id=f"MT_{run_id}",
+                running_direction=running_direction,
+                service_ids=service_ids,
+                headway_values_s=matrix_values,
+                controlling_bottlenecks=matrix_bottlenecks,
+            )
+        elif len(service_ids) == 1:
+            s1 = service_ids[0]
+            mt_matrix = MixedTrafficHeadwayMatrix(
+                matrix_id=f"MT_{run_id}",
+                running_direction=running_direction,
+                service_ids=service_ids,
+                headway_values_s={(s1, s1): required_hw_s},
+                controlling_bottlenecks={(s1, s1): bottleneck_id},
+            )
+        else:
+            mt_matrix = None
 
         # 5. Sensitivity Analysis (P10)
         base_bl = 600.0
@@ -761,30 +770,39 @@ class SimulationRunner:
             cum_km += blk_len / 1000.0
 
         # 8. Scenario Comparison Report
-        report_cmp = ScenarioComparisonReport(
-            baseline_scenario_id="BASELINE",
-            compared_scenario_ids=["SCEN_UPGRADE"],
-            metric_differences={
-                "SCEN_UPGRADE": [
-                    MetricDifference(
-                        metric_name="headway_s",
-                        baseline_value=required_hw_s,
-                        scenario_value=required_hw_s - 15.0,
-                        absolute_change=-15.0,
-                        percentage_change=round((-15.0 / required_hw_s) * 100.0, 1),
+        report_cmp = None
+        scenarios = list(project.scenarios) if project.scenarios else []
+        if len(scenarios) >= 2:
+            base_scn = next((s for s in scenarios if getattr(s, "is_baseline", False)), scenarios[0])
+            cmp_scns = [s for s in scenarios if s.scenario_id != base_scn.scenario_id]
+            if cmp_scns:
+                diffs = {}
+                shifts = []
+                for s in cmp_scns:
+                    diffs[s.scenario_id] = [
+                        MetricDifference(
+                            metric_name="headway_s",
+                            baseline_value=required_hw_s,
+                            scenario_value=required_hw_s,
+                            absolute_change=0.0,
+                            percentage_change=0.0,
+                        )
+                    ]
+                    shifts.append(
+                        BottleneckShiftReport(
+                            baseline_scenario_id=base_scn.scenario_id,
+                            comparison_scenario_id=s.scenario_id,
+                            bottleneck_migrated=False,
+                            baseline_bottleneck_id=bottleneck_id,
+                            comparison_bottleneck_id=bottleneck_id,
+                        )
                     )
-                ]
-            },
-            bottleneck_shifts=[
-                BottleneckShiftReport(
-                    baseline_scenario_id="BASELINE",
-                    comparison_scenario_id="SCEN_UPGRADE",
-                    bottleneck_migrated=True,
-                    baseline_bottleneck_id=bottleneck_id,
-                    comparison_bottleneck_id="BLK_04",
+                report_cmp = ScenarioComparisonReport(
+                    baseline_scenario_id=base_scn.scenario_id,
+                    compared_scenario_ids=[s.scenario_id for s in cmp_scns],
+                    metric_differences=diffs,
+                    bottleneck_shifts=shifts,
                 )
-            ],
-        )
 
         if tracker:
             tracker.check_cancellation()
@@ -814,7 +832,7 @@ class SimulationRunner:
             effective_config_hash=f"hash_{run_id[:12]}",
             running_direction=running_direction,
             trajectories={"TRN_LEADER": traj_leader, "TRN_FOLLOWER": traj_follower},
-            headway_results={"METRO_LEADER->METRO_FOLLOWER": hw_result},
+            headway_results={f"{traj_leader.train_id}->{traj_follower.train_id}": hw_result},
             mixed_traffic_matrix=mt_matrix,
             blocking_intervals=blocking_intervals,
             sensitivity_result=sens_study,
@@ -823,6 +841,7 @@ class SimulationRunner:
             metadata={
                 "project": project,
                 "project_name": project.name,
+                "scenarios": scenarios,
                 "service_duration_s": traj_leader.journey_time_s,
                 "station_stops": station_stop_records,
                 "platform_records": platform_records,

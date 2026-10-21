@@ -105,8 +105,8 @@ def test_axis_layout_platform_occupation():
 
     fig = create_platform_occupation_figure([p1, p2])
 
-    assert fig.layout.xaxis.title.text == "Station Platform Track"
-    assert fig.layout.yaxis.title.text == "Simulation Time [s]"
+    assert fig.layout.xaxis.title.text == "Platform ID"
+    assert fig.layout.yaxis.title.text == "Occupation Duration (s)"
     assert len(fig.layout.xaxis.categoryarray) == 2
 
 

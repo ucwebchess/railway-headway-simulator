@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.1] — 2026-10-21
+
+### Fixed
+- **Eliminate Phantom Data (DEF-12 & DEF-13)**: Removed hardcoded synthetic fallback strings (`SCEN_UPGRADE`, `METRO_COMMUTER`, `METRO_EXPRESS`) from simulation pipeline and UI runner. Section 16 (Scenario Comparison) and Section 7/9 (Mixed-Traffic Headway Matrix) are now strictly bound to actual project scenarios and operations service patterns, correctly marking them not-applicable when fewer than 2 distinct entries exist.
+- **UI State Leakage Protection**: Ensured complete reset of previous simulation results and packages in session state upon workbook ingestion.
+
+### Added
+- **Rescaled Platform Occupation Chart (Part B)**: Transformed Section 6 Platform Track Occupation diagram from absolute-time Gantt into a Stacked Bar Chart (`barmode="stack"`) measuring `Occupation Duration (s)` by `Platform ID`, rendering Passenger Dwell and Residual Rear Invariant as stacked components.
+- **Platform Track Occupation Table & Narrative**: Implemented `create_platform_occupation_table` generating structured columns (`Platform ID`, `Train ID`, `Arrival Time (s)`, `Departure Time (s)`, `Passenger Dwell (s)`, `Residual Rear (s)`, `Total Occupation (s)`) accompanied by dynamic governing berth narrative.
+
+---
+
 ## [1.8.0] — 2026-10-21
 
 ### Added

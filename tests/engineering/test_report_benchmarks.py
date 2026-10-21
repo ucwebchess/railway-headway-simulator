@@ -290,9 +290,9 @@ def build_benchmark_package(
 
     report_cmp = ScenarioComparisonReport(
         baseline_scenario_id="SCEN_BASE",
-        compared_scenario_ids=["SCEN_UPGRADE"],
+        compared_scenario_ids=["SCEN_EXPANSION"],
         metric_differences={
-            "SCEN_UPGRADE": [
+            "SCEN_EXPANSION": [
                 MetricDifference(
                     metric_name="headway_s",
                     baseline_value=headway_s,
@@ -305,7 +305,7 @@ def build_benchmark_package(
         bottleneck_shifts=[
             BottleneckShiftReport(
                 baseline_scenario_id="SCEN_BASE",
-                comparison_scenario_id="SCEN_UPGRADE",
+                comparison_scenario_id="SCEN_EXPANSION",
                 bottleneck_migrated=True,
                 baseline_bottleneck_id="BLK_02",
                 comparison_bottleneck_id="BLK_04",
@@ -394,6 +394,7 @@ def build_benchmark_package(
             "provenance_records": [prov_rec],
             "stochastic_headway_samples": [85.0 + i * 0.5 for i in range(20)],
             "tvs_events": [tvs_rec],
+            "scenarios": ["SCEN_BASE", "SCEN_EXPANSION"],
         },
     )
 

@@ -114,6 +114,7 @@ def create_data_import_tab() -> Dict[str, Any]:
             return create_error_html({"category": "Input Error", "message": "No ZIP file provided."}), []
 
         try:
+            session_state.reset()
             proj, manifest, files, report = FileManager.import_project_zip(zip_file)
             session_state.set_project(proj, validation_report=report, source_files=files)
             stats = session_state.get_project_statistics()
@@ -138,6 +139,7 @@ def create_data_import_tab() -> Dict[str, Any]:
             return create_error_html({"category": "Input Error", "message": "No Excel files uploaded."}), []
 
         try:
+            session_state.reset()
             proj, report, files = FileManager.import_excel_files(file_list)
             if proj is None:
                 err_msg = "; ".join([f.message for f in report.findings if f.severity.value in ("CRITICAL", "ERROR")])

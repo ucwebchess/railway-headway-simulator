@@ -20,119 +20,75 @@ from headway.reporting.result_models import PlatformOccupationRecord
 def create_platform_occupation_figure(
     occupation_records: Sequence[PlatformOccupationRecord],
     running_direction: RunningDirection = RunningDirection.FORWARD,
-    title: str = "Platform Track Reservation, Dwell & Residual Rear Occupation",
+    title: str = "Platform Track Occupation Duration & Residual Rear Invariant",
 ) -> go.Figure:
-    """P13-STN-001 to 005: Generate interactive platform track occupation timeline."""
+    """P13-STN-001 to 005 / v1.8.1: Stacked Bar Chart of platform occupation duration."""
     fig = go.Figure()
 
     if not occupation_records:
         layout = get_plotly_layout(
             title=title,
-            xaxis_title="Station Platform Track",
-            yaxis_title="Simulation Time [s]",
+            xaxis_title="Platform ID",
+            yaxis_title="Occupation Duration (s)",
             running_direction=running_direction,
+            barmode="stack",
         )
         fig.update_layout(layout)
         return fig
 
-    # Group records by platform
-    platforms_seen = []
-    for r in occupation_records:
-        label = f"{r.station_name} - {r.platform_id}"
-        if label not in platforms_seen:
-            platforms_seen.append(label)
-
+    recs = list(occupation_records)
     if running_direction == RunningDirection.REVERSE:
-        platforms_seen = list(reversed(platforms_seen))
+        recs = list(reversed(recs))
 
-    for rec in occupation_records:
-        plt_label = f"{rec.station_name} - {rec.platform_id}"
+    def _get_plt_id(r: Any) -> str:
+        stn = getattr(r, "station_id", "") or ""
+        plt = getattr(r, "platform_id", "") or ""
+        if stn and plt:
+            if plt.startswith(stn):
+                return plt
+            return f"{stn}-{plt}"
+        return plt or stn or "PLT"
 
-        # 1. Approach / Ingress (Arrival to Dwell start)
-        ingress_dur = max(0.0, rec.dwell_start_time_s - rec.arrival_time_s)
-        if ingress_dur > 0:
-            fig.add_trace(
-                go.Bar(
-                    name="Ingress",
-                    x=[plt_label],
-                    y=[ingress_dur],
-                    base=[rec.arrival_time_s],
-                    orientation="v",
-                    marker=dict(color=ChartColors.COMPONENT_APPROACH),
-                    hovertemplate=f"Train: {rec.train_id}<br>Ingress: {ingress_dur:.1f} s<extra></extra>",
-                    showlegend=False,
-                )
-            )
+    platform_ids = [_get_plt_id(r) for r in recs]
+    dwell_durations = [float(getattr(r, "dwell_duration_s", 0.0)) for r in recs]
+    residual_durations = [float(getattr(r, "residual_rear_duration_s", 0.0)) for r in recs]
 
-        # 2. Dwell Period (Stationary platform occupation)
-        fig.add_trace(
-            go.Bar(
-                name="Passenger Dwell",
-                x=[plt_label],
-                y=[rec.dwell_duration_s],
-                base=[rec.dwell_start_time_s],
-                orientation="v",
-                marker=dict(color=ChartColors.COMPONENT_DWELL),
-                hovertemplate=(
-                    f"<b>Train: {rec.train_id}</b><br>"
-                    f"Platform: {rec.platform_id}<br>"
-                    f"Dwell Start: {rec.dwell_start_time_s:.1f} s<br>"
-                    f"Dwell End: {rec.dwell_end_time_s:.1f} s<br>"
-                    f"Duration: {rec.dwell_duration_s:.1f} s<extra></extra>"
-                ),
-                showlegend=(rec == occupation_records[0]),
-            )
+    # Trace 1: Passenger Dwell (Purple)
+    fig.add_trace(
+        go.Bar(
+            name="Passenger Dwell",
+            x=platform_ids,
+            y=dwell_durations,
+            orientation="v",
+            marker=dict(color=ChartColors.COMPONENT_DWELL),
+            hovertemplate="<b>%{x}</b><br>Passenger Dwell: %{y:.1f} s<extra></extra>",
         )
+    )
 
-        # 3. Egress / Clearance (Departure to Clearance)
-        egress_dur = max(0.0, rec.clearance_time_s - rec.departure_time_s)
-        if egress_dur > 0:
-            fig.add_trace(
-                go.Bar(
-                    name="Egress / Clearance",
-                    x=[plt_label],
-                    y=[egress_dur],
-                    base=[rec.departure_time_s],
-                    orientation="v",
-                    marker=dict(color=ChartColors.COMPONENT_GEOMETRIC_CLEARANCE),
-                    hovertemplate=f"Train: {rec.train_id}<br>Clearance: {egress_dur:.1f} s<extra></extra>",
-                    showlegend=False,
-                )
-            )
-
-        # 4. Residual Rear Occupation Highlight (P13-STN-004)
-        if rec.is_residual_rear_active and rec.residual_rear_duration_s > 0:
-            rear_label = f"{plt_label} [Upstream Infringement]"
-            fig.add_trace(
-                go.Bar(
-                    name="Residual Rear Invariant",
-                    x=[plt_label],
-                    y=[rec.residual_rear_duration_s],
-                    base=[rec.dwell_start_time_s],
-                    orientation="v",
-                    marker=dict(
-                        color=ChartColors.COMPONENT_RESIDUAL_REAR,
-                        pattern=dict(shape="/", fgcolor=ChartColors.CRITICAL_RED),
-                    ),
-                    hovertemplate=(
-                        f"<b>Upstream Infringement ({rec.train_id})</b><br>"
-                        f"Resources: {', '.join(rec.upstream_infringing_resource_ids)}<br>"
-                        f"Duration: {rec.residual_rear_duration_s:.1f} s<extra></extra>"
-                    ),
-                    showlegend=(rec == occupation_records[0]),
-                )
-            )
+    # Trace 2: Residual Rear Invariant (Orange/Red, hatched)
+    fig.add_trace(
+        go.Bar(
+            name="Residual Rear Invariant",
+            x=platform_ids,
+            y=residual_durations,
+            orientation="v",
+            marker=dict(
+                color=ChartColors.COMPONENT_RESIDUAL_REAR,
+                pattern=dict(shape="/", fgcolor=ChartColors.CRITICAL_RED),
+            ),
+            hovertemplate="<b>%{x}</b><br>Residual Rear Invariant: %{y:.1f} s<extra></extra>",
+        )
+    )
 
     layout = get_plotly_layout(
         title=title,
-        xaxis_title="Station Platform Track",
-        yaxis_title="Simulation Time [s]",
+        xaxis_title="Platform ID",
+        yaxis_title="Occupation Duration (s)",
         running_direction=running_direction,
-        barmode="overlay",
-        width=max(800, len(platforms_seen) * 60 + 200),
+        barmode="stack",
+        width=max(800, len(platform_ids) * 60 + 200),
         height=550,
     )
     fig.update_layout(layout)
-    fig.update_xaxes(categoryorder="array", categoryarray=platforms_seen)
-    fig.update_yaxes(categoryarray=platforms_seen)
+    fig.update_xaxes(categoryorder="array", categoryarray=platform_ids)
     return fig

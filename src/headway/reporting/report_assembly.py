@@ -75,6 +75,7 @@ from headway.reporting.tables import (
     create_conflict_ranking_table,
     create_headway_matrix_table,
     create_longest_occupation_table,
+    create_platform_occupation_table,
     create_resource_provenance_table,
     create_resource_timing_table,
     create_scenario_comparison_table,
@@ -1047,7 +1048,10 @@ class ReportAssembler:
             figures_data[fig_key] = create_platform_occupation_figure(records, running_direction=direction)
 
         narrative_paras: List[str] = []
+        tables: List[EngineeringTable] = []
         if is_app:
+            tables.append(create_platform_occupation_table(records, running_direction=direction))
+
             def occ_dur(r: Any) -> float:
                 arr = float(getattr(r, "arrival_time_s", 0.0))
                 clr = float(getattr(r, "clearance_time_s", getattr(r, "departure_time_s", arr)))
@@ -1093,6 +1097,31 @@ class ReportAssembler:
                 "are recommended to decouple station dwell constraints from line headway."
             )
             narrative_paras = [p1, p2, p3]
+
+            # Dynamic narrative paragraph beneath the table explaining metrics
+            gov_rec = max(
+                records,
+                key=lambda r: float(getattr(r, "dwell_duration_s", 0.0)) + float(getattr(r, "residual_rear_duration_s", 0.0))
+            )
+            stn_id = getattr(gov_rec, "station_id", "") or ""
+            plt_id = getattr(gov_rec, "platform_id", "") or ""
+            if stn_id and plt_id:
+                if plt_id.startswith(stn_id):
+                    gov_plt = plt_id
+                else:
+                    gov_plt = f"{stn_id}-{plt_id}"
+            else:
+                gov_plt = plt_id or stn_id or "PLT"
+
+            gov_dwell = float(getattr(gov_rec, "dwell_duration_s", 0.0))
+            gov_residual = float(getattr(gov_rec, "residual_rear_duration_s", 0.0))
+            gov_total = round(gov_dwell + gov_residual, 1)
+
+            dyn_p = (
+                f"The longest platform occupation occurred at {gov_plt}, totaling {gov_total:.1f} s "
+                f"({gov_dwell:.1f} s dwell + {gov_residual:.1f} s residual rear clearance)."
+            )
+            narrative_paras.append(dyn_p)
         else:
             narrative_paras = [
                 "Station platform tracks represent critical operational constraints. This section illustrates platform track "
@@ -1107,6 +1136,7 @@ class ReportAssembler:
             not_applicable_reason="No station platform occupation records present in dataset." if not is_app else None,
             narrative_paragraphs=narrative_paras,
             figure_keys=[fig_key] if is_app else [],
+            tables=tables,
         )
 
     @classmethod
@@ -1116,9 +1146,30 @@ class ReportAssembler:
         direction: RunningDirection,
         figures_data: Dict[str, Any],
     ) -> ReportSection:
-        """Section 7: Mixed-Traffic Headway Matrix (P14-SEC07-001)."""
+        """Section 7/9: Mixed-Traffic Headway Matrix (P14-SEC07-001)."""
+        project = package.metadata.get("project") if package.metadata else None
+        service_patterns = []
+        if project and hasattr(project, "operations") and project.operations:
+            service_patterns = getattr(project.operations, "service_patterns", []) or []
+
         matrix = package.mixed_traffic_matrix
-        is_app = matrix is not None
+        matrix_services = getattr(matrix, "service_ids", []) if matrix else []
+
+        if service_patterns:
+            has_multiple = len(service_patterns) >= 2
+        else:
+            has_multiple = len(matrix_services) >= 2
+
+        if not has_multiple:
+            is_app = False
+            not_applicable_reason = "Mixed-traffic matrix requires at least two distinct service patterns. Only one was provided."
+        elif matrix is None:
+            is_app = False
+            not_applicable_reason = "No multi-service mixed-traffic matrix computed for this run."
+        else:
+            is_app = True
+            not_applicable_reason = None
+
         fig_key = "fig_mixed_traffic_heatmap"
         tables: List[EngineeringTable] = []
         if is_app and matrix:
@@ -1178,7 +1229,7 @@ class ReportAssembler:
             title="Mixed-Traffic Directional Headway Matrix",
             section_number="7.0",
             is_applicable=is_app,
-            not_applicable_reason="No multi-service mixed-traffic matrix computed for this run." if not is_app else None,
+            not_applicable_reason=not_applicable_reason,
             narrative_paragraphs=narrative_paras,
             figure_keys=[fig_key] if is_app else [],
             tables=tables,
@@ -1843,15 +1894,34 @@ class ReportAssembler:
         )
 
     @classmethod
-    def _build_section_comparison(
+    def _build_section_scenario_comparison(
         cls,
         package: SimulationResultPackage,
         direction: RunningDirection,
         figures_data: Dict[str, Any],
     ) -> ReportSection:
         """Section 16: Scenario Comparison (P14-CMP-001 to 006)."""
+        project = package.metadata.get("project") if package.metadata else None
+        scenarios = []
+        if package.metadata and "scenarios" in package.metadata:
+            scenarios = package.metadata["scenarios"]
+        elif project is not None and hasattr(project, "scenarios") and project.scenarios:
+            scenarios = list(project.scenarios)
+
         report = package.scenario_comparison_report
-        is_app = report is not None
+
+        if len(scenarios) < 2:
+            is_app = False
+            not_applicable_reason = (
+                "Scenario comparison requires at least two scenarios. Only the baseline scenario was provided in the workbook."
+            )
+        elif report is None:
+            is_app = False
+            not_applicable_reason = "No scenario comparison report provided for this execution."
+        else:
+            is_app = True
+            not_applicable_reason = None
+
         fig_key = "fig_scenario_comparison"
         tables: List[EngineeringTable] = []
         if is_app and report:
@@ -1865,7 +1935,7 @@ class ReportAssembler:
             title="Scenario Comparison and Bottleneck Migration",
             section_number="16.0",
             is_applicable=is_app,
-            not_applicable_reason="No scenario comparison report provided for this execution." if not is_app else None,
+            not_applicable_reason=not_applicable_reason,
             narrative_paragraphs=[
                 "Compares baseline performance metrics against alternative engineering scenarios, tabulating parameter differences, "
                 "absolute and percentage metric deltas, and tracing critical bottleneck migration.",
@@ -1873,6 +1943,8 @@ class ReportAssembler:
             figure_keys=[fig_key] if is_app else [],
             tables=tables,
         )
+
+    _build_section_comparison = _build_section_scenario_comparison
 
     @classmethod
     def _build_section_verification(
