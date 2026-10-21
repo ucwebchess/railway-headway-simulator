@@ -146,7 +146,7 @@ def generate_infrastructure(out_path: Path) -> None:
     _build_dict_worksheet(wb, next(w for w in wb_def.worksheets if w.name == "Nodes"), nodes_data)
 
     tracks_data = [
-        {"TRACK_ID": "TRK_UP", "DESCRIPTION": "High-Speed Up Main Track", "DIRECTIONALITY": "NOMINAL"},
+        {"TRACK_ID": "TRK_UP", "DESCRIPTION": "High-Speed Up Main Track", "DIRECTIONALITY": "BIDIRECTIONAL"},
     ]
     _build_dict_worksheet(wb, next(w for w in wb_def.worksheets if w.name == "Tracks"), tracks_data)
 

@@ -324,6 +324,14 @@ class SimulationRunner:
                 else list(reversed(active_pattern.stops))
             )
 
+        plat_map_check = {plt.platform_id: plt for plt in (infra.platforms or [])}
+        for st_stop in service_stops:
+            plt_id = getattr(st_stop, "platform_id", None)
+            if plt_id and plt_id not in plat_map_check:
+                raise StationStopFieldMissingError(
+                    f"ERR_STATION_STOP_FIELD_MISSING: Platform ID '{plt_id}' cannot be resolved in project platforms."
+                )
+
         # 2. Pass 1: Leader-only microscopic simulation & Technical Headway Solving (DEF-05)
         traj_leader_p1, _, simulated_route, train_leader_p1, coord_p1 = cls._run_multitrain_simulation(
             track_links=track_links,
@@ -336,6 +344,7 @@ class SimulationRunner:
             stops=service_stops,
             platforms=list(infra.platforms) if infra and infra.platforms else [],
             blocks=blocks,
+            stations=list(infra.stations) if infra and infra.stations else [],
         )
 
         if not traj_leader_p1 or not traj_leader_p1.samples:
@@ -496,6 +505,7 @@ class SimulationRunner:
             stops=service_stops,
             platforms=list(infra.platforms) if infra and infra.platforms else [],
             blocks=blocks,
+            stations=list(infra.stations) if infra and infra.stations else [],
         )
 
         if tracker:
@@ -1178,6 +1188,7 @@ class SimulationRunner:
         stops: Optional[List[StationStop]] = None,
         platforms: Optional[List[Platform]] = None,
         blocks: Optional[List[SignallingBlock]] = None,
+        stations: Optional[List[Station]] = None,
     ) -> Tuple[TrainTrajectory, Optional[TrainTrajectory], Route, TrainServiceInstance, SignallingCoordinator]:
         """Execute microscopic multi-train simulation along all track links with MultiTrainSimulator."""
         traversals: List[LinkTraversal] = []
@@ -1255,6 +1266,9 @@ class SimulationRunner:
         max_duration_s = max(7200.0, est_journey_s * 2.5 + hw_offset + 600.0)
 
         coord = SignallingCoordinator()
+        if stations:
+            for stn in stations:
+                coord.platform_controller.register_station(stn)
         if platforms:
             for plat in platforms:
                 coord.platform_controller.register_platform(plat)
@@ -1330,13 +1344,26 @@ class SimulationRunner:
                 )
             )
 
+        import dataclasses
+        evs = []
+        for e in train.events:
+            ev_dist = e.route_distance_m
+            if is_reverse and ev_dist is not None:
+                ev_dist = round(max(0.0, total_len - ev_dist), 2)
+            if dataclasses.is_dataclass(e):
+                evs.append(dataclasses.replace(e, route_distance_m=ev_dist))
+            elif hasattr(e, "model_copy"):
+                evs.append(e.model_copy(update={"route_distance_m": ev_dist}))
+            else:
+                evs.append(e)
+
         return TrainTrajectory(
             train_id=train.train_id,
             train_type_id=train.params.train_type_id,
             route_id=train.route.route_id,
             running_direction=train.running_direction,
             samples=samples,
-            events=list(train.events),
+            events=evs,
         )
 
     @classmethod

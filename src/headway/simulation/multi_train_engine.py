@@ -345,29 +345,54 @@ class MultiTrainSimulator:
         # 5. Scheduled Station Stop (P09-ST-001)
         if train.stops and train.current_stop_index < len(train.stops) and not train.is_dwelling:
             stop = train.stops[train.current_stop_index]
-            plat_obj = self.coordinator.platform_controller.platforms.get(stop.platform_id)
+            plat_obj = None
+            if getattr(stop, "platform_id", None):
+                plat_obj = self.coordinator.platform_controller.platforms.get(stop.platform_id)
+            if not plat_obj and getattr(stop, "station_id", None):
+                p_ids = self.coordinator.platform_controller.station_to_platforms.get(stop.station_id, [])
+                if p_ids:
+                    plat_obj = self.coordinator.platform_controller.platforms.get(p_ids[0])
+                if not plat_obj:
+                    for p in self.coordinator.platform_controller.platforms.values():
+                        if p.station_id == stop.station_id or p.platform_id == stop.station_id:
+                            plat_obj = p
+                            break
+
             plat_link = None
             plat_offset = 0.0
             if plat_obj:
                 plat_link = plat_obj.link_id
-                plat_offset = plat_obj.start_offset_m + min(plat_obj.length_m, train.params.length_m)
+                if train.running_direction == RunningDirection.REVERSE:
+                    plat_offset = max(plat_obj.start_offset_m, plat_obj.end_offset_m - min(plat_obj.length_m, train.params.length_m))
+                else:
+                    plat_offset = min(plat_obj.end_offset_m, plat_obj.start_offset_m + min(plat_obj.length_m, train.params.length_m))
             else:
-                plat_res = self.coordinator.resource_controller.resources.get(stop.platform_id)
+                plat_res = self.coordinator.resource_controller.resources.get(stop.platform_id) if getattr(stop, "platform_id", None) else None
+                if not plat_res and getattr(stop, "station_id", None):
+                    plat_res = self.coordinator.resource_controller.resources.get(stop.station_id)
                 if plat_res:
                     plat_link = getattr(plat_res, "link_id", None) or (plat_res.intervals[0].link_id if plat_res.intervals else None)
                     plat_offset = plat_res.intervals[0].start_offset_m if plat_res.intervals else 0.0
 
             if plat_link:
-                plat_pos = train.route.physical_to_route_distance(plat_link, plat_offset)
-                if plat_pos is not None and plat_pos > curr_pos - 1.0:
+                try:
+                    matching_trav = next((t for t in train.route.traversals if t.link_id == plat_link), None)
+                    if matching_trav:
+                        plat_offset = max(0.0, min(matching_trav.length_m - 0.05, plat_offset))
+                    plat_pos = train.route.physical_to_route_distance(plat_link, plat_offset)
+                except Exception:
+                    plat_pos = None
+
+                if plat_pos is not None and plat_pos > curr_pos - 15.0:
                     # Check platform availability
-                    if not self.coordinator.resource_controller.is_resource_available(stop.platform_id, train.train_id, self.current_time_s):
+                    res_key = stop.platform_id or (plat_obj.platform_id if plat_obj else stop.station_id)
+                    if not self.coordinator.resource_controller.is_resource_available(res_key, train.train_id, self.current_time_s):
                         # Platform is occupied by another train (P09-B016)
                         holding_pt = max(0.0, plat_pos - 50.0)
                         if holding_pt < min_eoa:
                             min_eoa = holding_pt
                             governing_cause = "PLATFORM"
-                            holding_res = stop.platform_id
+                            holding_res = res_key
                     else:
                         # Target is station stopping point
                         if plat_pos < min_eoa:
@@ -429,7 +454,12 @@ class MultiTrainSimulator:
         v_target = min(v_line_limit, v_brake_limit)
 
         # 3. Dynamic Mode & Acceleration Selection
-        if cause == "STATION_STOP" and ((dist_to_eoa <= 2.0 and curr_v < 3.0) or (curr_s >= eoa_m - 0.5 and curr_v < 3.0)):
+        arrival_dist = max(3.0, curr_v * dt * 1.5)
+        if cause == "STATION_STOP" and (
+            (dist_to_eoa <= arrival_dist and curr_v < 6.0)
+            or (curr_s >= eoa_m - 1.0 and curr_v < 6.0)
+            or (curr_v == 0.0 and abs(curr_s - eoa_m) <= 15.0)
+        ):
             # Arrived at scheduled station stop
             stop = train.stops[train.current_stop_index]
             train.current_position_m = round(eoa_m, 3)
@@ -451,8 +481,9 @@ class MultiTrainSimulator:
                     description=f"Train '{train.train_id}' arrived at station '{stop.station_id}'",
                 )
             )
-            self.coordinator.platform_controller.front_enter_platform(train.train_id, stop.platform_id, self.current_time_s)
-            self._train_occupied_resources.setdefault(train.train_id, set()).add(stop.platform_id)
+            p_id = stop.platform_id or stop.station_id
+            self.coordinator.platform_controller.front_enter_platform(train.train_id, p_id, self.current_time_s)
+            self._train_occupied_resources.setdefault(train.train_id, set()).add(p_id)
             return
 
         if (dist_to_eoa <= 1.0 and curr_v < 1.0) or (curr_v == 0.0 and dist_to_eoa <= 2.0):
