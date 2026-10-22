@@ -76,6 +76,7 @@ class HeadwayResult:
     details: Dict[str, Any] = field(default_factory=dict)
     performance_factor: float = 1.0
     performance_factor_source: str = "default"
+    planning_margin_s: float = 0.0
 
     @property
     def controlling_bottleneck_description(self) -> str:
@@ -104,6 +105,7 @@ class HeadwayResult:
             "total_conflicts_count": len(self.conflict_ranking),
             "performance_factor": self.performance_factor,
             "performance_factor_source": self.performance_factor_source,
+            "planning_margin_s": self.planning_margin_s,
         }
 
 

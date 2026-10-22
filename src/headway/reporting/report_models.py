@@ -125,6 +125,11 @@ class ExecutiveKpis:
         return self.controlling_bottleneck_location_m / 1000.0
 
     @property
+    def planning_margin_str(self) -> str:
+        """Formatted planning margin label (e.g. Margin: 18 s)."""
+        return f"Margin: {self.planning_margin_s:.0f} s"
+
+    @property
     def total_service_duration_str(self) -> str:
         """Formatted total service duration in HH:MM:SS."""
         if self.total_service_duration_s is None:
@@ -147,6 +152,7 @@ class ExecutiveKpis:
             "controlling_bottleneck_chainage_km": self.controlling_bottleneck_chainage_km,
             "headway_definition": self.headway_definition,
             "planning_margin_s": self.planning_margin_s,
+            "planning_margin_str": self.planning_margin_str,
             "total_service_duration_s": self.total_service_duration_s,
             "total_service_duration_str": self.total_service_duration_str,
             "performance_factor": self.performance_factor,

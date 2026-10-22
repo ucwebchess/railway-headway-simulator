@@ -55,18 +55,20 @@ class TechnicalHeadwaySolver:
         performance_factor: float = 1.0,
         performance_factor_source: str = "default",
         resource_geometry: Optional[Dict[str, float]] = None,
+        planning_margin_s: Optional[float] = None,
     ) -> HeadwayResult:
         """P08-HW-006 & 007: Solves technical minimum headway H_min = max(H_dispatch, max H_{u,v})."""
         min_dispatch = (
             custom_dispatch_min_s if custom_dispatch_min_s is not None else self.minimum_dispatch_headway_s
         )
+        eff_margin = float(planning_margin_s) if planning_margin_s is not None else float(self.planning_margin_s)
 
         detector = ConflictDetector(
             shared_groups=shared_groups,
             conflicting_routes=conflicting_routes,
             tunnel_to_tvs=tunnel_to_tvs,
             whole_tunnel_tvs_ids=whole_tunnel_tvs_ids,
-            planning_margin_s=self.planning_margin_s,
+            planning_margin_s=0.0,
         )
 
         conflicts = detector.detect_conflicts(
@@ -154,9 +156,12 @@ class TechnicalHeadwaySolver:
                 "conflicts_count": len(conflicts),
                 "controlling_count": len(controlling_conflicts),
                 "is_dispatch_limited": abs(h_min - min_dispatch) <= 1e-4 and len(conflicts) > 0,
+                "planning_margin_s": eff_margin,
+                "planning_headway_s": round(h_min + eff_margin, 6),
             },
             performance_factor=performance_factor,
             performance_factor_source=performance_factor_source,
+            planning_margin_s=eff_margin,
         )
 
     def _generate_stairway_data(

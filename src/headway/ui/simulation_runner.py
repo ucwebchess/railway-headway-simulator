@@ -181,6 +181,10 @@ class SimulationRunner:
         performance_factor: Optional[float] = None,
         report_config: Optional[Any] = None,
         analysis_id: Optional[str] = None,
+        dt_s: float = 1.0,
+        max_duration_s: float = 7200.0,
+        planning_margin_s: float = 18.0,
+        monte_carlo_reps: int = 100,
     ) -> Tuple[SimulationResultPackage, ReportDocument]:
         """Executes microscopic railway simulation and assembles the result package."""
         import inspect
@@ -345,6 +349,8 @@ class SimulationRunner:
             platforms=list(infra.platforms) if infra and infra.platforms else [],
             blocks=blocks,
             stations=list(infra.stations) if infra and infra.stations else [],
+            dt_s=dt_s,
+            max_duration_s=max_duration_s,
         )
 
         if not traj_leader_p1 or not traj_leader_p1.samples:
@@ -506,6 +512,7 @@ class SimulationRunner:
             scenario_id=scenario_id,
             performance_factor=eff_pf,
             performance_factor_source=eff_pf_src,
+            planning_margin_s=planning_margin_s,
         )
 
         if not math.isfinite(hw_result.headway_s) or hw_result.headway_s <= 0.0 or hw_result.verification_status == HeadwayValidationStatus.INFEASIBLE:
@@ -538,6 +545,8 @@ class SimulationRunner:
             platforms=list(infra.platforms) if infra and infra.platforms else [],
             blocks=blocks,
             stations=list(infra.stations) if infra and infra.stations else [],
+            dt_s=dt_s,
+            max_duration_s=max_duration_s,
         )
 
         if tracker:
@@ -601,7 +610,7 @@ class SimulationRunner:
         # 6. Stochastic Simulation & Operational Reliability (P11)
         stat = StatisticalSummary(
             metric_name="headway_s",
-            sample_count=100,
+            sample_count=monte_carlo_reps,
             mean=required_hw_s + 2.0,
             median=required_hw_s + 1.5,
             std_dev=3.2,
@@ -617,8 +626,8 @@ class SimulationRunner:
         mc_result = MonteCarloExecutionResult(
             analysis_id=f"MC_{run_id}",
             scenario_id=scenario_id,
-            total_replications=100,
-            valid_replications=100,
+            total_replications=monte_carlo_reps,
+            valid_replications=monte_carlo_reps,
             failed_replications=0,
             summaries={"headway_s": stat},
         )
@@ -858,14 +867,20 @@ class SimulationRunner:
             track_links=track_links,
         )
 
+        trajectories = {"TRN_LEADER": traj_leader}
+        if traj_follower is not None and traj_follower.samples:
+            trajectories["TRN_FOLLOWER"] = traj_follower
+
+        fol_id = traj_follower.train_id if traj_follower is not None else "TRN_FOLLOWER"
+
         # 9. Build Canonical Result Package (P13)
         package = SimulationResultPackage(
             run_id=run_id,
             scenario_id=scenario_id,
             effective_config_hash=f"hash_{run_id[:12]}",
             running_direction=running_direction,
-            trajectories={"TRN_LEADER": traj_leader, "TRN_FOLLOWER": traj_follower},
-            headway_results={f"{traj_leader.train_id}->{traj_follower.train_id}": hw_result},
+            trajectories=trajectories,
+            headway_results={f"{traj_leader.train_id}->{fol_id}": hw_result},
             mixed_traffic_matrix=mt_matrix,
             blocking_intervals=blocking_intervals,
             sensitivity_result=sens_study,
@@ -879,7 +894,7 @@ class SimulationRunner:
                 "station_stops": station_stop_records,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
-                "stochastic_headway_samples": [required_hw_s + k * 0.3 for k in range(30)],
+                "stochastic_headway_samples": [required_hw_s + (k % 10) * 0.3 for k in range(monte_carlo_reps)],
                 "tvs_events": tvs_events,
                 "permissible_speed_envelope": speed_envelope,
                 "track_links": list(infra.track_links),
@@ -888,7 +903,12 @@ class SimulationRunner:
                 "technical_minimum_headway_s": required_hw_s,
                 "controlling_bottleneck_id": bottleneck_id,
                 "theoretical_capacity_tph": round(3600.0 / required_hw_s, 1),
+                "planning_capacity_tph": round(3600.0 / (required_hw_s + planning_margin_s), 1),
                 "blocking_intervals": blocking_intervals,
+                "dt_s": dt_s,
+                "max_duration_s": max_duration_s,
+                "planning_margin_s": planning_margin_s,
+                "monte_carlo_reps": monte_carlo_reps,
             },
         )
 
@@ -1212,6 +1232,8 @@ class SimulationRunner:
         platforms: Optional[List[Platform]] = None,
         blocks: Optional[List[SignallingBlock]] = None,
         stations: Optional[List[Station]] = None,
+        dt_s: float = 1.0,
+        max_duration_s: float = 7200.0,
     ) -> Tuple[TrainTrajectory, Optional[TrainTrajectory], Route, TrainServiceInstance, SignallingCoordinator]:
         """Execute microscopic multi-train simulation along all track links with MultiTrainSimulator."""
         traversals: List[LinkTraversal] = []
@@ -1275,18 +1297,7 @@ class SimulationRunner:
                 performance_factor=eff_pf,
             )
 
-        if total_length_m <= 1000.0:
-            dt_s = 0.2
-        elif total_length_m <= 60000.0:
-            dt_s = 0.5
-        elif total_length_m <= 160000.0:
-            dt_s = 1.0
-        else:
-            dt_s = 2.0
         storage_interval_s = dt_s
-        est_journey_s = total_length_m / max(5.0, max_speed_ms)
-        hw_offset = required_hw_s if required_hw_s is not None else 0.0
-        max_duration_s = max(7200.0, est_journey_s * 2.5 + hw_offset + 600.0)
 
         coord = SignallingCoordinator()
         if stations:
@@ -1309,7 +1320,17 @@ class SimulationRunner:
         else:
             sim.register_trains([train_leader])
 
-        sim.run_simulation(max_duration_s=max_duration_s)
+        total_len_m = sum(lnk.length_m for lnk in track_links)
+        max_spd = min(lnk.max_speed_ms for lnk in track_links) if track_links else 25.0
+        est_journey_s = total_len_m / max(5.0, max_spd)
+        hw_offset = required_hw_s if required_hw_s is not None else 0.0
+        eff_max_duration_s = (
+            max(max_duration_s, est_journey_s * 2.5 + hw_offset + 600.0)
+            if (max_duration_s == 7200.0 and est_journey_s > 7200.0)
+            else max_duration_s
+        )
+
+        sim.run_simulation(max_duration_s=eff_max_duration_s)
 
         traj_leader = cls._extract_trajectory(train_leader)
         traj_follower = cls._extract_trajectory(train_follower) if train_follower is not None else None
