@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.3] — 2026-10-22
+
+### Fixed
+- **Enforce Track Speed Limits & Speed Clamping (DEF-16 / v1.9.3)**: Fixed speed limit enforcement during microscopic train numerical integration so that simulated train speed strictly respects permissible speed envelope determined by track link geometry and curvature limits. Implemented hard clamping and resistance-balancing cruise equilibrium at track speed limits.
+
+---
+
 ## [1.9.2] — 2026-10-22
 
 ### Changed
