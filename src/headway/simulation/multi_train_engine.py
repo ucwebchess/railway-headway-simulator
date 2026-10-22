@@ -402,11 +402,48 @@ class MultiTrainSimulator:
 
         return min_eoa, governing_cause, holding_res
 
+    def _get_route_speed_drops(self, train: TrainServiceInstance) -> List[Tuple[float, float]]:
+        """Find all locations along the route where civil permissible speed drops downstream.
+
+        Returns list of (drop_position_m, target_speed_ms).
+        """
+        route = train.route
+        cache_attr = f"_cached_speed_drops_{train.params.train_type_id}"
+        if not hasattr(route, cache_attr):
+            drops: List[Tuple[float, float]] = []
+            max_v = train.params.max_speed_ms
+
+            if hasattr(train, "speed_profile") and train.speed_profile is not None and getattr(train.speed_profile, "speed_intervals", None):
+                intervals = train.speed_profile.speed_intervals
+                for i in range(len(intervals) - 1):
+                    cur_spd = min(max_v, intervals[i].max_speed_ms)
+                    next_spd = min(max_v, intervals[i + 1].max_speed_ms)
+                    if next_spd < cur_spd - 1e-4:
+                        drops.append((intervals[i + 1].start_distance_m, next_spd))
+            else:
+                traversals = route.traversals
+                for i in range(len(traversals) - 1):
+                    cur_spd = min(max_v, traversals[i].link.max_speed_ms)
+                    next_spd = min(max_v, traversals[i + 1].link.max_speed_ms)
+                    if next_spd < cur_spd - 1e-4:
+                        drops.append((traversals[i + 1].start_distance_m, next_spd))
+
+            setattr(route, cache_attr, drops)
+        return getattr(route, cache_attr)
+
     def _step_train(self, train: TrainServiceInstance, dt: float) -> None:
         """P04-NUM & P09-MIC: Step microscopic dynamics for one active train."""
         curr_s = train.current_position_m
         curr_v = train.current_speed_ms
         route_len = train.route.total_length_m
+
+        # Permissible line speed at current position (DEF-16)
+        v_permissible_ms = train.get_permissible_speed_ms(curr_s)
+
+        # Hard clamp before applying step (Task 2 / DEF-16)
+        if curr_v > v_permissible_ms:
+            curr_v = v_permissible_ms
+            train.current_speed_ms = curr_v
 
         # 1. Handle Active Station Dwell (P09-ST-003)
         if train.is_dwelling:
@@ -445,13 +482,23 @@ class MultiTrainSimulator:
 
         # Braking curve speed limit to stop at eoa_m
         # Operational service braking scales with performance factor
-        b_service = train.params.max_service_deceleration_ms2 * train.performance_factor
+        b_service = max(0.1, train.params.max_service_deceleration_ms2 * train.performance_factor)
         v_brake_sq = 2.0 * b_service * dist_to_eoa
-        v_brake_limit = math.sqrt(max(0.0, v_brake_sq))
+        v_eoa_brake = math.sqrt(max(0.0, v_brake_sq))
 
-        # Permissible line speed (Task 2 / RHS-PHYS-001)
-        v_line_limit = train.params.max_speed_ms
-        v_target = min(v_line_limit, v_brake_limit)
+        # Downstream speed drops braking curve (DEF-16 / Task 1 & 3)
+        v_drop_brake = float("inf")
+        speed_drops = self._get_route_speed_drops(train)
+        for drop_pos, target_spd in speed_drops:
+            if drop_pos > curr_s:
+                dist_to_drop = drop_pos - curr_s
+                v_allowed_sq = (target_spd ** 2) + 2.0 * b_service * dist_to_drop
+                v_allowed = math.sqrt(max(0.0, v_allowed_sq))
+                if v_allowed < v_drop_brake:
+                    v_drop_brake = v_allowed
+
+        v_brake_limit = min(v_eoa_brake, v_drop_brake)
+        v_target = min(v_permissible_ms, v_brake_limit)
 
         # 3. Dynamic Mode & Acceleration Selection
         arrival_dist = max(3.0, curr_v * dt * 1.5)
@@ -529,15 +576,18 @@ class MultiTrainSimulator:
                 # Safety-critical supervised braking uses full unscaled capability
                 target_dec = train.params.max_service_deceleration_ms2
             elif curr_v >= v_brake_limit - 0.05:
+                # Braking needed for downstream target (EOA or downstream speed drop)
                 train.dynamic_mode = DynamicMode.SERVICE_BRAKING
                 train.operational_state = OperationalState.RUNNING
                 target_dec = train.params.max_service_deceleration_ms2 * train.performance_factor
-            elif curr_v >= v_line_limit:
+                tract_n = 0.0
+            elif curr_v >= v_permissible_ms:
                 train.dynamic_mode = DynamicMode.CRUISING
                 train.operational_state = OperationalState.RUNNING
-                # At the limit, traction force drops to zero (Task 2 / RHS-PHYS-001)
-                tract_n = 0.0
-            elif curr_v >= v_line_limit - 0.05:
+                # Cruising at speed limit: balance resistance (Task 2 / DEF-16)
+                tract_n = max(0.0, res_eval.total_resistance_n)
+            elif curr_v >= v_permissible_ms - 0.05:
+                # Cruising near permissible speed limit: balance resistance
                 train.dynamic_mode = DynamicMode.CRUISING
                 train.operational_state = OperationalState.RUNNING
                 tract_n = max(0.0, res_eval.total_resistance_n)
@@ -564,12 +614,12 @@ class MultiTrainSimulator:
                 new_s = curr_s + curr_v * dt + 0.5 * a_req * (dt ** 2)
                 new_v = max(0.0, curr_v + a_req * dt)
 
-            # Hard clamp: simulated speed must never exceed permissible speed envelope (Task 2 / RHS-PHYS-001)
-            v_permissible = v_line_limit
-            new_v = min(new_v, v_permissible)
+            # Hard clamp: simulated speed must never exceed permissible speed envelope (Task 2 / DEF-16)
+            v_permissible_next = train.get_permissible_speed_ms(min(route_len, new_s))
+            new_v = min(new_v, v_permissible_next)
 
             # Strict guard against floating point overshoot in km/h
-            max_kmh = round(v_permissible * 3.6, 2)
+            max_kmh = round(v_permissible_next * 3.6, 2)
             if new_v * 3.6 > max_kmh:
                 new_v = max_kmh / 3.6
 
@@ -682,8 +732,8 @@ class MultiTrainSimulator:
             if train.operational_state == OperationalState.STANDSTILL and train.actual_departure_time_s is None:
                 continue
 
-            # Hard clamp speed in recorded samples against permissible line limit (Task 2)
-            v_perm = train.params.max_speed_ms
+            # Hard clamp speed in recorded samples against permissible line limit (Task 2 / DEF-16)
+            v_perm = train.get_permissible_speed_ms(train.current_position_m)
             rec_speed = min(train.current_speed_ms, v_perm)
             max_kmh = round(v_perm * 3.6, 2)
             if rec_speed * 3.6 > max_kmh:

@@ -16,6 +16,7 @@ from headway.core.exceptions import OperationalSimulationError
 from headway.data.canonical import StationStop
 from headway.infrastructure.direction import RunningDirection
 from headway.infrastructure.route import Route
+from headway.infrastructure.speed import RouteSpeedProfile
 from headway.rolling_stock.braking import BrakingModel, create_braking_model
 from headway.rolling_stock.force_balance import ForceBalanceEngine
 from headway.rolling_stock.resistance import DistributedResistanceEngine
@@ -147,6 +148,7 @@ class TrainServiceInstance:
     traction_model: TractionModel = field(init=False)
     resistance_engine: DistributedResistanceEngine = field(init=False)
     force_engine: ForceBalanceEngine = field(init=False)
+    speed_profile: RouteSpeedProfile = field(init=False)
 
     # Trajectory History & Audit Events
     trajectory_samples: List[TrajectorySample] = field(default_factory=list)
@@ -159,7 +161,26 @@ class TrainServiceInstance:
         self.traction_model = create_traction_model(self.params, performance_factor=self.performance_factor)
         self.resistance_engine = DistributedResistanceEngine(self.params)
         self.force_engine = ForceBalanceEngine(self.params, self.traction_model)
+        self.speed_profile = RouteSpeedProfile(self.route)
         self.current_eoa_m = self.route.total_length_m
+
+    def get_permissible_speed_ms(self, position_m: Optional[float] = None) -> float:
+        """Return maximum civil permissible speed (m/s) at route position (or current front position)."""
+        pos = self.current_position_m if position_m is None else position_m
+        s_clamped = max(0.0, min(self.route.total_length_m, pos))
+        infra_limit = self.params.max_speed_ms
+        if hasattr(self, "speed_profile") and self.speed_profile is not None:
+            try:
+                infra_limit = self.speed_profile.get_max_speed_at(s_clamped)
+            except Exception:
+                pass
+        else:
+            try:
+                traversal = self.route.get_traversal_at_distance(s_clamped)
+                infra_limit = traversal.link.max_speed_ms
+            except Exception:
+                pass
+        return min(self.params.max_speed_ms, infra_limit)
 
     @property
     def rear_position_m(self) -> float:

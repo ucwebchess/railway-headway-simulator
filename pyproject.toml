@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "railway-headway-simulator"
-version = "1.9.2"
+version = "1.9.3"
 description = "Microscopic railway headway, signalling blocking-time, TVS constraint, and capacity simulation application."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -88,17 +88,17 @@ class TestSimulationRunnerE2E:
         assert len(traj_leader.samples) > 1000, f"Expected >1000 samples, got {len(traj_leader.samples)}"
         assert len(traj_follower.samples) > 1000, f"Expected >1000 samples, got {len(traj_follower.samples)}"
 
-        # Verify journey duration bounds for 52 km corridor (900s - 1500s) replacing 68s stub
+        # Verify journey duration bounds for 52 km corridor (900s - 1800s) replacing 68s stub
         journey_time_s = traj_leader.journey_time_s
-        assert 900.0 <= journey_time_s <= 1500.0, (
-            f"Expected journey time between 900s and 1500s, got {journey_time_s:.1f}s"
+        assert 900.0 <= journey_time_s <= 1800.0, (
+            f"Expected journey time between 900s and 1800s, got {journey_time_s:.1f}s"
         )
 
         # Executive KPI total service duration (from origin platform departure to destination arrival)
         total_duration = doc.executive_kpis.total_service_duration_s
         assert total_duration is not None
-        assert 600.0 <= total_duration <= 1500.0, (
-            f"Expected total service duration between 600s and 1500s, got {total_duration:.1f}s"
+        assert 600.0 <= total_duration <= 1800.0, (
+            f"Expected total service duration between 600s and 1800s, got {total_duration:.1f}s"
         )
 
         # Physical corridor traversal (0m to total_corridor_m)
@@ -106,9 +106,9 @@ class TestSimulationRunnerE2E:
         assert traj_leader.samples[0].front_distance_m <= 1.0
         assert abs(traj_leader.samples[-1].front_distance_m - total_corridor_m) < 100.0
 
-        # Max speed achieved should exceed 50 m/s (180 km/h) along the 200 km/h corridor
+        # Max speed achieved reaches civil line limit of corridor (160 km/h = 44.4 m/s)
         max_v = max(s.speed_ms for s in traj_leader.samples)
-        assert max_v > 50.0, f"Expected train to reach >50 m/s, reached {max_v:.1f} m/s"
+        assert max_v >= 40.0, f"Expected train to reach >=40 m/s, reached {max_v:.1f} m/s"
 
     def test_e2e_140km_corridor_simulation_duration_bounds(self):
         """Verify that a 140 km corridor simulation yields total service duration within 1500s-3600s."""
@@ -718,5 +718,71 @@ class TestSimulationRunnerE2E:
         ]
         assert len(rev_stops) == 5
         assert any("STN_ADS" in s for s in rev_stops), f"STN_ADS not found in reverse stops: {rev_stops}"
+
+    def test_simulated_speed_never_exceeds_permissible(self, hsr_project):
+        """DEF-16 / v1.9.3: Simulated speed strictly conforms to permissible speed envelope."""
+        p = copy.deepcopy(hsr_project)
+
+        # Apply sharp speed drops between 20 km and 45 km matching user Excel scenario
+        # Zone 1: 20 km to 35 km -> drops from 320 km/h to 204 km/h
+        # Zone 2: 35 km to 45 km -> increases to 230 km/h
+        # Zone 3: 45 km onwards -> returns to 320 km/h
+        cum_d = 0.0
+        for lnk in p.infrastructure.track_links:
+            mid = cum_d + lnk.length_m / 2.0
+            if 20000.0 <= mid < 35000.0:
+                lnk.max_speed_ms = 204.0 / 3.6
+            elif 35000.0 <= mid < 45000.0:
+                lnk.max_speed_ms = 230.0 / 3.6
+            cum_d += lnk.length_m
+
+        # 1. Forward direction test
+        pkg_fwd, _ = SimulationRunner.run_simulation_pipeline(p, RunningDirection.FORWARD)
+        traj_fwd = pkg_fwd.trajectories["TRN_LEADER"]
+        env_fwd = pkg_fwd.metadata["permissible_speed_envelope"]
+
+        for s in traj_fwd.samples:
+            d = s.front_distance_m
+            perm_kmh = 320.0
+            for pt in env_fwd:
+                if pt["route_distance_m"] >= d:
+                    perm_kmh = pt["max_speed_kmh"]
+                    break
+            assert s.speed_kmh <= perm_kmh + 0.1, (
+                f"Forward speed overshoot at {d:.1f}m: {s.speed_kmh:.2f} km/h > {perm_kmh:.2f} km/h"
+            )
+
+        # Assert train brakes in advance before the 204 km/h zone
+        braking_samples = [
+            s for s in traj_fwd.samples
+            if 17000.0 <= s.front_distance_m < 20032.0 and s.dynamic_mode.value in ("SERVICE_BRAKING", "BRAKING")
+        ]
+        assert len(braking_samples) > 0, "Train did not brake in advance of speed drop at 20 km"
+
+        zone_20_35 = [s for s in traj_fwd.samples if 20032.0 <= s.front_distance_m <= 35000.0]
+        assert len(zone_20_35) > 0
+        assert max(s.speed_kmh for s in zone_20_35) <= 204.0 + 0.1
+
+        zone_35_45 = [s for s in traj_fwd.samples if 35032.0 <= s.front_distance_m <= 45000.0]
+        assert len(zone_35_45) > 0
+        assert max(s.speed_kmh for s in zone_35_45) <= 230.0 + 0.1
+
+        # 2. Reverse direction test
+        pkg_rev, _ = SimulationRunner.run_simulation_pipeline(p, RunningDirection.REVERSE)
+        traj_rev = pkg_rev.trajectories["TRN_LEADER"]
+        env_rev = pkg_rev.metadata["permissible_speed_envelope"]
+        tot_d = sum(lnk.length_m for lnk in p.infrastructure.track_links)
+
+        for s in traj_rev.samples:
+            # In reverse, s.front_distance_m is physical chainage; route distance is tot_d - s.front_distance_m
+            route_dist = tot_d - s.front_distance_m
+            perm_kmh = env_rev[-1]["max_speed_kmh"]
+            for pt in env_rev:
+                if pt["route_distance_m"] >= route_dist:
+                    perm_kmh = pt["max_speed_kmh"]
+                    break
+            assert s.speed_kmh <= perm_kmh + 0.1, (
+                f"Reverse speed overshoot at chainage {s.front_distance_m:.1f}m: {s.speed_kmh:.2f} km/h > {perm_kmh:.2f} km/h"
+            )
 
 

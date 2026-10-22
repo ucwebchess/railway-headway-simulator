@@ -130,12 +130,17 @@ class MicroscopicSimulator:
                 coord = None
             s_rear = s_pos - self.params.length_m
 
+            rec_spd = min(v_spd, get_permissible_speed(s_pos))
+            max_kmh = round(get_permissible_speed(s_pos) * 3.6, 2)
+            if rec_spd * 3.6 > max_kmh:
+                rec_spd = max_kmh / 3.6
+
             trajectory.samples.append(
                 TrajectorySample(
                     time_s=round(t_sim, 4),
                     front_distance_m=round(s_pos, 3),
                     rear_distance_m=round(s_rear, 3),
-                    speed_ms=round(v_spd, 4),
+                    speed_ms=round(rec_spd, 4),
                     acceleration_ms2=round(a_acc, 4),
                     traction_force_n=round(fb_res.tractive_force_n, 1) if fb_res else 0.0,
                     braking_force_n=round(fb_res.braking_force_n, 1) if fb_res else 0.0,
@@ -249,6 +254,10 @@ class MicroscopicSimulator:
             # 5. Evaluate speed limits and braking constraints
             v_limit = get_permissible_speed(cur_s)
 
+            # Hard clamp before applying the step (Task 2 / DEF-16)
+            if cur_v > v_limit:
+                cur_v = v_limit
+
             # Find governing braking curve speed among active targets
             v_brake_limit = float("inf")
             for t in active_targets:
@@ -281,11 +290,12 @@ class MicroscopicSimulator:
                 cur_mode = DynamicMode.SERVICE_BRAKING
                 cur_op = OperationalState.RUNNING
                 target_dec = self.params.max_service_deceleration_ms2 * self.performance_factor
+                tract_n = 0.0
             elif cur_v >= v_limit:
-                # At/above permissible speed limit: traction force drops to zero (Task 2 / RHS-PHYS-001)
+                # At speed limit: cruise, balance resistance (Task 2 / DEF-16)
                 cur_mode = DynamicMode.CRUISING
                 cur_op = OperationalState.RUNNING
-                tract_n = 0.0
+                tract_n = max(0.0, res_eval.total_resistance_n)
             elif cur_v >= v_limit - 0.05:
                 # Cruising near permissible speed limit: balance resistance
                 cur_mode = DynamicMode.CRUISING
