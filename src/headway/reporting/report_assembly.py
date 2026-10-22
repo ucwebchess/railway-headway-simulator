@@ -796,9 +796,28 @@ class ReportAssembler:
         is_app = primary_hw is not None and bool(intervals)
         fig_key = "fig_blocking_stairway"
         if is_app and primary_hw:
+            # DEF-17 / v1.10.2: Legend labels must carry the actual service pattern or train
+            # identity from the simulation metadata, never a hardcoded phantom string.
+            meta: Dict[str, Any] = package.metadata or {}
+            leader_lbl = (
+                meta.get("active_service_pattern_id")
+                or meta.get("train_type_id")
+                or meta.get("train_id")
+                or primary_hw.leader_service_id
+                or "TRN_LEADER"
+            )
+            follower_lbl = (
+                meta.get("active_service_pattern_id")
+                or meta.get("train_type_id")
+                or meta.get("train_id")
+                or primary_hw.follower_service_id
+                or "TRN_FOLLOWER"
+            )
             figures_data[fig_key] = create_blocking_stairway_figure(
                 primary_hw,
                 blocking_intervals=intervals,
+                leader_label_id=leader_lbl,
+                follower_label_id=follower_lbl,
             )
 
         return ReportSection(

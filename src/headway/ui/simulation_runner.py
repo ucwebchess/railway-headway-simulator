@@ -321,6 +321,14 @@ class SimulationRunner:
             primary_train_type_id=primary_tt.train_type_id if primary_tt else None,
         )
 
+        # DEF-17 / v1.10.2: Service identity must be derived from the actual
+        # active service pattern or train type — never a hardcoded phantom label.
+        service_label = (
+            str(active_pattern.service_pattern_id)
+            if active_pattern and getattr(active_pattern, "service_pattern_id", None)
+            else f"SVC_{primary_tt.train_type_id}"
+        )
+
         service_stops: List[StationStop] = []
         if active_pattern and getattr(active_pattern, "stops", None):
             service_stops = (
@@ -352,6 +360,7 @@ class SimulationRunner:
             stations=list(infra.stations) if infra and infra.stations else [],
             dt_s=dt_s,
             max_duration_s=max_duration_s,
+            service_id=service_label,
         )
 
         if not traj_leader_p1 or not traj_leader_p1.samples:
@@ -488,7 +497,7 @@ class SimulationRunner:
 
         leader_timeline = BlockingTimeline(
             train_id="TRN_LEADER",
-            service_id="SVC_CORRIDOR",
+            service_id=service_label,
             route_id=simulated_route.route_id,
             running_direction=running_direction,
             reference_event_name="DEPARTURE",
@@ -497,7 +506,7 @@ class SimulationRunner:
         )
         follower_timeline = BlockingTimeline(
             train_id="TRN_FOLLOWER",
-            service_id="SVC_CORRIDOR",
+            service_id=service_label,
             route_id=simulated_route.route_id,
             running_direction=running_direction,
             reference_event_name="DEPARTURE",
@@ -548,6 +557,7 @@ class SimulationRunner:
             stations=list(infra.stations) if infra and infra.stations else [],
             dt_s=dt_s,
             max_duration_s=max_duration_s,
+            service_id=service_label,
         )
 
         if tracker:
@@ -998,6 +1008,13 @@ class SimulationRunner:
                 "project": project,
                 "project_name": project.name,
                 "scenarios": scenarios,
+                "active_service_pattern_id": (
+                    str(active_pattern.service_pattern_id)
+                    if active_pattern and getattr(active_pattern, "service_pattern_id", None)
+                    else None
+                ),
+                "train_type_id": primary_tt.train_type_id if primary_tt else None,
+                "train_id": str(traj_leader.train_id),
                 "service_duration_s": traj_leader.journey_time_s,
                 "station_stops": station_stop_records,
                 "platform_records": platform_records,
@@ -1342,6 +1359,7 @@ class SimulationRunner:
         stations: Optional[List[Station]] = None,
         dt_s: float = 1.0,
         max_duration_s: float = 7200.0,
+        service_id: Optional[str] = None,
     ) -> Tuple[TrainTrajectory, Optional[TrainTrajectory], Route, TrainServiceInstance, SignallingCoordinator]:
         """Execute microscopic multi-train simulation along all track links with MultiTrainSimulator."""
         traversals: List[LinkTraversal] = []
@@ -1382,7 +1400,7 @@ class SimulationRunner:
 
         params = RollingStockParameters.from_canonical(primary_tt)
         st = ServiceType(
-            service_id="SVC_CORRIDOR",
+            service_id=(service_id or f"SVC_{primary_tt.train_type_id}"),
             train_type_id=primary_tt.train_type_id,
             params=params,
             route=route,
