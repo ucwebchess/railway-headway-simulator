@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.2] — 2026-10-22
+
+### Fixed
+- **Remove Phantom `SVC_CORRIDOR` Legend Label (DEF-17)**: Eliminated hardcoded phantom service string from the Section 3 Blocking-Time Stairway chart legend. Leader/follower train trace names now dynamically reflect the actual service pattern ID, train type ID, or train ID from the simulation package metadata (e.g., `SRV_6000`, `TRN_HSR`), falling back to `TRN_LEADER` / `TRN_FOLLOWER` when metadata is unavailable.
+
+---
+
 ## [1.10.1] — 2026-10-22
 
 ### Added

@@ -30,8 +30,15 @@ def create_blocking_stairway_figure(
     headway_result: HeadwayResult,
     title: str = "Blocking-Time Stairway Diagram & Critical Conflict",
     blocking_intervals: Optional[Sequence[ResourceBlockingInterval]] = None,
+    leader_label_id: Optional[str] = None,
+    follower_label_id: Optional[str] = None,
 ) -> go.Figure:
-    """P13-BTS-001 to 007 & Task 1: Generate UIC 406 continuous blocking stairway along physical distance (km) with inverted time axis."""
+    """P13-BTS-001 to 007 & Task 1: Generate UIC 406 continuous blocking stairway along physical distance (km) with inverted time axis.
+
+    DEF-17 / v1.10.2: Trace legend labels must reflect the actual service pattern or train
+    identity. Labels resolve in the order: explicit label argument -> headway result service
+    identifiers -> TRN_LEADER / TRN_FOLLOWER defaults. No hardcoded phantom labels.
+    """
     fig = go.Figure()
 
     running_dir = headway_result.running_direction
@@ -158,10 +165,21 @@ def create_blocking_stairway_figure(
             "CONTROLLING BOTTLENECK" if is_controlling else "Normal",
         ])
 
+    leader_id = (
+        leader_label_id
+        or getattr(headway_result, "leader_service_id", None)
+        or "TRN_LEADER"
+    )
+    follower_id = (
+        follower_label_id
+        or getattr(headway_result, "follower_service_id", None)
+        or "TRN_FOLLOWER"
+    )
+
     # 1. Leader Train blocking stairway trace
     fig.add_trace(
         go.Bar(
-            name=f"Leader Train ({headway_result.leader_service_id})",
+            name=f"Leader Train ({leader_id})",
             x=x_starts_km,
             width=widths_km,
             y=durations_s,
@@ -174,7 +192,7 @@ def create_blocking_stairway_figure(
             ),
             customdata=leader_customdata,
             hovertemplate=(
-                f"<b>Leader Train ({headway_result.leader_service_id})</b><br>"
+                f"<b>Leader Train ({leader_id})</b><br>"
                 "Resource: %{customdata[0]} (%{customdata[9]})<br>"
                 "Chainage: %{customdata[1]:.3f} km – %{customdata[2]:.3f} km<br>"
                 "Start: %{customdata[3]:.1f} s<br>"
@@ -188,7 +206,7 @@ def create_blocking_stairway_figure(
     # 2. Shifted Follower Train blocking stairway trace
     fig.add_trace(
         go.Bar(
-            name=f"Follower Train ({headway_result.follower_service_id}) [Shifted +{shift_s:.1f}s]",
+            name=f"Follower Train ({follower_id}) [Shifted +{shift_s:.1f}s]",
             x=x_starts_km,
             width=widths_km,
             y=durations_s,
@@ -201,7 +219,7 @@ def create_blocking_stairway_figure(
             ),
             customdata=follower_customdata,
             hovertemplate=(
-                f"<b>Follower Train ({headway_result.follower_service_id}) [Shifted +{shift_s:.1f}s]</b><br>"
+                f"<b>Follower Train ({follower_id}) [Shifted +{shift_s:.1f}s]</b><br>"
                 "Resource: %{customdata[0]} (%{customdata[9]})<br>"
                 "Chainage: %{customdata[1]:.3f} km – %{customdata[2]:.3f} km<br>"
                 "Start: %{customdata[3]:.1f} s<br>"

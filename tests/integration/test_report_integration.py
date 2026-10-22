@@ -1225,3 +1225,60 @@ class TestReportIntegration:
         assert float(tbl.raw_dataframe.iloc[0]["Physical End Chainage (km)"]) == pytest.approx(1.157, abs=1e-9)
         assert tbl.formatted_dataframe.iloc[0]["Physical End Chainage (km)"] == "1.157"
 
+
+    def test_blocking_stairway_legend_uses_actual_service_id_no_phantom(self) -> None:
+        """v1.10.2 / DEF-17: Section blocking stairway legend uses actual service pattern ID and no phantom SVC_CORRIDOR."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        # 1. Metadata carries the actual service pattern / train type identity
+        assert pkg.metadata.get("active_service_pattern_id") == "SRV_6000"
+        assert pkg.metadata.get("train_type_id") == "TRN_HSR"
+
+        # 2. Section blocking stairway figure trace names contain the actual service pattern ID or train type ID
+        sec_stair = doc.get_section(ReportSectionId.BLOCKING_STAIRWAY)
+        assert sec_stair is not None
+        assert sec_stair.is_applicable
+        fig_stair = doc.figures_data[sec_stair.figure_keys[0]]
+        trace_names = [str(t.name) for t in fig_stair.data]
+        assert len(trace_names) >= 2
+
+        joined_names = " ".join(trace_names)
+        assert not any("SVC_CORRIDOR" in name for name in trace_names)
+        assert ("SRV_6000" in joined_names) or ("TRN_HSR" in joined_names)
+
+        # 3. Hover templates must not carry the phantom label either
+        for t in fig_stair.data:
+            ht = str(t.hovertemplate or "")
+            assert "SVC_CORRIDOR" not in ht
+
+        # 4. All Figure traces across the whole report must be free of the phantom label
+        for fig in doc.figures_data.values():
+            for t in getattr(fig, "data", []):
+                assert "SVC_CORRIDOR" not in str(getattr(t, "name", ""))
+
+    def test_blocking_stairway_fallback_labels_when_no_metadata(self) -> None:
+        """v1.10.2 / DEF-17: Figure falls back to TRN_LEADER/TRN_FOLLOWER when no service identity is supplied."""
+        from headway.reporting.charts_blocking import create_blocking_stairway_figure
+
+        class _PhantomlessHeadwayResult:
+            leader_service_id = None
+            follower_service_id = None
+            running_direction = RunningDirection.FORWARD
+            headway_s = 120.0
+            controlling_conflicts = []
+
+        pkg = _create_synthetic_full_package()
+        primary_hw = next(iter(pkg.headway_results.values()))
+        fig = create_blocking_stairway_figure(primary_hw, leader_label_id=None, follower_label_id=None)
+        names = [str(t.name) for t in fig.data]
+        assert names[0].startswith("Leader Train (")
+        assert names[1].startswith("Follower Train (")
+        assert not any("SVC_CORRIDOR" in n for n in names)
+        # Synthetic package uses METRO_1 / METRO_2 service ids from fixture
+        assert names[0] == "Leader Train (METRO_1)"
+        assert names[1].startswith("Follower Train (METRO_2) [Shifted +")
+
