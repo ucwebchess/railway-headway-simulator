@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.0] — 2026-10-22
+
+### Added
+- **Signal Provenance in Resource Geometry Table (Section 11)**: Extended `ResourceProvenanceRecord` with entry/exit signal identifiers and physical chainages (`entry_signal_id`, `entry_signal_chainage_km`, `exit_signal_id`, `exit_signal_chainage_km`).
+- **Section 11 Engineering Table Updates**: Added dedicated columns for Entry/Exit Signal ID and chainages in `create_resource_geometry_provenance_table` across HTML reports and A3 Landscape PDF rendering.
+
+---
+
 ## [1.9.3] — 2026-10-22
 
 ### Fixed
