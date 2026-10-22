@@ -910,6 +910,7 @@ class SimulationRunner:
                     dataset_id=project.project_id,
                     dataset_version="1.0.0",
                     is_baseline_geometry=True,
+                    physical_end_chainage_km=blk_end_km,
                     entry_signal_id=en_sig_id,
                     entry_signal_chainage_km=en_ch_km,
                     exit_signal_id=ex_sig_id,

@@ -411,6 +411,12 @@ def create_resource_provenance_table(
     formatted_rows = []
 
     for r in records:
+        end_ch_km_raw = (
+            r.physical_end_chainage_km
+            if r.physical_end_chainage_km is not None
+            else round(r.physical_chainage_km + r.resource_length_m / 1000.0, 3)
+        )
+        end_ch_km_fmt = f"{end_ch_km_raw:.3f}"
         entry_sig = r.entry_signal_id or "N/A"
         exit_sig = r.exit_signal_id or "N/A"
         entry_km_raw = r.entry_signal_chainage_km
@@ -424,6 +430,7 @@ def create_resource_provenance_table(
                 "Type": r.resource_type,
                 "Physical Chainage (km)": r.physical_chainage_km,
                 "Length (m)": r.resource_length_m,
+                "Physical End Chainage (km)": end_ch_km_raw,
                 "Entry Signal ID": entry_sig,
                 "Entry Signal Ch. (km)": entry_km_raw,
                 "Exit Signal ID": exit_sig,
@@ -441,6 +448,7 @@ def create_resource_provenance_table(
                 "Type": r.resource_type,
                 "Physical Chainage (km)": f"{r.physical_chainage_km:.2f}",
                 "Length (m)": f"{r.resource_length_m:.1f}",
+                "Physical End Chainage (km)": end_ch_km_fmt,
                 "Entry Signal ID": entry_sig,
                 "Entry Signal Ch. (km)": entry_km_fmt,
                 "Exit Signal ID": exit_sig,

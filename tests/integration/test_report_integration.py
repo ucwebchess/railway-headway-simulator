@@ -45,6 +45,7 @@ from headway.reporting.report_models import (
 )
 from headway.reporting.report_package import ReportPackageExporter
 from headway.reporting.report_validation import ReportValidator
+from headway.reporting.tables import create_resource_geometry_provenance_table
 from headway.reporting.result_models import (
     PlatformOccupationRecord,
     ResourceProvenanceRecord,
@@ -281,6 +282,7 @@ def _create_synthetic_full_package(
             dataset_id="DS_INTEG_01",
             dataset_version="2.1.0",
             is_baseline_geometry=True,
+            physical_end_chainage_km=round(idx * 0.6 + 0.6, 3),
             entry_signal_id=f"SIG_IN_{idx:02d}",
             entry_signal_chainage_km=round(idx * 0.6, 3),
             exit_signal_id=f"SIG_OUT_{idx:02d}",
@@ -1125,6 +1127,7 @@ class TestReportIntegration:
             "Type",
             "Physical Chainage (km)",
             "Length (m)",
+            "Physical End Chainage (km)",
             "Entry Signal ID",
             "Entry Signal Ch. (km)",
             "Exit Signal ID",
@@ -1166,5 +1169,59 @@ class TestReportIntegration:
         assert float(fb_first["Exit Signal Ch. (km)"]) > 0.0
 
 
+    def test_section_11_physical_end_chainage(self) -> None:
+        """v1.10.1: Assert Section 11 Physical End Chainage (km) column exists and equals start + length / 1000."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
 
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        sec11 = doc.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
+        assert sec11 is not None
+        assert sec11.is_applicable
+        prov_table = sec11.tables[0]
+        raw_df = prov_table.raw_dataframe
+
+        # Column must exist and sit immediately after Length (m) and before Entry Signal ID
+        assert "Physical End Chainage (km)" in prov_table.columns
+        cols = list(prov_table.columns)
+        assert cols.index("Physical End Chainage (km)") == cols.index("Length (m)") + 1
+        assert cols.index("Physical End Chainage (km)") == cols.index("Entry Signal ID") - 1
+
+        # Assert the math holds for every row: end == round(start + length_m / 1000, 3)
+        for _, row in raw_df.iterrows():
+            expected_end = round(float(row["Physical Chainage (km)"]) + float(row["Length (m)"]) / 1000.0, 3)
+            assert float(row["Physical End Chainage (km)"]) == expected_end
+
+        # Spot-check known geometry values on 07_hsr_140km
+        first = raw_df.iloc[0]
+        assert first["Resource ID"] == "BLK_UP_001"
+        assert float(first["Physical End Chainage (km)"]) == pytest.approx(1.252, abs=1e-9)
+
+        last = raw_df.iloc[-1]
+        assert last["Resource ID"] == "BLK_UP_092"
+        assert float(last["Physical End Chainage (km)"]) == pytest.approx(140.0, abs=1e-9)
+
+        # Formatted output renders 3-decimal precision
+        fmt_df = prov_table.formatted_dataframe
+        assert fmt_df.iloc[0]["Physical End Chainage (km)"] == "1.252"
+        assert fmt_df.iloc[-1]["Physical End Chainage (km)"] == "140.000"
+
+    def test_section_11_physical_end_chainage_fallback_for_legacy_records(self) -> None:
+        """v1.10.1: Legacy ResourceProvenanceRecord without explicit end chainage is derived in tables."""
+        rec = ResourceProvenanceRecord(
+            resource_id="BLK_LEGACY",
+            resource_type="TRACK_BLOCK",
+            physical_chainage_km=0.557,
+            resource_length_m=600.0,
+            geometry_source="INTEG_MODEL",
+            dataset_id="DS_INTEG_01",
+            dataset_version="2.1.0",
+            is_baseline_geometry=True,
+        )
+        tbl = create_resource_geometry_provenance_table([rec])
+        assert "Physical End Chainage (km)" in tbl.columns
+        assert float(tbl.raw_dataframe.iloc[0]["Physical End Chainage (km)"]) == pytest.approx(1.157, abs=1e-9)
+        assert tbl.formatted_dataframe.iloc[0]["Physical End Chainage (km)"] == "1.157"
 

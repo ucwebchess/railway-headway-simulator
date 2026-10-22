@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.1] — 2026-10-22
+
+### Added
+- **Physical End Chainage in Section 11**: Added `physical_end_chainage_km` to `ResourceProvenanceRecord` and a `Physical End Chainage (km)` column (immediately after `Length (m)`) to the Resource Geometry Provenance table, exposing the exact spatial gap between track geometry extents and signalling boundaries. Computed as `physical_chainage_km + length_m / 1000.0`, rounded to 3 decimal places.
+
+---
+
 ## [1.10.0] — 2026-10-22
 
 ### Added
