@@ -411,12 +411,23 @@ def create_resource_provenance_table(
     formatted_rows = []
 
     for r in records:
+        entry_sig = r.entry_signal_id or "N/A"
+        exit_sig = r.exit_signal_id or "N/A"
+        entry_km_raw = r.entry_signal_chainage_km
+        exit_km_raw = r.exit_signal_chainage_km
+        entry_km_fmt = f"{entry_km_raw:.3f}" if entry_km_raw is not None else "N/A"
+        exit_km_fmt = f"{exit_km_raw:.3f}" if exit_km_raw is not None else "N/A"
+
         raw_rows.append(
             {
                 "Resource ID": r.resource_id,
                 "Type": r.resource_type,
                 "Physical Chainage (km)": r.physical_chainage_km,
                 "Length (m)": r.resource_length_m,
+                "Entry Signal ID": entry_sig,
+                "Entry Signal Ch. (km)": entry_km_raw,
+                "Exit Signal ID": exit_sig,
+                "Exit Signal Ch. (km)": exit_km_raw,
                 "Geometry Source": r.geometry_source,
                 "Dataset ID": r.dataset_id,
                 "Version": r.dataset_version,
@@ -430,6 +441,10 @@ def create_resource_provenance_table(
                 "Type": r.resource_type,
                 "Physical Chainage (km)": f"{r.physical_chainage_km:.2f}",
                 "Length (m)": f"{r.resource_length_m:.1f}",
+                "Entry Signal ID": entry_sig,
+                "Entry Signal Ch. (km)": entry_km_fmt,
+                "Exit Signal ID": exit_sig,
+                "Exit Signal Ch. (km)": exit_km_fmt,
                 "Geometry Source": r.geometry_source,
                 "Dataset ID": r.dataset_id,
                 "Version": r.dataset_version,
@@ -444,6 +459,9 @@ def create_resource_provenance_table(
         formatted_dataframe=pd.DataFrame(formatted_rows),
         running_direction=running_direction,
     )
+
+
+create_resource_geometry_provenance_table = create_resource_provenance_table
 
 
 def create_headway_matrix_table(

@@ -281,6 +281,10 @@ def _create_synthetic_full_package(
             dataset_id="DS_INTEG_01",
             dataset_version="2.1.0",
             is_baseline_geometry=True,
+            entry_signal_id=f"SIG_IN_{idx:02d}",
+            entry_signal_chainage_km=round(idx * 0.6, 3),
+            exit_signal_id=f"SIG_OUT_{idx:02d}",
+            exit_signal_chainage_km=round(idx * 0.6 + 0.6, 3),
         )
         for idx in range(1, 6)
     ]
@@ -580,6 +584,29 @@ class TestReportIntegration:
         sums = raw_df[comp_cols].sum(axis=1)
         diffs = (sums - raw_df["Total Blocking (s)"]).abs()
         assert (diffs < 1e-3).all(), f"Component sum mismatch found: max diff = {diffs.max()}"
+
+        # 3. Section 11 (Resource Geometry Provenance Table - v1.10.0 Signal Provenance)
+        sec_prov = doc.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
+        assert sec_prov is not None
+        assert sec_prov.is_applicable
+        prov_table = sec_prov.tables[0]
+        assert "Entry Signal ID" in prov_table.columns
+        assert "Entry Signal Ch. (km)" in prov_table.columns
+        assert "Exit Signal ID" in prov_table.columns
+        assert "Exit Signal Ch. (km)" in prov_table.columns
+
+        first_row = prov_table.raw_dataframe.iloc[0]
+        assert first_row["Entry Signal ID"] == "SIG_001"
+        assert first_row["Exit Signal ID"] == "SIG_002"
+        assert float(first_row["Entry Signal Ch. (km)"]) > 0.0
+        assert float(first_row["Exit Signal Ch. (km)"]) > 0.0
+        assert float(first_row["Entry Signal Ch. (km)"]) == pytest.approx(0.989, abs=1e-3)
+        assert float(first_row["Exit Signal Ch. (km)"]) == pytest.approx(2.554, abs=1e-3)
+
+        # Edge Case: Terminal block before buffer stop
+        last_row = prov_table.raw_dataframe.iloc[-1]
+        assert last_row["Resource ID"] == "BLK_UP_092"
+        assert last_row["Exit Signal ID"] in ("ND_0448", "N/A")
 
     def test_reporting_missing_blocking_intervals_raises_loud_error(self) -> None:
         """Phase 4c: Assert assemble_report raises ERR_REPORT_MISSING_BLOCKING_INTERVALS when missing."""
@@ -1078,6 +1105,66 @@ class TestReportIntegration:
         assert pkg2.metadata["max_duration_s"] == 200.0
         traj = pkg2.trajectories["TRN_LEADER"]
         assert abs(len(traj.samples) - 400) <= 2  # exactly 401 samples
+
+    def test_section_11_signal_provenance_and_fallbacks(self) -> None:
+        """v1.10.0: Assert Section 11 Signal Provenance columns, primary lookup, and fallback chainage matching."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        # 1. Primary method on 05_comprehensive_line (BLK_UP_01 -> SIG_UP_01 / SIG_UP_02)
+        proj, _, _ = FileManager.load_example_project("05_comprehensive_line")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
+
+        sec11 = doc.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
+        assert sec11 is not None
+        assert sec11.is_applicable
+        prov_table = sec11.tables[0]
+
+        expected_cols = [
+            "Resource ID",
+            "Type",
+            "Physical Chainage (km)",
+            "Length (m)",
+            "Entry Signal ID",
+            "Entry Signal Ch. (km)",
+            "Exit Signal ID",
+            "Exit Signal Ch. (km)",
+            "Geometry Source",
+            "Dataset ID",
+            "Version",
+            "Baseline Invariant",
+        ]
+        for col in expected_cols:
+            assert col in prov_table.columns
+
+        first_row = prov_table.raw_dataframe.iloc[0]
+        assert first_row["Resource ID"] == "BLK_UP_01"
+        assert first_row["Entry Signal ID"] == "SIG_UP_01"
+        assert first_row["Exit Signal ID"] == "SIG_UP_02"
+        assert float(first_row["Entry Signal Ch. (km)"]) > 0.0
+        assert float(first_row["Exit Signal Ch. (km)"]) > 0.0
+        assert float(first_row["Entry Signal Ch. (km)"]) == pytest.approx(0.050, abs=1e-3)
+        assert float(first_row["Exit Signal Ch. (km)"]) == pytest.approx(3.050, abs=1e-3)
+
+        # 2. Fallback method: when blocks lack explicit signal IDs, fallback locates signals by chainage
+        import copy
+        proj_no_sigs = copy.deepcopy(proj)
+        for b in proj_no_sigs.signalling.blocks:
+            b.entry_signal_id = None
+            b.exit_signal_id = None
+
+        pkg_fb, doc_fb = SimulationRunner.run_simulation_pipeline(proj_no_sigs, RunningDirection.FORWARD)
+        sec11_fb = doc_fb.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
+        assert sec11_fb is not None
+        prov_table_fb = sec11_fb.tables[0]
+        fb_first = prov_table_fb.raw_dataframe.iloc[0]
+
+        assert fb_first["Resource ID"] == "BLK_UP_01"
+        assert fb_first["Entry Signal ID"] == "SIG_UP_01"
+        assert fb_first["Exit Signal ID"] == "SIG_UP_02"
+        assert float(fb_first["Entry Signal Ch. (km)"]) > 0.0
+        assert float(fb_first["Exit Signal Ch. (km)"]) > 0.0
+
 
 
 

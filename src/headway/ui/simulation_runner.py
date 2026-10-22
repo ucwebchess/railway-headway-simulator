@@ -35,6 +35,7 @@ from headway.analysis.statistics import StatisticalSummary
 from headway.core.exceptions import SignallingBlocksMissingError, SimulationError
 from headway.data.canonical import (
     CanonicalProject,
+    NodeType,
     Platform,
     ResourceInterval,
     ServicePattern,
@@ -790,6 +791,62 @@ class SimulationRunner:
         tvs_events.sort(key=lambda e: (e["entry_time_s"], e["start_chainage_m"]))
 
         provenance_records = []
+        signals = list(sig.signals) if sig and getattr(sig, "signals", None) else []
+        nodes = list(infra.nodes) if infra and getattr(infra, "nodes", None) else []
+        node_map = {n.node_id: n for n in nodes}
+        link_map = {l.link_id: l for l in track_links}
+
+        # Build physical link start chainage mapping
+        link_start_m: Dict[str, float] = {}
+        next_links: Dict[str, List[TrackLink]] = {}
+        for l in track_links:
+            next_links.setdefault(l.start_node_id, []).append(l)
+
+        all_starts = {l.start_node_id for l in track_links}
+        all_ends = {l.end_node_id for l in track_links}
+        roots = all_starts - all_ends
+        if not roots and track_links:
+            roots = {track_links[0].start_node_id}
+
+        for root in sorted(roots):
+            queue = [(root, 0.0)]
+            while queue:
+                curr_node, curr_m = queue.pop(0)
+                for l in next_links.get(curr_node, []):
+                    if l.link_id not in link_start_m:
+                        link_start_m[l.link_id] = curr_m
+                        queue.append((l.end_node_id, curr_m + l.length_m))
+
+        cum_m = 0.0
+        for l in track_links:
+            if l.link_id not in link_start_m:
+                link_start_m[l.link_id] = cum_m
+            cum_m = max(cum_m, link_start_m[l.link_id] + l.length_m)
+
+        # Compute signal chainage for all signals
+        sig_chainage_map: Dict[str, float] = {}
+        for s in signals:
+            if getattr(s, "chainage_km", None) is not None:
+                sig_chainage_map[s.signal_id] = float(s.chainage_km)
+            elif getattr(s, "chainage_m", None) is not None:
+                sig_chainage_map[s.signal_id] = round(float(s.chainage_m) / 1000.0, 3)
+            elif s.link_id in link_start_m:
+                sig_chainage_map[s.signal_id] = round((link_start_m[s.link_id] + float(s.offset_m)) / 1000.0, 3)
+
+        sig_candidates = [
+            (s.signal_id, sig_chainage_map[s.signal_id])
+            for s in signals
+            if s.signal_id in sig_chainage_map
+        ]
+
+        def _resolve_signal_by_chainage(target_km: float, max_tol_km: float = 0.5) -> Optional[Tuple[str, float]]:
+            if not sig_candidates:
+                return None
+            within_tol = [c for c in sig_candidates if abs(c[1] - target_km) <= max_tol_km]
+            if not within_tol:
+                return None
+            return min(within_tol, key=lambda it: abs(it[1] - target_km))
+
         cum_km = 0.0
         for blk in blocks:
             blk_len = 0.0
@@ -797,16 +854,66 @@ class SimulationRunner:
                 blk_len = sum(abs(iv.end_offset_m - iv.start_offset_m) for iv in blk.link_intervals)
             if blk_len <= 0.0:
                 blk_len = 1000.0
+
+            blk_start_km = round(cum_km, 3)
+            blk_end_km = round(cum_km + blk_len / 1000.0, 3)
+
+            # --- Entry Signal Resolution (Primary -> Fallback) ---
+            raw_en_sig = getattr(blk, "entry_signal_id", None)
+            if raw_en_sig and str(raw_en_sig).strip().upper() not in ("", "NONE", "N/A"):
+                en_sig_id = str(raw_en_sig).strip()
+                if en_sig_id in sig_chainage_map:
+                    en_ch_km = sig_chainage_map[en_sig_id]
+                else:
+                    fb = _resolve_signal_by_chainage(blk_start_km)
+                    en_ch_km = fb[1] if fb else blk_start_km
+            else:
+                fb = _resolve_signal_by_chainage(blk_start_km)
+                if fb:
+                    en_sig_id, en_ch_km = fb
+                else:
+                    en_sig_id = "N/A"
+                    en_ch_km = None
+
+            # --- Exit Signal Resolution (Primary -> Fallback -> Buffer Stop Edge Case) ---
+            raw_ex_sig = getattr(blk, "exit_signal_id", None)
+            if raw_ex_sig and str(raw_ex_sig).strip().upper() not in ("", "NONE", "N/A"):
+                ex_sig_id = str(raw_ex_sig).strip()
+                if ex_sig_id in sig_chainage_map:
+                    ex_ch_km = sig_chainage_map[ex_sig_id]
+                else:
+                    fb = _resolve_signal_by_chainage(blk_end_km)
+                    ex_ch_km = fb[1] if fb else blk_end_km
+            else:
+                fb = _resolve_signal_by_chainage(blk_end_km)
+                if fb:
+                    ex_sig_id, ex_ch_km = fb
+                else:
+                    # Edge Case: check for terminal buffer stop node
+                    last_iv = blk.link_intervals[-1] if getattr(blk, "link_intervals", None) else None
+                    last_lnk = link_map.get(last_iv.link_id) if last_iv else None
+                    last_node = node_map.get(last_lnk.end_node_id) if last_lnk else None
+                    if last_node and getattr(last_node, "node_type", None) in (NodeType.ENDPOINT, NodeType.BUFFER_STOP):
+                        ex_sig_id = last_node.node_id
+                        ex_ch_km = blk_end_km
+                    else:
+                        ex_sig_id = "N/A"
+                        ex_ch_km = None
+
             provenance_records.append(
                 ResourceProvenanceRecord(
                     resource_id=blk.block_id,
                     resource_type="TRACK_BLOCK",
-                    physical_chainage_km=round(cum_km, 3),
+                    physical_chainage_km=blk_start_km,
                     resource_length_m=blk_len,
                     geometry_source="INPUT_MODEL",
                     dataset_id=project.project_id,
                     dataset_version="1.0.0",
                     is_baseline_geometry=True,
+                    entry_signal_id=en_sig_id,
+                    entry_signal_chainage_km=en_ch_km,
+                    exit_signal_id=ex_sig_id,
+                    exit_signal_chainage_km=ex_ch_km,
                 )
             )
             cum_km += blk_len / 1000.0
