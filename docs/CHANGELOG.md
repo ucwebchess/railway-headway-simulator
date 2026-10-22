@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.2] — 2026-10-22
+
+### Changed
+- **Wire & Audit Numerical and Operational UI Inputs (DEF-15 / v1.9.2)**: Bound Gradio inputs (Integration Step `dt_s`, Simulation Horizon `max_duration_s`, Planning Margin `planning_margin_s`, and Monte Carlo Replications `monte_carlo_reps`) to session state, propagating values through `SimulationRunner.run_simulation_pipeline`, microscopic simulator, and reporting layer.
+- **Dynamic Planning Capacity & Margin Rendering**: Updated `_build_executive_kpis` to dynamically calculate planning capacity as $C_{plan} = 3600 / (H_{tech} + M)$ using the user-specified margin $M$, and rendered dynamic margin labels across UI KPI cards, PDF reports, and Section 15/18 narratives.
+- **Section 15 Stochastic Parameter Propagation**: Configured Monte Carlo replications count from UI input to stochastic summaries, Section 15 reliability table, and narrative.
+
+---
+
 ## [1.9.1] — 2026-10-22
 
 ### Changed

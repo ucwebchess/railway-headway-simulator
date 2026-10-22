@@ -43,6 +43,12 @@ class AppState:
     reports_dir: Path = field(default_factory=lambda: Path(os.environ.get("HEADWAY_STORAGE_DIR", Path.cwd() / "storage")) / "reports")
     analysis_pf_map: Dict[str, float] = field(default_factory=dict)
 
+    # Numerical & Operational Parameters (DEF-15)
+    dt_s: float = 1.0
+    max_duration_s: float = 7200.0
+    planning_margin_s: float = 18.0
+    monte_carlo_reps: int = 100
+
     # Logging and Diagnostics
     session_logs: List[str] = field(default_factory=list)
     last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -74,6 +80,10 @@ class AppState:
         self.latest_report_doc = None
         self.report_config = None
         self.analysis_pf_map.clear()
+        self.dt_s = 1.0
+        self.max_duration_s = 7200.0
+        self.planning_margin_s = 18.0
+        self.monte_carlo_reps = 100
         self.session_logs = [f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Session reset."]
         self.last_updated = datetime.now(timezone.utc).isoformat()
 
@@ -295,6 +305,7 @@ class AppState:
             "Technical Headway": f"{kpis.technical_headway_s:.1f} s ({kpis.technical_headway_min:.2f} min)",
             "Theoretical Capacity": f"{kpis.theoretical_capacity_tph:.1f} tph",
             "Planning Capacity": f"{kpis.planning_capacity_tph:.1f} tph",
+            "Planning Margin": f"Margin: {kpis.planning_margin_s:.0f} s",
             "Performance Factor": kpis.performance_factor_str,
             "Controlling Bottleneck": f"{kpis.controlling_bottleneck_id} ({kpis.controlling_bottleneck_type})",
             "Running Direction": self.latest_result_package.running_direction.value,

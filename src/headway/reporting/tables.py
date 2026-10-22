@@ -779,8 +779,9 @@ def create_stochastic_headway_table(
     samples: Optional[Sequence[float]] = None,
     summary: Optional[Any] = None,
     running_direction: RunningDirection = RunningDirection.FORWARD,
+    replications: Optional[int] = None,
 ) -> EngineeringTable:
-    """DEF-10 / Task 4: Stochastic Headway & Operational Reliability Summary Table.
+    """DEF-10 / Task 4 & DEF-15: Stochastic Headway & Operational Reliability Summary Table.
 
     Columns: Metric, Value (s), Value (min), Operational Impact
     Metrics: Mean Headway, Std Dev, 5th Percentile, 95th Percentile
@@ -805,9 +806,11 @@ def create_stochastic_headway_table(
         p05_s = float(getattr(summary, "p05", getattr(summary, "p5", max(0.0, mean_s - 1.645 * std_s))))
         p95_s = float(getattr(summary, "p95", mean_s + 1.645 * std_s))
 
+    n_reps = replications if replications is not None else (len(samples) if samples else 100)
+
     specs = [
-        ("Mean Headway", mean_s, "Expected average operational headway across Monte Carlo replications"),
-        ("Std Dev", std_s, "Dispersion of headway under dwell variability and driver jitter"),
+        ("Mean Headway", mean_s, f"Expected average operational headway across {n_reps} Monte Carlo replications"),
+        ("Std Dev", std_s, f"Dispersion of headway across {n_reps} replications under dwell variability and driver jitter"),
         ("5th Percentile", p05_s, "Favorable operating conditions with minimal operational delay"),
         ("95th Percentile", p95_s, "Planning threshold ensuring 95% timetable punctuality commitment"),
     ]
@@ -833,10 +836,11 @@ def create_stochastic_headway_table(
 
     return EngineeringTable(
         table_id="TBL_STOCHASTIC_HEADWAY",
-        title="Stochastic Headway & Operational Reliability Summary",
+        title=f"Stochastic Headway & Operational Reliability Summary ({n_reps} Replications)",
         raw_dataframe=raw_df,
         formatted_dataframe=fmt_df,
         running_direction=running_direction,
+        metadata={"monte_carlo_reps": n_reps},
     )
 
 

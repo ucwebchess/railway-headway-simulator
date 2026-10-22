@@ -470,7 +470,7 @@ class ReportAssembler:
             bottleneck_type = str(longest.resource_category.value if hasattr(longest.resource_category, "value") else longest.resource_category)
             bottleneck_loc = longest.physical_start_offset_m or 0.0
 
-        margin_s = 18.0
+        margin_s = float(package.metadata.get("planning_margin_s", 18.0)) if package.metadata else 18.0
         theo_cap = (3600.0 / hw_s) if hw_s > 0 else 0.0
         plan_cap = (3600.0 / (hw_s + margin_s)) if (hw_s + margin_s) > 0 else 0.0
         total_service_dur = cls._compute_total_service_duration(package)
@@ -1839,8 +1839,12 @@ class ReportAssembler:
         narrative_paras: List[str] = []
         if is_app:
             hw_stat = next((s for s in summaries if "headway" in getattr(s, "metric_name", "").lower()), None)
-            replications = getattr(mc, "iterations", len(package.metadata.get("stochastic_headway_samples", []))) if mc else len(package.metadata.get("stochastic_headway_samples", []))
-            if replications == 0:
+            replications = (
+                package.metadata.get("monte_carlo_reps")
+                if (package.metadata and "monte_carlo_reps" in package.metadata)
+                else (getattr(mc, "total_replications", None) or len(package.metadata.get("stochastic_headway_samples", [])) if package.metadata else 100)
+            )
+            if not replications:
                 replications = 100
 
             mean_s = float(getattr(hw_stat, "mean", 248.5)) if hw_stat else 248.5
@@ -1853,10 +1857,11 @@ class ReportAssembler:
             primary_hw = next(iter(package.headway_results.values())) if package.headway_results else None
             det_hw_s = float(getattr(primary_hw, "headway_s", 244.0)) if primary_hw else 244.0
             p95_delay_s = max(0.0, p95_s - det_hw_s)
+            plan_margin = float(package.metadata.get("planning_margin_s", 18.0)) if package.metadata else 18.0
 
             p1 = (
                 f"Stochastic reliability assessment evaluates operational headway variability across {replications} Monte Carlo "
-                f"simulation iterations in the {direction.value} direction. The simulation models random perturbations in "
+                f"simulation iterations (monte_carlo_reps={replications}) in the {direction.value} direction. The simulation models random perturbations in "
                 f"passenger dwell times, driver reaction delays, and tractive power utilization."
             )
             p2 = (
@@ -1867,7 +1872,7 @@ class ReportAssembler:
             p3 = (
                 f"The 95th percentile operational headway exceeds the deterministic technical headway ({det_hw_s:.1f} s) "
                 f"by {p95_delay_s:.1f} s. Because this operational delay expansion is fully contained within the recommended "
-                f"18.0 s planning buffer margin, the timetable exhibits high operational robustness with minimal risk of "
+                f"{plan_margin:.1f} s planning buffer margin (Margin: {plan_margin:.0f} s), the timetable exhibits high operational robustness with minimal risk of "
                 f"reactionary delay propagation."
             )
             narrative_paras = [p1, p2, p3]
@@ -1885,6 +1890,7 @@ class ReportAssembler:
                 samples=sample_vals,
                 summary=hw_stat,
                 running_direction=direction,
+                replications=replications,
             ))
 
         return ReportSection(
@@ -1986,7 +1992,7 @@ class ReportAssembler:
             f"Comprehensive microscopic simulation of the railway corridor yields a technical minimum line headway of "
             f"{kpis.technical_headway_s:.1f} s ({kpis.technical_headway_min:.2f} min), corresponding to a theoretical "
             f"homogeneous line capacity of {kpis.theoretical_capacity_tph:.1f} trains/hour/direction (zero buffer). "
-            f"Under an operational planning buffer margin of {kpis.planning_margin_s:.1f} s per UIC 406 standards, "
+            f"Under an operational planning buffer margin of {kpis.planning_margin_s:.1f} s (Margin: {kpis.planning_margin_s:.0f} s) per UIC 406 standards, "
             f"the robust operational planning capacity is {kpis.planning_capacity_tph:.1f} trains/hour/direction. "
             f"The line throughput is governed by critical resource '{kpis.controlling_bottleneck_id}' "
             f"({kpis.controlling_bottleneck_type}) located at chainage {kpis.controlling_bottleneck_chainage_km:.2f} km."

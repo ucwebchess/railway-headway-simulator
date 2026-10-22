@@ -66,11 +66,29 @@ def create_simulation_tab() -> Dict[str, Any]:
             with gr.Column(scale=1):
                 gr.Markdown("#### Numerical & Operational Parameters")
                 with gr.Row():
-                    components["param_dt"] = gr.Number(value=0.1, label="Integration Step dt (s)", minimum=0.01, maximum=1.0)
-                    components["param_duration"] = gr.Number(value=600.0, label="Simulation Horizon (s)", minimum=60.0)
+                    components["param_dt"] = gr.Number(
+                        value=session_state.dt_s,
+                        label="Integration Step dt (s)",
+                        minimum=0.01,
+                        maximum=10.0,
+                    )
+                    components["param_duration"] = gr.Number(
+                        value=session_state.max_duration_s,
+                        label="Simulation Horizon (s)",
+                        minimum=10.0,
+                    )
                 with gr.Row():
-                    components["param_margin"] = gr.Number(value=18.0, label="Planning Margin (s)", minimum=0.0)
-                    components["param_replications"] = gr.Number(value=100, label="Monte Carlo Replications", minimum=10, maximum=1000)
+                    components["param_margin"] = gr.Number(
+                        value=session_state.planning_margin_s,
+                        label="Planning Margin (s)",
+                        minimum=0.0,
+                    )
+                    components["param_replications"] = gr.Number(
+                        value=session_state.monte_carlo_reps,
+                        label="Monte Carlo Replications",
+                        minimum=1,
+                        maximum=10000,
+                    )
 
         gr.Markdown("---")
 
@@ -156,6 +174,23 @@ def create_simulation_tab() -> Dict[str, Any]:
         outputs=[components["param_performance_factor"]],
     )
 
+    def handle_dt_change(val: float) -> None:
+        session_state.dt_s = float(val) if val is not None else 1.0
+
+    def handle_dur_change(val: float) -> None:
+        session_state.max_duration_s = float(val) if val is not None else 7200.0
+
+    def handle_margin_change(val: float) -> None:
+        session_state.planning_margin_s = float(val) if val is not None else 18.0
+
+    def handle_reps_change(val: int) -> None:
+        session_state.monte_carlo_reps = int(val) if val is not None else 100
+
+    components["param_dt"].change(fn=handle_dt_change, inputs=[components["param_dt"]], outputs=[])
+    components["param_duration"].change(fn=handle_dur_change, inputs=[components["param_duration"]], outputs=[])
+    components["param_margin"].change(fn=handle_margin_change, inputs=[components["param_margin"]], outputs=[])
+    components["param_replications"].change(fn=handle_reps_change, inputs=[components["param_replications"]], outputs=[])
+
     # Run simulation handler
     def handle_run_simulation(
         dir_str: str,
@@ -178,6 +213,11 @@ def create_simulation_tab() -> Dict[str, Any]:
 
         # Execute simulation pipeline synchronously or via runner
         try:
+            session_state.dt_s = float(dt_val) if dt_val is not None else 1.0
+            session_state.max_duration_s = float(dur_val) if dur_val is not None else 7200.0
+            session_state.planning_margin_s = float(margin_val) if margin_val is not None else 18.0
+            session_state.monte_carlo_reps = int(rep_val) if rep_val is not None else 100
+
             active_cfg = getattr(session_state, "report_config", None)
             package, report_doc = SimulationRunner.run_simulation_pipeline(
                 project=session_state.current_project,
@@ -186,6 +226,10 @@ def create_simulation_tab() -> Dict[str, Any]:
                 scenario_id=session_state.active_scenario_id,
                 report_config=active_cfg,
                 performance_factor=float(pf_val) if pf_val is not None else None,
+                dt_s=session_state.dt_s,
+                max_duration_s=session_state.max_duration_s,
+                planning_margin_s=session_state.planning_margin_s,
+                monte_carlo_reps=session_state.monte_carlo_reps,
             )
 
             # Store in session state

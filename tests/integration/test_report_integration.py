@@ -1027,5 +1027,57 @@ class TestReportIntegration:
         narrative_text = " ".join(sec9.narrative_paragraphs)
         assert "from 25m to 2000m" in narrative_text
 
+    def test_wire_and_audit_numerical_operational_parameters(self) -> None:
+        """DEF-15 / v1.9.2: Verify UI numerical and operational parameters propagation."""
+        from headway.ui.file_manager import FileManager
+        from headway.ui.simulation_runner import SimulationRunner
+
+        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+
+        # Test 1: Planning margin & Monte Carlo replications propagation
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=proj,
+            running_direction=RunningDirection.FORWARD,
+            planning_margin_s=90.0,
+            monte_carlo_reps=50,
+        )
+
+        assert pkg.metadata["planning_margin_s"] == 90.0
+        assert pkg.metadata["monte_carlo_reps"] == 50
+        assert len(pkg.metadata["stochastic_headway_samples"]) == 50
+
+        kpis = doc.executive_kpis
+        hw = kpis.technical_headway_s
+        expected_plan_cap = round(3600.0 / (hw + 90.0), 1)
+        assert kpis.planning_capacity_tph == expected_plan_cap
+        assert kpis.planning_margin_s == 90.0
+
+        # Assert narrative/KPI dict explicitly contains "Margin: 90"
+        kpi_dict = kpis.to_dict()
+        narrative_text = " ".join([
+            " ".join(sec.narrative_paragraphs) for sec in doc.sections.values()
+        ])
+        assert "Margin: 90" in str(kpi_dict) or "Margin: 90" in narrative_text
+
+        # Assert Section 15 explicitly mentions monte_carlo_reps
+        sec15 = doc.get_section(ReportSectionId.STOCHASTIC_RELIABILITY)
+        assert sec15 is not None
+        sec15_text = " ".join(sec15.narrative_paragraphs)
+        assert "50" in sec15_text
+        assert "50" in sec15.tables[0].title or "50" in str(sec15.tables[0].raw_dataframe)
+
+        # Test 2: dt_s and max_duration_s propagation
+        pkg2, _ = SimulationRunner.run_simulation_pipeline(
+            project=proj,
+            running_direction=RunningDirection.FORWARD,
+            dt_s=0.5,
+            max_duration_s=200.0,
+        )
+
+        assert pkg2.metadata["dt_s"] == 0.5
+        assert pkg2.metadata["max_duration_s"] == 200.0
+        traj = pkg2.trajectories["TRN_LEADER"]
+        assert abs(len(traj.samples) - 400) <= 2  # exactly 401 samples
+
 
 
