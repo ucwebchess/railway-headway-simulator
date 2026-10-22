@@ -161,6 +161,7 @@ class ResourceProvenanceRecord:
     dataset_version: str
     is_baseline_geometry: bool = True
     active_scenario_id: Optional[str] = None
+    physical_end_chainage_km: Optional[float] = None
     entry_signal_id: str = "N/A"
     entry_signal_chainage_km: Optional[float] = None
     exit_signal_id: str = "N/A"
