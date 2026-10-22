@@ -25,12 +25,12 @@ def create_block_sensitivity_figure(
     running_direction: RunningDirection = RunningDirection.FORWARD,
     title: str = "Constrained Sensitivity Analysis (AS-BUILT Baseline Pinned)",
 ) -> go.Figure:
-    """v1.9.0 / P13-SEN: Redesigned Constrained Block-Length Sensitivity Chart.
+    """v1.9.1 / P13-SEN: Redesigned Constrained Block-Length Sensitivity Chart.
 
     Single-panel dual Y-axis layout:
     - Primary Y-Axis (Left): Minimum Technical Headway [s] (Solid blue line, circle markers).
     - Secondary Y-Axis (Right): Theoretical Capacity [tph] (Dashed green line, square markers).
-    - Data labels for AS-BUILT, 1000m, 2000m, 3000m, 4000m, 5000m.
+    - Staggered data labels for 25m, 50m, 75m to avoid visual overlap, plus AS-BUILT, 1000m, 2000m.
     - Dotted orange vertical line at AS-BUILT index.
     - Pinned AS-BUILT baseline marker.
     """
@@ -51,9 +51,43 @@ def create_block_sensitivity_figure(
     headway_vals = [float(p.headway_s) for p in pts]
     capacity_vals = [float(p.capacity_trains_per_hour) for p in pts]
 
-    labeled_keys = {"AS-BUILT", "1000m", "2000m", "3000m", "4000m", "5000m"}
-    text_hw = [f"{hw:.1f} s" if x in labeled_keys else "" for x, hw in zip(x_labels, headway_vals)]
-    text_cap = [f"{cap:.1f} tph" if x in labeled_keys else "" for x, cap in zip(x_labels, capacity_vals)]
+    labeled_keys = {"AS-BUILT", "25m", "50m", "75m", "1000m", "2000m"}
+    if len(pts) <= 6:
+        labeled_keys = set(x_labels)
+
+    text_hw: List[str] = []
+    text_pos_hw: List[str] = []
+    for x, hw in zip(x_labels, headway_vals):
+        if x in labeled_keys:
+            text_hw.append(f"{hw:.1f} s")
+            if x == "25m":
+                text_pos_hw.append("top left")
+            elif x == "50m":
+                text_pos_hw.append("bottom right")
+            elif x == "75m":
+                text_pos_hw.append("top right")
+            else:
+                text_pos_hw.append("top center")
+        else:
+            text_hw.append("")
+            text_pos_hw.append("top center")
+
+    text_cap: List[str] = []
+    text_pos_cap: List[str] = []
+    for x, cap in zip(x_labels, capacity_vals):
+        if x in labeled_keys:
+            text_cap.append(f"{cap:.1f} tph")
+            if x == "25m":
+                text_pos_cap.append("bottom left")
+            elif x == "50m":
+                text_pos_cap.append("top right")
+            elif x == "75m":
+                text_pos_cap.append("bottom right")
+            else:
+                text_pos_cap.append("bottom center")
+        else:
+            text_cap.append("")
+            text_pos_cap.append("bottom center")
 
     # Primary Y-Axis (Left): Minimum Technical Headway [s]
     fig.add_trace(
@@ -62,7 +96,7 @@ def create_block_sensitivity_figure(
             y=headway_vals,
             mode="lines+markers+text",
             text=text_hw,
-            textposition="top center",
+            textposition=text_pos_hw,
             name="Minimum Technical Headway [s]",
             line=dict(color="#1F77B4", width=2),
             marker=dict(symbol="circle", size=8, color="#1F77B4"),
@@ -78,7 +112,7 @@ def create_block_sensitivity_figure(
             y=capacity_vals,
             mode="lines+markers+text",
             text=text_cap,
-            textposition="bottom center",
+            textposition=text_pos_cap,
             name="Theoretical Capacity [tph]",
             line=dict(color="#2CA02C", width=2, dash="dash"),
             marker=dict(symbol="square", size=8, color="#2CA02C"),
@@ -133,11 +167,37 @@ def create_block_sensitivity_figure(
         height=550,
     )
     fig.update_layout(layout)
-    fig.update_yaxes(title_text="Minimum Technical Headway [s]", secondary_y=False)
-    fig.update_yaxes(title_text="Theoretical Capacity [tph]", secondary_y=True)
+
+    # Dual Y-axis scaling with sufficient padding for text labels
+    if headway_vals:
+        min_hw, max_hw = min(headway_vals), max(headway_vals)
+        pad_hw = max(5.0, (max_hw - min_hw) * 0.15)
+        fig.update_yaxes(
+            title_text="Minimum Technical Headway [s]",
+            range=[max(0.0, min_hw - pad_hw), max_hw + pad_hw],
+            secondary_y=False,
+        )
+    else:
+        fig.update_yaxes(title_text="Minimum Technical Headway [s]", secondary_y=False)
+
+    if capacity_vals:
+        min_cap, max_cap = min(capacity_vals), max(capacity_vals)
+        pad_cap = max(0.5, (max_cap - min_cap) * 0.15)
+        fig.update_yaxes(
+            title_text="Theoretical Capacity [tph]",
+            range=[max(0.0, min_cap - pad_cap), max_cap + pad_cap],
+            secondary_y=True,
+        )
+    else:
+        fig.update_yaxes(title_text="Theoretical Capacity [tph]", secondary_y=True)
+
     fig.update_xaxes(categoryorder="array", categoryarray=x_labels)
 
     return fig
+
+
+# Alias for create_block_length_sensitivity_figure
+create_block_length_sensitivity_figure = create_block_sensitivity_figure
 
 
 def create_capacity_saturation_figure(

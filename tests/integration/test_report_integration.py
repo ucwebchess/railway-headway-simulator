@@ -973,8 +973,8 @@ class TestReportIntegration:
         assert "Clearance (s)" in df10.columns
         assert (df10["Clearance (s)"] > 0.0).all()
 
-    def test_constrained_block_length_sensitivity_26_cases(self) -> None:
-        """v1.9.0 Part 2: Assert sensitivity chart data contains exactly 26 cases with AS-BUILT pinned."""
+    def test_constrained_block_length_sensitivity_16_cases(self) -> None:
+        """v1.9.1: Assert sensitivity chart data contains exactly 16 cases with AS-BUILT pinned."""
         from headway.ui.file_manager import FileManager
         from headway.ui.simulation_runner import SimulationRunner
 
@@ -983,9 +983,26 @@ class TestReportIntegration:
 
         study = pkg.sensitivity_result
         assert study is not None
-        assert len(study.points) == 26
+        assert len(study.points) == 16
 
-        expected_x = ["AS-BUILT"] + [f"{l * 200}m" for l in range(1, 26)]
+        expected_x = [
+            "AS-BUILT",
+            "25m",
+            "50m",
+            "75m",
+            "100m",
+            "150m",
+            "200m",
+            "400m",
+            "600m",
+            "800m",
+            "1000m",
+            "1200m",
+            "1400m",
+            "1600m",
+            "1800m",
+            "2000m",
+        ]
         actual_x = [str(p.parameter_value) for p in study.points]
         assert actual_x == expected_x
 
@@ -1003,9 +1020,12 @@ class TestReportIntegration:
 
         hw_trace = next(t for t in fig.data if t.name == "Minimum Technical Headway [s]")
         cap_trace = next(t for t in fig.data if t.name == "Theoretical Capacity [tph]")
-        assert len(hw_trace.x) == 26
-        assert len(cap_trace.x) == 26
+        assert len(hw_trace.x) == 16
+        assert len(cap_trace.x) == 16
         assert list(hw_trace.x) == expected_x
+
+        narrative_text = " ".join(sec9.narrative_paragraphs)
+        assert "from 25m to 2000m" in narrative_text
 
 
 

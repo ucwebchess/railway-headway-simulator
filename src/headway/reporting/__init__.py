@@ -31,6 +31,7 @@ from headway.reporting.charts_blocking import (
 )
 from headway.reporting.charts_capacity import (
     create_block_sensitivity_figure,
+    create_block_length_sensitivity_figure,
     create_capacity_comparison_figure,
     create_capacity_saturation_figure,
 )
@@ -159,6 +160,7 @@ __all__ = [
     "create_tvs_occupation_figure",
     "create_tvs_comparison_figure",
     "create_block_sensitivity_figure",
+    "create_block_length_sensitivity_figure",
     "create_capacity_saturation_figure",
     "create_capacity_comparison_figure",
     "create_stochastic_histogram_figure",
