@@ -169,6 +169,60 @@ class LeaderTrajectoryEmptyError(SimulationError):
         super().__init__(message, error_code="ERR_LEADER_TRAJECTORY_EMPTY", **kwargs)
 
 
+def _compute_residual_rear_durations(
+    usage_records: Sequence[Any],
+    standstill_intervals: Sequence[Tuple[float, float]],
+    raw_samples: Sequence[Any],
+    train_length_m: float,
+    block_end_route_m: Dict[str, float],
+) -> Dict[str, float]:
+    """v1.11.1 / Task 2: physical residual-rear attribution.
+
+    Residual rear time for block B is the portion of a standstill during which the
+    train's physical TAIL still fouls B's exit boundary. Hard rules:
+      * tail already cleared B before the standstill started (rear_clearance_s ≤ s0)
+        → 0.0 s contribution (no downstream dwell may be credited to B);
+      * tail remains inside B for the whole dwell → only the dwell portion during
+        which the tail is physically inside B is counted (bounded by rear clearance);
+      * the front standstill position is taken from the trajectory itself; the tail
+        is inside B at standstill start only when  front(s0) − train_length < B_end.
+    """
+    import bisect as _bisect
+
+    _times = [float(getattr(s, "time_s", 0.0)) for s in raw_samples]
+    _dists = [float(getattr(s, "front_distance_m", 0.0)) for s in raw_samples]
+
+    def _front_at(t_s: float) -> Optional[float]:
+        if not _times:
+            return None
+        i = _bisect.bisect_left(_times, t_s)
+        i = max(0, min(len(_times) - 1, i))
+        return _dists[i]
+
+    out: Dict[str, float] = {}
+    for rec in usage_records:
+        t_exit = rec.front_exit_s
+        t_clear = rec.rear_clearance_s
+        if t_exit is None or t_clear is None or t_clear <= t_exit + 1e-9:
+            continue
+        s_block_end = block_end_route_m.get(rec.resource_id)
+        res_t = 0.0
+        for (_s0, _s1) in standstill_intervals:
+            ov = min(t_clear, _s1) - max(t_exit, _s0)
+            if ov <= 0.0:
+                continue
+            # Positional guard: the tail must physically be inside the block when the
+            # standstill begins; otherwise this standstill cannot be residual rear of B.
+            if s_block_end is not None:
+                front_s0 = _front_at(_s0)
+                if front_s0 is None or (front_s0 - train_length_m) >= s_block_end - 1e-9:
+                    continue
+            res_t += ov
+        if res_t > 0.05:
+            out[rec.resource_id] = round(res_t, 3)
+    return out
+
+
 class SimulationRunner:
     """Orchestrates microscopic simulation execution and result packaging."""
 
@@ -461,19 +515,13 @@ class SimulationRunner:
                     else:
                         standstill_intervals.append((_t0, _t1))
 
-        residual_rear_map: Dict[str, float] = {}
-        for rec in usage_records:
-            t_exit = rec.front_exit_s
-            t_clear = rec.rear_clearance_s
-            if t_exit is None or t_clear is None or t_clear <= t_exit + 1e-9:
-                continue
-            res_t = 0.0
-            for (_s0, _s1) in standstill_intervals:
-                ov = min(t_clear, _s1) - max(t_exit, _s0)
-                if ov > 0.0:
-                    res_t += ov
-            if res_t > 0.05:
-                residual_rear_map[rec.resource_id] = round(res_t, 3)
+        residual_rear_map: Dict[str, float] = _compute_residual_rear_durations(
+            usage_records=usage_records,
+            standstill_intervals=standstill_intervals,
+            raw_samples=raw_samples,
+            train_length_m=float(train_len_m),
+            block_end_route_m=route_max_s,
+        )
 
         blocking_intervals = extract_blocking_intervals_from_records(
             usage_records=usage_records,
@@ -565,13 +613,21 @@ class SimulationRunner:
         if not roots and track_links:
             roots = {track_links[0].start_node_id}
 
+        # v1.11.1 / Q4: record the alignment chainage at which each node is FIRST reached
+        # (identical traversal to the original link-start BFS) so that links whose end node
+        # lies at a LOWER chainage than their start node (e.g. the DN line of a double-track
+        # loop: LNK_13 ND_09 @ 22.0 km -> ND_08 @ 17.0 km) are recognised as running against
+        # increasing chainage instead of being projected forward from their start node.
+        node_pos_m: Dict[str, float] = {}
         for root in sorted(roots):
+            node_pos_m.setdefault(root, 0.0)
             queue = [(root, 0.0)]
             while queue:
                 curr_node, curr_m = queue.pop(0)
                 for l in next_links.get(curr_node, []):
                     if l.link_id not in link_start_m:
                         link_start_m[l.link_id] = curr_m
+                        node_pos_m.setdefault(l.end_node_id, curr_m + l.length_m)
                         queue.append((l.end_node_id, curr_m + l.length_m))
 
         cum_m = 0.0
@@ -579,6 +635,23 @@ class SimulationRunner:
             if l.link_id not in link_start_m:
                 link_start_m[l.link_id] = cum_m
             cum_m = max(cum_m, link_start_m[l.link_id] + l.length_m)
+
+        # Orientation of each link relative to increasing alignment chainage (+1 / -1).
+        link_align_dir: Dict[str, float] = {}
+        for l in track_links:
+            s_pos = node_pos_m.get(l.start_node_id)
+            e_pos = node_pos_m.get(l.end_node_id)
+            reversed_link = (
+                s_pos is not None
+                and e_pos is not None
+                and abs(link_start_m[l.link_id] - s_pos) < 1e-6
+                and e_pos < s_pos - 1e-6
+            )
+            link_align_dir[l.link_id] = -1.0 if reversed_link else 1.0
+
+        def _align_m(link_id: str, offset_m: float) -> float:
+            """Absolute alignment chainage (m) of a point at `offset_m` along `link_id`."""
+            return link_start_m[link_id] + link_align_dir.get(link_id, 1.0) * float(offset_m)
 
         # v1.11.0 / Tasks 5+10: Physical coordinate spans per resource.
         #   physical_start/end_offset_m : ROUTE-relative span (simulated route, 0 at origin)
@@ -600,8 +673,8 @@ class SimulationRunner:
                     except Exception:
                         pass
                 if inv.link_id in link_start_m:
-                    align_spans_b.append(link_start_m[inv.link_id] + float(inv.start_offset_m))
-                    align_spans_b.append(link_start_m[inv.link_id] + float(inv.end_offset_m))
+                    align_spans_b.append(_align_m(inv.link_id, inv.start_offset_m))
+                    align_spans_b.append(_align_m(inv.link_id, inv.end_offset_m))
             if route_spans_b:
                 block_route_offsets[blk.block_id] = (min(route_spans_b), max(route_spans_b))
             if align_spans_b:
@@ -737,10 +810,40 @@ class SimulationRunner:
             baseline_headway_s=required_hw_s,
             baseline_bottleneck_id=bottleneck_id,
             train_speed_kmh=round(max_speed_ms * 3.6, 1),
-            train_length_m=total_length_m if total_length_m else 202.0,
+            # v1.11.1 / Task 1 (CRITICAL REGRESSION FIX): the kernel's length argument is
+            # the TRAIN length (multi-block occupancy driver), never the corridor route
+            # length. Passing total_length_m here injected ~route traversal time into
+            # every candidate point, corrupting the whole curve into journey times.
+            train_length_m=train_len_m if train_len_m else 202.0,
             baseline_block_length_m=avg_base_bl,
             study_id=f"SENS_{run_id}",
         )
+
+        # v1.11.1 / Task 4: single-authoritative performance-factor impact payload.
+        # Physics rule: derating scales ONLY the position-dependent running time of the
+        # controlling bottleneck as t_running(pf) = t_running_ref / pf; the scaled headway
+        # is baseline + delta. Sections 3 and 18 MUST read from this payload — local
+        # proxy arithmetic in report assembly is prohibited.
+        ctrl_iv_pf = next((i for i in blocking_intervals if i.resource_id == bottleneck_id), None)
+        t_run_pf = float(ctrl_iv_pf.decomposition.running_time_s) if (
+            ctrl_iv_pf and getattr(ctrl_iv_pf, "decomposition", None)
+        ) else 0.0
+        pf_scenarios = []
+        for pf_sc in (0.90, 0.95):
+            delta_sc = round(t_run_pf / pf_sc - t_run_pf, 2) if pf_sc > 0 else 0.0
+            pf_scenarios.append({
+                "performance_factor": pf_sc,
+                "delta_running_s": delta_sc,
+                "headway_s": round(required_hw_s + delta_sc, 2),
+                "pct_increase": round((delta_sc / required_hw_s * 100.0), 2) if required_hw_s > 0 else 0.0,
+            })
+        performance_factor_results = {
+            "reference_headway_s": round(float(required_hw_s), 2),
+            "position_dependent_running_s": round(t_run_pf, 2),
+            "controlling_bottleneck_id": bottleneck_id,
+            "model": "t_running(pf) = t_running_ref / pf; headway(pf) = headway_ref + delta_running",
+            "scenarios": pf_scenarios,
+        }
 
         if tracker:
             tracker.check_cancellation()
@@ -827,17 +930,75 @@ class SimulationRunner:
                 else:
                     p_route_dist = 0.0
                     p_route_end = 0.0
-                plat_positions.append((p_route_dist, p_route_end, p))
+                plat_positions.append((p_route_dist, p_route_end, p, trav is not None))
 
             plat_positions.sort(key=lambda item: item[0])
+
+            # v1.11.1 / Task 3: occupation is attributed ONLY to the platform that hosts
+            # the train's assigned stopping point. Resolve every scheduled stop to its
+            # physical stop-marker route position using the engine's own berthing rule,
+            # and mark the platform whose span physically contains that marker.
+            _plat_span_by_id = {p.platform_id: (pd0, pd1) for (pd0, pd1, p, _tr) in plat_positions}
+            _assigned_platform_ids = set()
+            _plat_lookup = {p.platform_id: p for p in infra.platforms}
+            for _st in service_stops:
+                _tgt_pid = getattr(_st, "platform_id", None)
+                _cands = [_plat_lookup[_tgt_pid]] if _tgt_pid in _plat_lookup else [
+                    pp for pp in _plat_lookup.values() if pp.station_id == getattr(_st, "station_id", None)
+                ]
+                for _po in _cands:
+                    _trav2 = next((t for t in simulated_route.traversals if t.link_id == _po.link_id), None)
+                    if _trav2 is None:
+                        continue
+                    _plen = float(_po.length_m)
+                    if running_direction == RunningDirection.FORWARD:
+                        _off_t = min(float(_po.end_offset_m), float(_po.start_offset_m) + min(_plen, float(train_len_m)))
+                        _mk = _trav2.start_distance_m + _off_t
+                    else:
+                        _off_t = max(float(_po.start_offset_m), float(_po.end_offset_m) - min(_plen, float(train_len_m)))
+                        _mk = _trav2.start_distance_m + (_trav2.link.length_m - _off_t)
+                    _ps2, _pe2 = _plat_span_by_id[_po.platform_id]
+                    if _ps2 - 5.0 <= _mk <= _pe2 + 5.0:
+                        _assigned_platform_ids.add(_po.platform_id)
 
             # v1.11.0: platforms the truncated simulation never reached (train front
             # never entered the platform span) produce NO occupation record at all —
             # section applicability is driven by truly visited platforms only.
             _max_front_reached = max((float(smp.front_distance_m) for smp in plat_samples), default=0.0)
 
-            for p_route_dist, p_route_end, p in plat_positions:
+            for p_route_dist, p_route_end, p, traversed in plat_positions:
                 if plat_samples and _max_front_reached < p_route_dist - 5.0:
+                    continue
+
+                # v1.11.1 / Task 3: a platform reports occupation ONLY if the train's
+                # assigned stopping point lies within its physical bounds. Parallel
+                # station platforms and pass-through platforms without an assigned stop
+                # must read 0.0 s across all components — attributing approach-track
+                # reservations to them produces phantom occupations (e.g. an entire
+                # downstream dwell dumped onto an unused approach platform).
+                if not traversed or p.platform_id not in _assigned_platform_ids:
+                    platform_records.append(
+                        PlatformOccupationRecord(
+                            train_id="TRN_LEADER",
+                            station_id=p.station_id,
+                            station_name=p.station_id,
+                            platform_id=p.platform_id,
+                            track_id="TRK_01",
+                            link_id=p.link_id,
+                            arrival_time_s=0.0,
+                            dwell_start_time_s=0.0,
+                            dwell_end_time_s=0.0,
+                            departure_time_s=0.0,
+                            clearance_time_s=0.0,
+                            running_direction=running_direction,
+                            is_residual_rear_active=False,
+                            residual_rear_duration_s=0.0,
+                            upstream_infringing_resource_ids=(),
+                            reservation_start_s=0.0,
+                            final_release_s=0.0,
+                            never_occupied=True,
+                        )
+                    )
                     continue
                 # Passenger Dwell: a train only dwells at a platform if the ACTIVE
                 # service pattern schedules a stop AT THIS PLATFORM (exact platform
@@ -1055,15 +1216,19 @@ class SimulationRunner:
         link_map = {l.link_id: l for l in track_links}
 
 
-        # Compute signal chainage for all signals
+        # Compute signal chainage for all signals (v1.11.1 / Task 7: track chainage datum)
         sig_chainage_map: Dict[str, float] = {}
+        sig_chainage_src: Dict[str, str] = {}
         for s in signals:
             if getattr(s, "chainage_km", None) is not None:
                 sig_chainage_map[s.signal_id] = float(s.chainage_km)
+                sig_chainage_src[s.signal_id] = "EXPLICIT_INPUT_CHAINAGE"
             elif getattr(s, "chainage_m", None) is not None:
                 sig_chainage_map[s.signal_id] = round(float(s.chainage_m) / 1000.0, 3)
+                sig_chainage_src[s.signal_id] = "EXPLICIT_INPUT_CHAINAGE"
             elif s.link_id in link_start_m:
-                sig_chainage_map[s.signal_id] = round((link_start_m[s.link_id] + float(s.offset_m)) / 1000.0, 3)
+                sig_chainage_map[s.signal_id] = round(_align_m(s.link_id, s.offset_m) / 1000.0, 3)
+                sig_chainage_src[s.signal_id] = "DERIVED_ALIGNMENT"
 
         sig_candidates = [
             (s.signal_id, sig_chainage_map[s.signal_id])
@@ -1087,8 +1252,17 @@ class SimulationRunner:
             if blk_len <= 0.0:
                 blk_len = 1000.0
 
-            blk_start_km = round(cum_km, 3)
-            blk_end_km = round(cum_km + blk_len / 1000.0, 3)
+            # v1.11.1 / Task 5: Section 11 provenance chainage must be the SIGNAL-ALIGNED
+            # (alignment/link-start accumulated) chainage, consistent with Section 10,
+            # not the route-relative cumulative sum.
+            if blk.block_id in block_align_offsets:
+                blk_start_km = round(block_align_offsets[blk.block_id][0] / 1000.0, 3)
+                blk_end_km = round(block_align_offsets[blk.block_id][1] / 1000.0, 3)
+                prov_geom_source = "INPUT_MODEL_ALIGNMENT"
+            else:
+                blk_start_km = round(cum_km, 3)
+                blk_end_km = round(cum_km + blk_len / 1000.0, 3)
+                prov_geom_source = "FALLBACK_ROUTE_RELATIVE"
 
             # --- Entry Signal Resolution (Primary -> Fallback) ---
             raw_en_sig = getattr(blk, "entry_signal_id", None)
@@ -1096,16 +1270,20 @@ class SimulationRunner:
                 en_sig_id = str(raw_en_sig).strip()
                 if en_sig_id in sig_chainage_map:
                     en_ch_km = sig_chainage_map[en_sig_id]
+                    en_ch_src = sig_chainage_src.get(en_sig_id)
                 else:
                     fb = _resolve_signal_by_chainage(blk_start_km)
                     en_ch_km = fb[1] if fb else blk_start_km
+                    en_ch_src = sig_chainage_src.get(fb[0]) if fb else "FALLBACK_BLOCK_GEOMETRY"
             else:
                 fb = _resolve_signal_by_chainage(blk_start_km)
                 if fb:
                     en_sig_id, en_ch_km = fb
+                    en_ch_src = sig_chainage_src.get(fb[0])
                 else:
                     en_sig_id = "N/A"
                     en_ch_km = None
+                    en_ch_src = None
 
             # --- Exit Signal Resolution (Primary -> Fallback -> Buffer Stop Edge Case) ---
             raw_ex_sig = getattr(blk, "exit_signal_id", None)
@@ -1113,13 +1291,16 @@ class SimulationRunner:
                 ex_sig_id = str(raw_ex_sig).strip()
                 if ex_sig_id in sig_chainage_map:
                     ex_ch_km = sig_chainage_map[ex_sig_id]
+                    ex_ch_src = sig_chainage_src.get(ex_sig_id)
                 else:
                     fb = _resolve_signal_by_chainage(blk_end_km)
                     ex_ch_km = fb[1] if fb else blk_end_km
+                    ex_ch_src = sig_chainage_src.get(fb[0]) if fb else "FALLBACK_BLOCK_GEOMETRY"
             else:
                 fb = _resolve_signal_by_chainage(blk_end_km)
                 if fb:
                     ex_sig_id, ex_ch_km = fb
+                    ex_ch_src = sig_chainage_src.get(fb[0])
                 else:
                     # Edge Case: check for terminal buffer stop node
                     last_iv = blk.link_intervals[-1] if getattr(blk, "link_intervals", None) else None
@@ -1128,9 +1309,11 @@ class SimulationRunner:
                     if last_node and getattr(last_node, "node_type", None) in (NodeType.ENDPOINT, NodeType.BUFFER_STOP):
                         ex_sig_id = last_node.node_id
                         ex_ch_km = blk_end_km
+                        ex_ch_src = "BUFFER_STOP_EDGE"
                     else:
                         ex_sig_id = "N/A"
                         ex_ch_km = None
+                        ex_ch_src = None
 
             provenance_records.append(
                 ResourceProvenanceRecord(
@@ -1138,7 +1321,7 @@ class SimulationRunner:
                     resource_type="TRACK_BLOCK",
                     physical_chainage_km=blk_start_km,
                     resource_length_m=blk_len,
-                    geometry_source="INPUT_MODEL",
+                    geometry_source=prov_geom_source,
                     dataset_id=project.project_id,
                     dataset_version="1.0.0",
                     is_baseline_geometry=True,
@@ -1147,6 +1330,8 @@ class SimulationRunner:
                     entry_signal_chainage_km=en_ch_km,
                     exit_signal_id=ex_sig_id,
                     exit_signal_chainage_km=ex_ch_km,
+                    entry_signal_chainage_source=en_ch_src,
+                    exit_signal_chainage_source=ex_ch_src,
                 )
             )
             cum_km += blk_len / 1000.0
@@ -1238,6 +1423,9 @@ class SimulationRunner:
                 "train_type_id": primary_tt.train_type_id if primary_tt else None,
                 "train_id": str(traj_leader.train_id),
                 "service_duration_s": traj_leader.journey_time_s,
+                # v1.11.1 / Q2: canonical end-to-end journey time of the primary (leader)
+                # trajectory — single source for any consumer needing the journey duration.
+                "journey_time_s": float(traj_leader.journey_time_s),
                 "station_stops": station_stop_records,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
@@ -1264,6 +1452,7 @@ class SimulationRunner:
                 # (start, end), matching signal stationing — Section 10 shows these next
                 # to the route-relative chainage starting at 0.0 km.
                 "block_alignment_chainage_km": block_alignment_chainage_km,
+                "performance_factor_results": performance_factor_results,
                 "technical_minimum_headway_s": required_hw_s,
                 "controlling_bottleneck_id": bottleneck_id,
                 "theoretical_capacity_tph": round(3600.0 / required_hw_s, 1),

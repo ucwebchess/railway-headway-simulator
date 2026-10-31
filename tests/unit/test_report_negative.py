@@ -98,6 +98,20 @@ def _create_minimal_package(headway_s: float = 90.0, direction: RunningDirection
         running_direction=direction,
         headway_results={"METRO_1->METRO_2": hw},
         blocking_intervals=[interval],
+        metadata={
+            # v1.11.1 / Task 4: single-source PF payload required by Sections 3/18 narratives.
+            "performance_factor_results": {
+                "reference_headway_s": headway_s,
+                "position_dependent_running_s": 40.0,
+                "controlling_bottleneck_id": "BLK_01",
+                "scenarios": [
+                    {"performance_factor": 0.90, "delta_running_s": round(40.0 / 0.90 - 40.0, 2),
+                     "headway_s": round(headway_s + (40.0 / 0.90 - 40.0), 2)},
+                    {"performance_factor": 0.95, "delta_running_s": round(40.0 / 0.95 - 40.0, 2),
+                     "headway_s": round(headway_s + (40.0 / 0.95 - 40.0), 2)},
+                ],
+            },
+        },
     )
 
 

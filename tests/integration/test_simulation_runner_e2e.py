@@ -185,8 +185,13 @@ class TestSimulationRunnerE2E:
         platform_records = pkg.metadata.get("platform_records", [])
         assert len(platform_records) > 0, "Expected non-empty platform records"
 
+        # v1.11.1 / Task 3: zeroed `never_occupied` placeholder rows (platforms neither
+        # traversed nor assigned) carry no chronology and are excluded from the ordering audit.
+        occupied_records = [r for r in platform_records if not getattr(r, "never_occupied", False)]
+        assert len(occupied_records) > 0, "Expected at least one genuinely occupied platform record"
+
         prev_arr = 0.0
-        for rec in platform_records:
+        for rec in occupied_records:
             # Chronological arrival progression across corridor
             assert rec.arrival_time_s >= prev_arr, (
                 f"Non-chronological arrival at {rec.station_id}: {rec.arrival_time_s} < {prev_arr}"

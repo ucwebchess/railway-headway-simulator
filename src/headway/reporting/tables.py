@@ -160,7 +160,10 @@ def create_conflict_ranking_table(
         loc_m = float(loc_m)
 
         chainage_km = getattr(c, "route_chainage_km", None)
-        if chainage_km is None or (chainage_km == 0.0 and loc_m > 0.0):
+        # v1.11.1 / Q4: 0.0 km is a legitimate ALIGNMENT chainage (e.g. 05 BLK_DN_07 starts
+        # at ND_01). Only a genuinely missing value may fall back; substituting the
+        # route-relative location for 0.0 mixed conventions (reported 46.0 km on a 25 km line).
+        if chainage_km is None:
             chainage_km = loc_m / 1000.0
         chainage_km = float(chainage_km)
 
@@ -176,7 +179,7 @@ def create_conflict_ranking_table(
                 "Follower Resource": c.follower_resource_id,
                 "Conflict Type": getattr(c, "bottleneck_type", "RESOURCE_CONFLICT") or "RESOURCE_CONFLICT",
                 "Physical Location (m)": loc_m,
-                "Route Chainage (km)": chainage_km,
+                "Alignment Chainage (km)": chainage_km,
                 "Leader Release (s)": rel_time,
                 "Follower Start (s)": fol_start,
                 "Time Gap (s)": time_gap_s,
@@ -193,7 +196,7 @@ def create_conflict_ranking_table(
                 "Follower Resource": c.follower_resource_id,
                 "Conflict Type": getattr(c, "bottleneck_type", "RESOURCE_CONFLICT") or "RESOURCE_CONFLICT",
                 "Physical Location (m)": f"{loc_m:.1f}",
-                "Route Chainage (km)": f"{chainage_km:.2f}",
+                "Alignment Chainage (km)": f"{chainage_km:.2f}",
                 "Leader Release (s)": f"{rel_time:.1f}",
                 "Follower Start (s)": f"{fol_start:.1f}",
                 "Time Gap (s)": f"{time_gap_s:.1f}",

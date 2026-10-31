@@ -19,7 +19,7 @@ def test_default_configuration_initialization(temp_storage_dir: Path):
     """Verify that default AppConfig instantiates with valid parameters."""
     dirs = DirectoryConfig(base_dir=temp_storage_dir)
     config = AppConfig(directories=dirs)
-    assert config.version == "1.11.0"
+    assert config.version == "1.11.1"
     assert config.log_level in AppConfig.VALID_LOG_LEVELS
     assert config.server.share is False  # Safe default requirement
     assert config.server.server_port == 7860
@@ -81,7 +81,7 @@ def test_empty_server_name_validation():
 def test_config_to_dict(test_config: AppConfig):
     """Verify config dictionary serialization."""
     d = test_config.to_dict()
-    assert d["version"] == "1.11.0"
+    assert d["version"] == "1.11.1"
     assert d["environment"] == "testing"
     assert d["server_share"] is False
 

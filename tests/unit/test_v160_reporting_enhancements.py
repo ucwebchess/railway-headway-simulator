@@ -304,6 +304,8 @@ class TestV160ExtendedDynamicNarratives:
         assert "Fixed Overhead (signalling setup + approach + release) = 17.0 s (6.8%)" in combined_text
         assert "Position-Dependent Running Time (performance-factor sensitive) = 110.0 s (43.8%)" in combined_text
         assert "Geometric Clearance (clearing + residual rear, vehicle-length dependent) + Passenger Dwell = 124.0 s (49.4%)" in combined_text
+        # v1.11.1 / Task 4: single-source payload values (t_running = 110.0 s from the
+        # controlling interval decomposition -> 0.95 derating adds 110/0.95 - 110 = 5.79 s).
         assert "derating the performance factor to 0.95" in combined_text
-        assert "extends the position-dependent running time by 5.5 s" in combined_text
-        assert "increases the technical headway by 2.2% to 256.5 s" in combined_text
+        assert "extends the position-dependent running time by 5.8 s" in combined_text
+        assert "increases the technical headway by 2.3% to 256.8 s" in combined_text

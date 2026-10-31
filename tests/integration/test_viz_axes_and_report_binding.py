@@ -158,7 +158,21 @@ def test_report_binding_from_loaded_excel_project():
         blocking_intervals=[bi],
         trajectories={},
         effective_config_hash="hash1234567890",
-        metadata={"project": project},
+        metadata={
+            "project": project,
+            # v1.11.1 / Task 4: single-source PF payload required by Sections 3/18 narratives.
+            "performance_factor_results": {
+                "reference_headway_s": 60.0,
+                "position_dependent_running_s": 10.0,
+                "controlling_bottleneck_id": "BLK_01",
+                "scenarios": [
+                    {"performance_factor": 0.90, "delta_running_s": round(10.0 / 0.90 - 10.0, 2),
+                     "headway_s": round(60.0 + (10.0 / 0.90 - 10.0), 2)},
+                    {"performance_factor": 0.95, "delta_running_s": round(10.0 / 0.95 - 10.0, 2),
+                     "headway_s": round(60.0 + (10.0 / 0.95 - 10.0), 2)},
+                ],
+            },
+        },
     )
 
     doc = ReportAssembler.assemble_report(pkg, project=project)
@@ -256,7 +270,20 @@ def test_report_binding_via_session_state_fallback(monkeypatch):
         blocking_intervals=[bi],
         trajectories={},
         effective_config_hash="hash1234567890",
-        metadata={},
+        metadata={
+            # v1.11.1 / Task 4: single-source PF payload required by Sections 3/18 narratives.
+            "performance_factor_results": {
+                "reference_headway_s": 60.0,
+                "position_dependent_running_s": 10.0,
+                "controlling_bottleneck_id": "BLK_01",
+                "scenarios": [
+                    {"performance_factor": 0.90, "delta_running_s": round(10.0 / 0.90 - 10.0, 2),
+                     "headway_s": round(60.0 + (10.0 / 0.90 - 10.0), 2)},
+                    {"performance_factor": 0.95, "delta_running_s": round(10.0 / 0.95 - 10.0, 2),
+                     "headway_s": round(60.0 + (10.0 / 0.95 - 10.0), 2)},
+                ],
+            },
+        },
     )
 
     doc = ReportAssembler.assemble_report(pkg)

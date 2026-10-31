@@ -409,6 +409,19 @@ def build_benchmark_package(
                 "replications": 20,
                 "deterministic_headway_s": headway_s,
             },
+            # v1.11.1 / Task 4: single-source performance-factor payload consumed identically
+            # by the Section 3 (seven-component) callout and Section 18 conclusions.
+            "performance_factor_results": {
+                "reference_headway_s": headway_s,
+                "position_dependent_running_s": 40.0,
+                "controlling_bottleneck_id": "BLK_02",
+                "scenarios": [
+                    {"performance_factor": 0.90, "delta_running_s": round(40.0 / 0.90 - 40.0, 2),
+                     "headway_s": round(headway_s + (40.0 / 0.90 - 40.0), 2)},
+                    {"performance_factor": 0.95, "delta_running_s": round(40.0 / 0.95 - 40.0, 2),
+                     "headway_s": round(headway_s + (40.0 / 0.95 - 40.0), 2)},
+                ],
+            },
             "tvs_events": [tvs_rec],
             "scenarios": ["SCEN_BASE", "SCEN_EXPANSION"],
         },
