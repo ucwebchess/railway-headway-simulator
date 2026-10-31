@@ -33,9 +33,6 @@ from headway.data.validator import DatasetValidator
 from headway.infrastructure.direction import RunningDirection
 from headway.infrastructure.graph import PhysicalNetworkGraph
 from headway.infrastructure.route import LinkTraversal, Route, RouteEngine
-from headway.reporting.excel_export import ExcelReportExporter
-from headway.reporting.html_renderer import HtmlReportRenderer
-from headway.reporting.pdf_renderer import PdfReportRenderer
 from headway.reporting.report_assembly import ReportAssembler
 from headway.reporting.report_models import ExecutiveKpis, ReportDocument, ReportMetadata
 from headway.rolling_stock.braking import (
@@ -53,6 +50,10 @@ from headway.simulation.multi_train_engine import MultiTrainSimulator
 from headway.simulation.service_instance import ServiceType, TrainGenerator, TrainServiceInstance
 from headway.simulation.state import DynamicMode
 from headway.ui.file_manager import FileManager
+from tests.corrected_variants import load_corrected_variant
+from headway.reporting.excel_export import ExcelReportExporter
+from headway.reporting.html_renderer import HtmlReportRenderer
+from headway.reporting.pdf_renderer import PdfReportRenderer
 from headway.ui.simulation_runner import SimulationRunner
 
 
@@ -419,7 +420,8 @@ class TestComprehensiveLineBaselineIntegrity:
 
     def test_forward_and_reverse_simulation_with_factor(self):
         """Simulation pipeline runs cleanly with explicit performance factor in both directions."""
-        project, report, _ = FileManager.load_example_project("05_comprehensive_line")
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, report, _ = load_corrected_variant("05_comprehensive_line")
         assert report.is_simulation_ready
 
         # Forward with 0.90 factor
@@ -454,7 +456,8 @@ class TestPerformanceFactorReporting:
 
     def test_executive_kpi_card_and_document_rendering(self, tmp_path: Path):
         """ReportDocument renders Performance Factor KPI in HTML, PDF, and Excel exports."""
-        project, report, _ = FileManager.load_example_project("05_comprehensive_line")
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, report, _ = load_corrected_variant("05_comprehensive_line")
         pkg, doc = SimulationRunner.run_simulation_pipeline(
             project=project,
             performance_factor=0.88,

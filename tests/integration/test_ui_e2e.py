@@ -17,20 +17,22 @@ import tempfile
 import pytest
 
 from headway.infrastructure.direction import RunningDirection
-from headway.reporting.csv_export import CsvReportExporter
-from headway.reporting.excel_export import ExcelReportExporter
-from headway.reporting.html_renderer import HtmlReportRenderer
-from headway.reporting.json_export import JsonReportExporter
-from headway.reporting.pdf_renderer import PdfReportRenderer
 from headway.reporting.report_assembly import ReportAssembler, ReportSectionId, ReportType
 from headway.reporting.report_config import ReportConfig
-from headway.reporting.report_package import ReportPackageExporter
 from headway.ui.background_executor import BackgroundExecutor
 from headway.ui.direction_selector import DirectionSelector
 from headway.ui.file_manager import ProjectFileManager
 from headway.ui.progress import ProgressTracker
 from headway.ui.simulation_runner import SimulationJobConfig, SimulationRunner
 from headway.ui.state import session_state
+from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.reporting.csv_export import CsvReportExporter
+from headway.reporting.excel_export import ExcelReportExporter
+from headway.reporting.html_renderer import HtmlReportRenderer
+from headway.reporting.json_export import JsonReportExporter
+from headway.reporting.pdf_renderer import PdfReportRenderer
+from headway.reporting.report_package import ReportPackageExporter
 
 
 @pytest.fixture(autouse=True)
@@ -44,9 +46,20 @@ class TestUiE2EWorkflows:
     """End-to-End assessment flows."""
 
     def test_e2e_001_single_track_forward_flow(self):
+        """P15-E2E-001 to P15-E2E-006: Single Track complete assessment flow (FORWARD).
+
+        v1.11.2 (literal strict): 01_single_track fails pre-simulation block-geometry
+        validation, so the original scenario cannot run on the unmodified shipped example.
+        The test now asserts the documented error (tests/block_geometry_expectations.py)
+        in FORWARD and REVERSE.
+        """
+        load_and_assert_pipeline_raises("01_single_track")
+
+    def test_e2e_001_single_track_forward_flow_on_corrected_variant(self):
         """P15-E2E-001 to P15-E2E-006: Single Track complete assessment flow (FORWARD)."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         # 1. Load Example
-        proj, report, _ = ProjectFileManager.load_example_project("01_single_track")
+        proj, report, _ = load_corrected_variant("01_single_track")
         session_state.set_project(proj, report)
         assert session_state.is_simulation_ready() is True
 
@@ -104,9 +117,20 @@ class TestUiE2EWorkflows:
         assert "Decreasing Route Chainage" in banner
 
     def test_e2e_003_tunnel_tvs_safety_assessment(self):
+        """P15-E2E-013 to P15-E2E-016: Tunnel TVS corridor single-train occupancy constraint.
+
+        v1.11.2 (literal strict): 04_tunnel_tvs fails pre-simulation block-geometry
+        validation, so the original scenario cannot run on the unmodified shipped example.
+        The test now asserts the documented error (tests/block_geometry_expectations.py)
+        in FORWARD and REVERSE.
+        """
+        load_and_assert_pipeline_raises("04_tunnel_tvs")
+
+    def test_e2e_003_tunnel_tvs_safety_assessment_on_corrected_variant(self):
         """P15-E2E-013 to P15-E2E-016: Tunnel TVS corridor single-train occupancy constraint."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         # 1. Load Tunnel TVS Example
-        proj, report, _ = ProjectFileManager.load_example_project("04_tunnel_tvs")
+        proj, report, _ = load_corrected_variant("04_tunnel_tvs")
         session_state.set_project(proj, report)
 
         # Ensure TVS sections exist
@@ -197,8 +221,19 @@ class TestUiE2EWorkflows:
             assert "BRANCH_A" in session_state.scenarios
 
     def test_e2e_007_multi_format_deliverable_exports(self):
+        """P15-E2E-024 to P15-E2E-025: Formal PDF, Excel, JSON, CSV, and Assessment ZIP exports.
+
+        v1.11.2 (literal strict): 01_single_track fails pre-simulation block-geometry
+        validation, so the original scenario cannot run on the unmodified shipped example.
+        The test now asserts the documented error (tests/block_geometry_expectations.py)
+        in FORWARD and REVERSE.
+        """
+        load_and_assert_pipeline_raises("01_single_track")
+
+    def test_e2e_007_multi_format_deliverable_exports_on_corrected_variant(self):
         """P15-E2E-024 to P15-E2E-025: Formal PDF, Excel, JSON, CSV, and Assessment ZIP exports."""
-        proj, report, _ = ProjectFileManager.load_example_project("01_single_track")
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        proj, report, _ = load_corrected_variant("01_single_track")
         session_state.set_project(proj, report)
 
         pkg, doc = SimulationRunner.run_simulation_pipeline(

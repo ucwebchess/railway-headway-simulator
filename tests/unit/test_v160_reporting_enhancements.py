@@ -26,9 +26,9 @@ from headway.reporting.report_config import (
 )
 from headway.core.exceptions import ReportingError
 from headway.reporting.report_models import ReportDocument, ReportSectionId, ReportType
-from headway.ui.file_manager import FileManager
-from headway.ui.simulation_runner import SimulationRunner
 from tests.engineering.test_report_benchmarks import build_benchmark_package
+from tests.corrected_variants import load_corrected_variant
+from headway.ui.simulation_runner import SimulationRunner
 
 
 @pytest.mark.unit
@@ -98,7 +98,8 @@ class TestV160ReportConfiguration:
 
     def test_simulation_mode_wiring_to_effective_performance_factor(self) -> None:
         """Verify simulation mode tokens (100 vs 95) map to eff_pf."""
-        project, report, _ = FileManager.load_example_project("05_comprehensive_line")
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, report, _ = load_corrected_variant("05_comprehensive_line")
         assert report.is_simulation_ready
 
         # Mode with 95
@@ -261,11 +262,11 @@ class TestV160ExtendedDynamicNarratives:
 
     def test_explicit_performance_factor_overrides_dropdown_and_analysis(self) -> None:
         """Verify that passing explicit performance_factor overrides dropdown and analysis configuration (DEF-11)."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
         from headway.infrastructure.direction import RunningDirection
 
-        project, _, _ = FileManager.load_example_project("07_hsr_140km")
+        project, _, _ = load_corrected_variant("07_hsr_140km")
 
         # Pass dropdown selection with nominal 1.00 label, but override with explicit slider value 0.85
         pkg, doc = SimulationRunner.run_simulation_pipeline(
@@ -281,11 +282,11 @@ class TestV160ExtendedDynamicNarratives:
 
     def test_section_18_fixed_vs_variable_blocking_breakdown(self) -> None:
         """Verify Section 18 properly calculates and displays the fixed vs variable percentage breakdown (DEF-11 / Task C)."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
         from headway.infrastructure.direction import RunningDirection
 
-        project, _, _ = FileManager.load_example_project("07_hsr_140km")
+        project, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(
             project=project,
             running_direction=RunningDirection.FORWARD,

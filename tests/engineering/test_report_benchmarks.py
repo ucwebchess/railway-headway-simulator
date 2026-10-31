@@ -343,6 +343,9 @@ def build_benchmark_package(
         "waiting_duration_s": 0.0,
     }
 
+    # v1.11.2: the report-level block-geometry audit is ON by default, so this synthetic
+    # package records BLK_02's boundary signals consistently with its geometry
+    # (0.6 km -> 1.2 km == 600 m) instead of leaving them "N/A" (unverifiable).
     prov_rec = ResourceProvenanceRecord(
         resource_id="BLK_02",
         resource_type="TRACK_BLOCK",
@@ -352,6 +355,11 @@ def build_benchmark_package(
         dataset_id="DS_01",
         dataset_version="1.0.0",
         is_baseline_geometry=True,
+        physical_end_chainage_km=1.2,
+        entry_signal_id="SIG_02",
+        entry_signal_chainage_km=0.6,
+        exit_signal_id="SIG_03",
+        exit_signal_chainage_km=1.2,
     )
 
     stop_rec = StationStopRecord(

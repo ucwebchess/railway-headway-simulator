@@ -24,13 +24,13 @@ from headway.reporting.charts_speed import (
     create_speed_profile_dataframe,
     generate_speed_profile_csv,
 )
-from headway.reporting.report_models import ReportSectionId
 from headway.reporting.tables import (
     create_stochastic_headway_table,
     create_tvs_assessment_table,
 )
 from headway.simulation.trajectory import TrajectorySample, TrainTrajectory
-from headway.ui.file_manager import FileManager
+from tests.corrected_variants import load_corrected_variant
+from headway.reporting.report_models import ReportSectionId
 from headway.ui.simulation_runner import SimulationRunner
 
 
@@ -209,7 +209,8 @@ class TestV170ReportingPolish:
 
     def test_e2e_report_sections_include_new_tables(self):
         """E2E verification that ReportDocument contains both TVS and Stochastic tables."""
-        project, _, _ = FileManager.load_example_project("04_tunnel_tvs")
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, _, _ = load_corrected_variant("04_tunnel_tvs")
         pkg, doc = SimulationRunner.run_simulation_pipeline(
             project=project,
             running_direction=RunningDirection.FORWARD,

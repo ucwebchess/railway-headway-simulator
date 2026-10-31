@@ -22,6 +22,7 @@ from headway.infrastructure.direction import DirectionPolicyError, RunningDirect
 from headway.infrastructure.graph import PhysicalNetworkGraph
 from headway.infrastructure.route import RouteEngine
 from headway.ui.file_manager import FileManager
+from tests.corrected_variants import load_corrected_variant
 from headway.ui.simulation_runner import SimulationRunner
 
 
@@ -132,7 +133,8 @@ def test_comprehensive_line_file_manager_discovery_and_loading():
 @pytest.mark.integration
 def test_comprehensive_line_forward_and_reverse_analyses_resolve():
     """Verify that microscopic simulation and headway resolution succeed in both FORWARD and REVERSE directions."""
-    project, report, _ = FileManager.load_example_project("05_comprehensive_line")
+    # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+    project, report, _ = load_corrected_variant("05_comprehensive_line")
     assert report.is_simulation_ready
 
     # 1. Forward Direction Run

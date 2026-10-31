@@ -13,9 +13,10 @@ import pytest
 import gradio as gr
 
 from headway.ui.state import session_state
-from headway.ui.file_manager import FileManager
-from headway.ui.simulation_runner import SimulationRunner
 from headway.ui.tab_results import create_results_tab
+from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.ui.simulation_runner import SimulationRunner
 
 
 @pytest.fixture(autouse=True)
@@ -35,9 +36,20 @@ def _find_refresh_block_fn(demo: gr.Blocks):
 
 
 def test_tab_results_refresh_completed_run_gradio_blocks():
+    """Task 6.1: Run refresh callback through real Gradio Blocks context with completed simulation.
+
+    v1.11.2 (literal strict): 01_single_track fails pre-simulation block-geometry
+    validation, so the original scenario cannot run on the unmodified shipped example.
+    The test now asserts the documented error (tests/block_geometry_expectations.py)
+    in FORWARD and REVERSE.
+    """
+    load_and_assert_pipeline_raises("01_single_track")
+
+def test_tab_results_refresh_completed_run_gradio_blocks_on_corrected_variant():
     """Task 6.1: Run refresh callback through real Gradio Blocks context with completed simulation."""
+    # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
     # 1. Populate session state with completed simulation
-    proj, report, _ = FileManager.load_example_project("01_single_track")
+    proj, report, _ = load_corrected_variant("01_single_track")
     assert report.is_simulation_ready
 
     pkg, doc = SimulationRunner.run_simulation_pipeline(proj)
@@ -122,8 +134,19 @@ def test_tab_results_refresh_empty_session_state_gradio_blocks():
 
 
 def test_tab_results_refresh_derated_performance_factor_gradio_blocks():
+    """Task 6.3: Run refresh callback with derated factor = 0.50 and assert KPI displays '50%'.
+
+    v1.11.2 (literal strict): 01_single_track fails pre-simulation block-geometry
+    validation, so the original scenario cannot run on the unmodified shipped example.
+    The test now asserts the documented error (tests/block_geometry_expectations.py)
+    in FORWARD and REVERSE.
+    """
+    load_and_assert_pipeline_raises("01_single_track")
+
+def test_tab_results_refresh_derated_performance_factor_gradio_blocks_on_corrected_variant():
     """Task 6.3: Run refresh callback with derated factor = 0.50 and assert KPI displays '50%'."""
-    proj, report, _ = FileManager.load_example_project("01_single_track")
+    # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+    proj, report, _ = load_corrected_variant("01_single_track")
     pkg, doc = SimulationRunner.run_simulation_pipeline(
         project=proj,
         performance_factor=0.50,

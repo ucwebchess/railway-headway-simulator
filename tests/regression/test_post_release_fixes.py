@@ -33,6 +33,7 @@ from headway.ui.tab_results import create_results_tab
 from headway.ui.tab_rolling_stock_signalling import create_rolling_stock_signalling_tab
 from headway.ui.tab_scenarios import create_scenarios_tab
 from headway.ui.tab_simulation import create_simulation_tab
+from tests.corrected_variants import patch_examples_with_corrected_variants
 from tests.engineering.test_report_benchmarks import build_benchmark_package
 
 
@@ -247,11 +248,46 @@ def test_audit_03_and_04_cross_tab_and_direction_propagation():
 
     fns = {fn_obj.fn.__name__: fn_obj.fn for fn_obj in app.fns.values() if hasattr(fn_obj.fn, "__name__")}
 
-    # Test reverse running direction
-    sim_res = fns["handle_run_simulation"]("REVERSE", "DETERMINISTIC", 0.1, 1800.0, 180.0, 10)
-    assert sim_res[0] == 100.0
+    # v1.11.2 (literal strict): 01_single_track fails pre-simulation block-geometry
+    # validation (BLK_01: length 1900 m vs entry->exit span 2000 m). The simulation tab
+    # must surface the named error for BOTH directions instead of producing results.
+    for direction in ("REVERSE", "FORWARD"):
+        session_state.latest_result_package = None
+        sim_res = fns["handle_run_simulation"](direction, "DETERMINISTIC", 0.1, 1800.0, 180.0, 10)
+        assert sim_res[0] == 0.0
+        assert sim_res[1] == "Failed"
+        assert "ERR_BLOCK_GEOMETRY_MISMATCH" in sim_res[3]
+        assert "BLK_01" in sim_res[3]
+        assert session_state.latest_result_package is None
+
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("direction", ["REVERSE", "FORWARD"])
+def test_audit_03_and_04_cross_tab_and_direction_propagation_on_corrected_variant(direction, monkeypatch):
+    """Audit 03 & 04 (v1.11.1 body): direction selector propagation and the Results-tab
+    XLSX / JSON export handlers with real results, in BOTH directions.
+
+    v1.11.2: the UI loads example 01 by name, so the loader is routed to the corrected
+    in-memory 01 variant (BLK_01 extended to its exit signal; tests/corrected_variants.py).
+    The shipped 01 raising ERR_BLOCK_GEOMETRY_MISMATCH in the UI is asserted by
+    test_audit_03_and_04_cross_tab_and_direction_propagation above.
+    """
+    patch_examples_with_corrected_variants(monkeypatch)
+    ok, msg = session_state.load_example("01_single_track")
+    assert ok, msg  # load_example swallows exceptions; never let a failed load pass silently
+    session_state.latest_result_package = None
+
+    with gr.Blocks() as app:
+        sim_comp = create_simulation_tab()  # noqa: F841
+        res_comp = create_results_tab()  # noqa: F841
+
+    fns = {fn_obj.fn.__name__: fn_obj.fn for fn_obj in app.fns.values() if hasattr(fn_obj.fn, "__name__")}
+
+    sim_res = fns["handle_run_simulation"](direction, "DETERMINISTIC", 0.1, 1800.0, 180.0, 10)
+    assert sim_res[0] == 100.0, sim_res
     assert session_state.latest_result_package is not None
-    assert session_state.latest_result_package.running_direction == RunningDirection.REVERSE
+    assert session_state.latest_result_package.running_direction == RunningDirection[direction]
 
     # Results tab export handlers work with latest results
     xlsx_res = fns["export_excel_results"]()

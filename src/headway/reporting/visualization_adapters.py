@@ -29,6 +29,28 @@ from headway.reporting.result_models import (
 from headway.simulation.trajectory import TrainTrajectory
 
 
+
+def resource_span_length_m(bi: Any) -> Optional[float]:
+    """v1.11.2 / Task 9: the ONE published length of a blocking-interval resource.
+
+    Used by Section 5 (Longest Occupations, table + narrative) and Section 10
+    (Detailed Resource Timing, "Length (m)"), so the two sections cannot disagree.
+    Primary: route-relative span (physical_end − physical_start), which is the
+    along-track path length in both running directions (also for a block that turns
+    back through a loop). Fallback: alignment span |alignment_end − alignment_start|.
+    ``None`` when neither pair of offsets is available. Accepts objects or dicts.
+    """
+    def _g(key: str) -> Any:
+        return bi.get(key) if isinstance(bi, dict) else getattr(bi, key, None)
+
+    r_s, r_e = _g("physical_start_offset_m"), _g("physical_end_offset_m")
+    if r_s is not None and r_e is not None and abs(float(r_e) - float(r_s)) > 1e-9:
+        return abs(float(r_e) - float(r_s))
+    a_s, a_e = _g("alignment_start_m"), _g("alignment_end_m")
+    if a_s is not None and a_e is not None:
+        return abs(float(a_e) - float(a_s))
+    return None
+
 class VisualizationAdapter:
     """Transforms raw simulation objects into chart-ready structured DataFrames and records."""
 
@@ -291,7 +313,7 @@ class VisualizationAdapter:
             rel = d.release_time_s if d else 0.0
             diff = d.reconciliation_difference_s if d else 0.0
 
-            length_m = (bi.physical_end_offset_m or 0.0) - (bi.physical_start_offset_m or 0.0)
+            length_m = resource_span_length_m(bi) or 0.0
             # v1.11.0 / Task 10: alignment (network) stationing alongside the route-relative offsets.
             alignment_km = round((bi.alignment_start_m / 1000.0), 3) if getattr(bi, "alignment_start_m", None) is not None else None
             alignment_length_m = (

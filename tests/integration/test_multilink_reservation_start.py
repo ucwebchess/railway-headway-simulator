@@ -33,9 +33,10 @@ from headway.simulation.service_instance import (
     TrainGenerator,
 )
 from headway.ui.file_manager import FileManager
-from headway.ui.simulation_runner import SimulationRunner
 
 from tests.engineering.test_multi_train_benchmarks import make_test_route, make_test_train_params
+from tests.corrected_variants import load_corrected_variant
+from headway.ui.simulation_runner import SimulationRunner
 
 
 # ==============================================================================
@@ -398,7 +399,8 @@ def test_multilink_reservation_start_is_first_link_entry():
 
 def test_dwell_survives_multilink_reservation_fix(monkeypatch):
     """Verify that station dwell survives across multi-link corridor blocks and determines headway."""
-    project, _, _ = FileManager.load_example_project("07_hsr_140km")
+    # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+    project, _, _ = load_corrected_variant("07_hsr_140km")
 
     # Use native SimulationRunner if Phase 4b two-pass pipeline is present; otherwise microscopic runner
     try:

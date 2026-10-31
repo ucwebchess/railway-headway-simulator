@@ -36,7 +36,6 @@ from headway.analysis.statistics import StatisticalSummary
 from headway.core.exceptions import SignallingBlocksMissingError, SimulationError
 from headway.data.canonical import (
     CanonicalProject,
-    NodeType,
     Platform,
     ResourceInterval,
     ServicePattern,
@@ -66,6 +65,13 @@ from headway.scenarios.scenario_comparison import (
     BottleneckShiftReport,
     MetricDifference,
     ScenarioComparisonReport,
+)
+from headway.signalling.block_geometry_validation import (
+    ENTRY_SRC_BLOCK_ENTRY_END,
+    EXIT_SRC_BUFFER_STOP_EDGE,
+    BlockGeometryValidationError,
+    build_alignment_frame,
+    enforce_block_geometry,
 )
 from headway.signalling.coordinator import SignallingCoordinator
 from headway.simulation.dispatching import DispatchPolicy
@@ -169,6 +175,36 @@ class LeaderTrajectoryEmptyError(SimulationError):
         super().__init__(message, error_code="ERR_LEADER_TRAJECTORY_EMPTY", **kwargs)
 
 
+def _speed_at_route_position(
+    s_route_m: Optional[float],
+    d_arr: Sequence[float],
+    v_arr: Sequence[float],
+) -> Optional[float]:
+    """v1.11.2 / Task 4: speed (km/h) at the FIRST crossing of route position ``s_route_m``.
+
+    ``d_arr`` / ``v_arr`` are the raw engine samples in run-origin route coordinates
+    (non-decreasing from the run origin in both FORWARD and REVERSE). Linear
+    interpolation in distance between the bracketing samples; ``None`` when the
+    position is outside the sampled range.
+    """
+    if s_route_m is None or len(d_arr) == 0:
+        return None
+    s = float(s_route_m)
+    if s < float(d_arr[0]) - 1e-6:
+        return None
+    for i in range(len(d_arr)):
+        d_i = float(d_arr[i])
+        if d_i >= s - 1e-9:
+            if i == 0 or abs(d_i - s) < 1e-9:
+                return float(v_arr[i])
+            d0 = float(d_arr[i - 1])
+            if d_i - d0 < 1e-9:
+                return float(v_arr[i])
+            frac = (s - d0) / (d_i - d0)
+            return float(v_arr[i - 1]) + frac * (float(v_arr[i]) - float(v_arr[i - 1]))
+    return None
+
+
 def _compute_residual_rear_durations(
     usage_records: Sequence[Any],
     standstill_intervals: Sequence[Tuple[float, float]],
@@ -189,8 +225,21 @@ def _compute_residual_rear_durations(
     """
     import bisect as _bisect
 
+    # v1.11.2 / Task 6: coordinate-frame contract. ``raw_samples`` (front position) and
+    # ``block_end_route_m`` MUST share the run-origin route axis, in which position
+    # increases in the direction of travel for FORWARD and REVERSE alike; the tail is then
+    # always at front − L and "tail still inside B" is  front − L < B_end. Feeding the
+    # exported REVERSE trajectory (forward axis, decreasing front) would silently invert
+    # the footprint test, so it is rejected loudly.
     _times = [float(getattr(s, "time_s", 0.0)) for s in raw_samples]
     _dists = [float(getattr(s, "front_distance_m", 0.0)) for s in raw_samples]
+    if len(_dists) >= 2 and _dists[-1] < _dists[0] - 1e-6:
+        raise SimulationError(
+            "ERR_RESIDUAL_COORDINATE_FRAME: residual-rear attribution requires run-origin "
+            f"route coordinates (front increasing along travel); got front {_dists[0]:.1f} m → "
+            f"{_dists[-1]:.1f} m. Pass the raw engine samples, not the exported trajectory.",
+            error_code="ERR_RESIDUAL_COORDINATE_FRAME",
+        )
 
     def _front_at(t_s: float) -> Optional[float]:
         if not _times:
@@ -328,6 +377,17 @@ class SimulationRunner:
             raise SignallingBlocksMissingError(err_msg)
 
         blocks = list(sig.blocks)
+
+        # v1.11.2 / Tasks 1, 2, 3, 5: structural block-geometry validation BEFORE any
+        # simulation. Evaluated on the input model only, so the outcome is identical for
+        # FORWARD and REVERSE. Raises ERR_BLOCK_NO_EXIT_SIGNAL / ERR_BLOCK_GEOMETRY_MISMATCH /
+        # ERR_BLOCK_OVERLAP (highest priority first, every finding listed); never auto-corrects.
+        try:
+            block_geometry_report = enforce_block_geometry(project)
+        except BlockGeometryValidationError as exc:
+            if tracker:
+                tracker.fail(str(exc.message))
+            raise
 
         total_length_m = sum(lnk.length_m for lnk in track_links)
         speed_limit_ms = min(lnk.max_speed_ms for lnk in track_links) if track_links else 25.0
@@ -493,10 +553,23 @@ class SimulationRunner:
                     t_ex = t_en or 0.0
                 rec.front_exit_s = t_ex
 
+            # v1.11.2 / Task 4: boundary speeds are sampled at the exact boundary POSITION
+            # (route-relative, run-origin coordinates — the raw engine samples increase
+            # from the run origin in BOTH directions), interpolated in distance at the
+            # first crossing. Two contiguous blocks share the boundary position, so
+            # v_out(N) == v_in(N+1) by construction in FORWARD and REVERSE alike.
+            # Time-based interpolation is kept only for boundaries the trajectory never
+            # reaches.
             if len(t_arr) > 0 and len(v_arr) > 0:
-                if t_en is not None:
+                v_b_in = _speed_at_route_position(route_min_s.get(rec.resource_id), d_arr, v_arr)
+                v_b_out = _speed_at_route_position(route_max_s.get(rec.resource_id), d_arr, v_arr)
+                if v_b_in is not None:
+                    rec.v_in_kmh = round(v_b_in, 1)
+                elif t_en is not None:
                     rec.v_in_kmh = round(float(np.interp(t_en, t_arr, v_arr)), 1)
-                if rec.front_exit_s is not None:
+                if v_b_out is not None:
+                    rec.v_out_kmh = round(v_b_out, 1)
+                elif rec.front_exit_s is not None:
                     rec.v_out_kmh = round(float(np.interp(rec.front_exit_s, t_arr, v_arr)), 1)
 
         # v1.11.0 / Task 4: Physical residual-rear components from trajectory standstills.
@@ -601,57 +674,11 @@ class SimulationRunner:
                         error_code="ERR_BLOCKING_ARITHMETIC_MISMATCH",
                     )
 
-        # Build physical link start chainage mapping
-        link_start_m: Dict[str, float] = {}
-        next_links: Dict[str, List[TrackLink]] = {}
-        for l in track_links:
-            next_links.setdefault(l.start_node_id, []).append(l)
-
-        all_starts = {l.start_node_id for l in track_links}
-        all_ends = {l.end_node_id for l in track_links}
-        roots = all_starts - all_ends
-        if not roots and track_links:
-            roots = {track_links[0].start_node_id}
-
-        # v1.11.1 / Q4: record the alignment chainage at which each node is FIRST reached
-        # (identical traversal to the original link-start BFS) so that links whose end node
-        # lies at a LOWER chainage than their start node (e.g. the DN line of a double-track
-        # loop: LNK_13 ND_09 @ 22.0 km -> ND_08 @ 17.0 km) are recognised as running against
-        # increasing chainage instead of being projected forward from their start node.
-        node_pos_m: Dict[str, float] = {}
-        for root in sorted(roots):
-            node_pos_m.setdefault(root, 0.0)
-            queue = [(root, 0.0)]
-            while queue:
-                curr_node, curr_m = queue.pop(0)
-                for l in next_links.get(curr_node, []):
-                    if l.link_id not in link_start_m:
-                        link_start_m[l.link_id] = curr_m
-                        node_pos_m.setdefault(l.end_node_id, curr_m + l.length_m)
-                        queue.append((l.end_node_id, curr_m + l.length_m))
-
-        cum_m = 0.0
-        for l in track_links:
-            if l.link_id not in link_start_m:
-                link_start_m[l.link_id] = cum_m
-            cum_m = max(cum_m, link_start_m[l.link_id] + l.length_m)
-
-        # Orientation of each link relative to increasing alignment chainage (+1 / -1).
-        link_align_dir: Dict[str, float] = {}
-        for l in track_links:
-            s_pos = node_pos_m.get(l.start_node_id)
-            e_pos = node_pos_m.get(l.end_node_id)
-            reversed_link = (
-                s_pos is not None
-                and e_pos is not None
-                and abs(link_start_m[l.link_id] - s_pos) < 1e-6
-                and e_pos < s_pos - 1e-6
-            )
-            link_align_dir[l.link_id] = -1.0 if reversed_link else 1.0
-
-        def _align_m(link_id: str, offset_m: float) -> float:
-            """Absolute alignment chainage (m) of a point at `offset_m` along `link_id`."""
-            return link_start_m[link_id] + link_align_dir.get(link_id, 1.0) * float(offset_m)
+        # Build physical link start chainage mapping (v1.11.2: shared alignment frame —
+        # identical algorithm, now also used by pre-simulation block validation).
+        _align_frame = build_alignment_frame(track_links)
+        link_start_m: Dict[str, float] = _align_frame.link_start_m
+        _align_m = _align_frame.align_m
 
         # v1.11.0 / Tasks 5+10: Physical coordinate spans per resource.
         #   physical_start/end_offset_m : ROUTE-relative span (simulated route, 0 at origin)
@@ -1211,9 +1238,6 @@ class SimulationRunner:
 
         provenance_records = []
         signals = list(sig.signals) if sig and getattr(sig, "signals", None) else []
-        nodes = list(infra.nodes) if infra and getattr(infra, "nodes", None) else []
-        node_map = {n.node_id: n for n in nodes}
-        link_map = {l.link_id: l for l in track_links}
 
 
         # Compute signal chainage for all signals (v1.11.1 / Task 7: track chainage datum)
@@ -1229,20 +1253,6 @@ class SimulationRunner:
             elif s.link_id in link_start_m:
                 sig_chainage_map[s.signal_id] = round(_align_m(s.link_id, s.offset_m) / 1000.0, 3)
                 sig_chainage_src[s.signal_id] = "DERIVED_ALIGNMENT"
-
-        sig_candidates = [
-            (s.signal_id, sig_chainage_map[s.signal_id])
-            for s in signals
-            if s.signal_id in sig_chainage_map
-        ]
-
-        def _resolve_signal_by_chainage(target_km: float, max_tol_km: float = 0.5) -> Optional[Tuple[str, float]]:
-            if not sig_candidates:
-                return None
-            within_tol = [c for c in sig_candidates if abs(c[1] - target_km) <= max_tol_km]
-            if not within_tol:
-                return None
-            return min(within_tol, key=lambda it: abs(it[1] - target_km))
 
         cum_km = 0.0
         for blk in blocks:
@@ -1264,56 +1274,40 @@ class SimulationRunner:
                 blk_end_km = round(cum_km + blk_len / 1000.0, 3)
                 prov_geom_source = "FALLBACK_ROUTE_RELATIVE"
 
-            # --- Entry Signal Resolution (Primary -> Fallback) ---
-            raw_en_sig = getattr(blk, "entry_signal_id", None)
-            if raw_en_sig and str(raw_en_sig).strip().upper() not in ("", "NONE", "N/A"):
-                en_sig_id = str(raw_en_sig).strip()
-                if en_sig_id in sig_chainage_map:
-                    en_ch_km = sig_chainage_map[en_sig_id]
-                    en_ch_src = sig_chainage_src.get(en_sig_id)
-                else:
-                    fb = _resolve_signal_by_chainage(blk_start_km)
-                    en_ch_km = fb[1] if fb else blk_start_km
-                    en_ch_src = sig_chainage_src.get(fb[0]) if fb else "FALLBACK_BLOCK_GEOMETRY"
+            # --- Entry Signal Resolution (v1.11.2) ---
+            # Same track-aware resolver as pre-simulation validation (explicit -> nearest
+            # signal on the block's own track within 0.5 km of its ENTRY END in the direction
+            # of travel -> the block's own entry end). The v1.11.1 any-track nearest-by-
+            # chainage lookup at the low-chainage end is gone: it could borrow another track's
+            # signal and, for blocks running against chainage, the wrong end of the block.
+            _entry_b = block_geometry_report.entry_boundaries.get(blk.block_id)
+            if _entry_b is None:
+                en_sig_id, en_ch_km, en_ch_src = "N/A", None, None
+            elif _entry_b.source == ENTRY_SRC_BLOCK_ENTRY_END:
+                en_sig_id = "N/A"
+                en_ch_km = round(float(_entry_b.alignment_km), 3) if _entry_b.alignment_km is not None else None
+                en_ch_src = "BLOCK_ENTRY_END"
             else:
-                fb = _resolve_signal_by_chainage(blk_start_km)
-                if fb:
-                    en_sig_id, en_ch_km = fb
-                    en_ch_src = sig_chainage_src.get(fb[0])
-                else:
-                    en_sig_id = "N/A"
-                    en_ch_km = None
-                    en_ch_src = None
+                en_sig_id = _entry_b.boundary_id
+                en_ch_km = sig_chainage_map.get(en_sig_id, _entry_b.alignment_km)
+                en_ch_src = sig_chainage_src.get(en_sig_id)
 
-            # --- Exit Signal Resolution (Primary -> Fallback -> Buffer Stop Edge Case) ---
-            raw_ex_sig = getattr(blk, "exit_signal_id", None)
-            if raw_ex_sig and str(raw_ex_sig).strip().upper() not in ("", "NONE", "N/A"):
-                ex_sig_id = str(raw_ex_sig).strip()
-                if ex_sig_id in sig_chainage_map:
-                    ex_ch_km = sig_chainage_map[ex_sig_id]
-                    ex_ch_src = sig_chainage_src.get(ex_sig_id)
-                else:
-                    fb = _resolve_signal_by_chainage(blk_end_km)
-                    ex_ch_km = fb[1] if fb else blk_end_km
-                    ex_ch_src = sig_chainage_src.get(fb[0]) if fb else "FALLBACK_BLOCK_GEOMETRY"
+            # --- Exit Signal Resolution (v1.11.2 / Task 2) ---
+            # Same resolver as pre-simulation validation (track-aware fallback; never a
+            # signal from another track). Every block reaching this point has a resolved
+            # exit boundary, otherwise ERR_BLOCK_NO_EXIT_SIGNAL was raised before Pass 1.
+            _exit_b = block_geometry_report.exit_boundaries.get(blk.block_id)
+            _span_rec = block_geometry_report.spans.get(blk.block_id, {})
+            if _exit_b is None:
+                ex_sig_id, ex_ch_km, ex_ch_src = "N/A", None, None
+            elif _exit_b.source == EXIT_SRC_BUFFER_STOP_EDGE:
+                ex_sig_id = _exit_b.boundary_id
+                ex_ch_km = round(float(_exit_b.alignment_km), 3) if _exit_b.alignment_km is not None else blk_end_km
+                ex_ch_src = "BUFFER_STOP_EDGE"
             else:
-                fb = _resolve_signal_by_chainage(blk_end_km)
-                if fb:
-                    ex_sig_id, ex_ch_km = fb
-                    ex_ch_src = sig_chainage_src.get(fb[0])
-                else:
-                    # Edge Case: check for terminal buffer stop node
-                    last_iv = blk.link_intervals[-1] if getattr(blk, "link_intervals", None) else None
-                    last_lnk = link_map.get(last_iv.link_id) if last_iv else None
-                    last_node = node_map.get(last_lnk.end_node_id) if last_lnk else None
-                    if last_node and getattr(last_node, "node_type", None) in (NodeType.ENDPOINT, NodeType.BUFFER_STOP):
-                        ex_sig_id = last_node.node_id
-                        ex_ch_km = blk_end_km
-                        ex_ch_src = "BUFFER_STOP_EDGE"
-                    else:
-                        ex_sig_id = "N/A"
-                        ex_ch_km = None
-                        ex_ch_src = None
+                ex_sig_id = _exit_b.boundary_id
+                ex_ch_km = sig_chainage_map.get(ex_sig_id, _exit_b.alignment_km)
+                ex_ch_src = sig_chainage_src.get(ex_sig_id)
 
             provenance_records.append(
                 ResourceProvenanceRecord(
@@ -1332,6 +1326,8 @@ class SimulationRunner:
                     exit_signal_chainage_km=ex_ch_km,
                     entry_signal_chainage_source=en_ch_src,
                     exit_signal_chainage_source=ex_ch_src,
+                    signal_path_span_m=_span_rec.get("path_span_m"),
+                    signal_path_is_turnaround=bool(_span_rec.get("turnaround", False)),
                 )
             )
             cum_km += blk_len / 1000.0
@@ -1671,7 +1667,15 @@ class SimulationRunner:
             )
             if arr_ev is not None:
                 arr_time = float(arr_ev.timestamp_s)
-                front_stopping_pos_m = float(arr_ev.route_distance_m)
+                # v1.11.2 / Task 6: exported REVERSE events are in the FORWARD route axis
+                # (see _extract_trajectory); station-stop positions are ROUTE-RELATIVE
+                # (run origin), like the computed fallback above and the
+                # "Route Chainage" column they are published with.
+                ev_d = float(arr_ev.route_distance_m)
+                front_stopping_pos_m = (
+                    ev_d if running_direction == RunningDirection.FORWARD
+                    else max(0.0, float(total_length_m) - ev_d)
+                )
             else:
                 # Interpolate arrival time from trajectory samples
                 dwell_pts = [
@@ -1695,6 +1699,9 @@ class SimulationRunner:
 
             dwell_s = float(stop.dwell_time_s) if getattr(stop, "dwell_time_s", None) is not None else 0.0
             dep_time = (arr_time if arr_time is not None else 0.0) + dwell_s
+            # v1.11.2 / Task 6: positions are route-relative (run origin, increasing in
+            # the direction of travel in FORWARD and REVERSE alike), so the physical tail
+            # is always upstream: rear = front − L in both directions.
             # v1.11.0 / Task 9: Do NOT clip the rear position at the route origin.
             # If the berthing front is at 199.9 m with a 202 m train, the physical rear
             # is at -2.1 m (train tail extends upstream of the route origin). Report the
@@ -1912,10 +1919,12 @@ class SimulationRunner:
                 front_d = round(max(0.0, total_len - s.front_distance_m), 2)
                 if samples:
                     front_d = min(samples[-1].front_distance_m, front_d)
-                # v1.11.0 / Task 9: rear = front - train length, unclipped. The tail may
-                # extend beyond the route boundary (negative coordinate at the route
-                # end/origin); silently clamping it breaks the front-rear length invariant.
-                rear_d = round(front_d - float(train.params.length_m), 2)
+                # v1.11.2 / Task 6: the exported REVERSE trajectory is expressed in the
+                # FORWARD route axis (front decreases with time). The physical tail of a
+                # train travelling towards decreasing coordinates lies at HIGHER
+                # coordinates: rear = front + L (v1.11.1 used front − L, placing the tail
+                # ahead of the train). Unclipped (v1.11.0 / Task 9): |front − rear| == L.
+                rear_d = round(front_d + float(train.params.length_m), 2)
             else:
                 front_d = s.front_distance_m
                 if samples:

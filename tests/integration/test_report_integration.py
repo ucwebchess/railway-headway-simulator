@@ -58,6 +58,7 @@ from headway.scenarios.scenario_comparison import (
 )
 from headway.simulation.state import DynamicMode, OperationalState
 from headway.simulation.trajectory import TrajectorySample, TrainTrajectory
+from tests.corrected_variants import load_corrected_variant
 
 
 def _create_synthetic_full_package(
@@ -554,10 +555,10 @@ class TestReportIntegration:
 
     def test_reporting_blocking_intervals_hsr_corridor(self) -> None:
         """Phase 4c: Assert full 140 km HSR corridor report consumes metadata blocking intervals."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         # 1. Section 4 / 3 (Chart)
@@ -629,15 +630,21 @@ class TestReportIntegration:
         first_row = prov_table.raw_dataframe.iloc[0]
         assert first_row["Entry Signal ID"] == "SIG_001"
         assert first_row["Exit Signal ID"] == "SIG_002"
-        assert float(first_row["Entry Signal Ch. (km)"]) > 0.0
-        assert float(first_row["Exit Signal Ch. (km)"]) > 0.0
-        assert float(first_row["Entry Signal Ch. (km)"]) == pytest.approx(0.989, abs=1e-3)
-        assert float(first_row["Exit Signal Ch. (km)"]) == pytest.approx(2.554, abs=1e-3)
+        # v1.11.2: v1.11.1 pinned 0.989 / 2.554 km here — the shipped 07 signals sit 50 m into
+        # LNK_0004 / LNK_0009, a 1565 m signal span for a 1252 m block, i.e. this assertion
+        # pinned the ERR_BLOCK_GEOMETRY_MISMATCH defect. On the corrected variant every signal
+        # is at its block's entry boundary, so the span equals the block length.
+        en_km = float(first_row["Entry Signal Ch. (km)"])
+        ex_km = float(first_row["Exit Signal Ch. (km)"])
+        assert en_km == pytest.approx(0.000, abs=1e-3)
+        assert ex_km == pytest.approx(1.252, abs=1e-3)
+        assert (ex_km - en_km) * 1000.0 == pytest.approx(float(first_row["Length (m)"]), abs=1.0)
 
-        # Edge Case: Terminal block before buffer stop
+        # Edge Case: Terminal block before buffer stop. v1.11.2 / Task 2: the exit of a
+        # genuine terminal resolves to the buffer-stop node — never "N/A".
         last_row = prov_table.raw_dataframe.iloc[-1]
         assert last_row["Resource ID"] == "BLK_UP_092"
-        assert last_row["Exit Signal ID"] in ("ND_0448", "N/A")
+        assert last_row["Exit Signal ID"] == "ND_0448"
 
     def test_reporting_missing_blocking_intervals_raises_loud_error(self) -> None:
         """Phase 4c: Assert assemble_report raises ERR_REPORT_MISSING_BLOCKING_INTERVALS when missing."""
@@ -652,10 +659,10 @@ class TestReportIntegration:
 
     def test_reporting_pairwise_conflict_geometry_hsr_corridor(self) -> None:
         """DEF-08: Assert Pairwise Critical Conflict Ranking rows contain non-zero geometry on 07_hsr_140km."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         sec_conflict = doc.get_section(ReportSectionId.CONFLICT_RANKING)
@@ -666,7 +673,9 @@ class TestReportIntegration:
 
         raw_df = conflict_table.raw_dataframe
         assert len(raw_df) > 0
-        assert "Physical Location (m)" in raw_df.columns
+        # v1.11.2 / Task 8: "Physical Location (m)" renamed to "Route-Relative Location (m)".
+        assert "Physical Location (m)" not in raw_df.columns
+        assert "Route-Relative Location (m)" in raw_df.columns
         # v1.11.1 / Task 8: conflict chainage is reported in the ALIGNMENT convention
         # (identical to Sections 10/11) — the column was renamed accordingly.
         assert "Alignment Chainage (km)" in raw_df.columns
@@ -675,19 +684,19 @@ class TestReportIntegration:
         # Rank 1 conflict is the controlling bottleneck BLK_UP_092
         r1 = raw_df.iloc[0]
         assert r1["Leader Resource"] == "BLK_UP_092"
-        assert r1["Physical Location (m)"] > 100_000.0
+        assert r1["Route-Relative Location (m)"] > 100_000.0
         assert r1["Alignment Chainage (km)"] > 100.0
         assert pytest.approx(138.346, abs=0.1) == r1["Alignment Chainage (km)"]
-        assert pytest.approx(138346.0, abs=100.0) == r1["Physical Location (m)"]
+        assert pytest.approx(138346.0, abs=100.0) == r1["Route-Relative Location (m)"]
         assert r1["Classification"] == "CONTROLLING"
 
         # Assert non-zero physical location and alignment chainage exist across table rows
-        assert (raw_df["Physical Location (m)"] > 0.0).any()
+        assert (raw_df["Route-Relative Location (m)"] > 0.0).any()
         assert (raw_df["Alignment Chainage (km)"] > 0.0).any()
 
         # On a contiguous 0-based corridor (07_hsr) alignment equals route-relative,
         # so chainage km equals Location m / 1000 within tolerance.
-        chainage_check = (raw_df["Alignment Chainage (km)"] - (raw_df["Physical Location (m)"] / 1000.0)).abs()
+        chainage_check = (raw_df["Alignment Chainage (km)"] - (raw_df["Route-Relative Location (m)"] / 1000.0)).abs()
         assert (chainage_check < 1e-4).all()
 
         # Time gap equals Leader Release minus Follower Start
@@ -698,17 +707,17 @@ class TestReportIntegration:
         fmt_df = conflict_table.formatted_dataframe
         fmt_r1 = fmt_df.iloc[0]
         assert fmt_r1["Leader Resource"] == "BLK_UP_092"
-        assert fmt_r1["Physical Location (m)"] == "138346.0"
+        assert fmt_r1["Route-Relative Location (m)"] == "138346.0"
         assert fmt_r1["Alignment Chainage (km)"] == "138.35"
         assert "CONTROLLING" in fmt_r1["Classification"]
 
     def test_reporting_tvs_assessment_hsr_corridor(self) -> None:
         """DEF-09: Assert Section 13 TVS chart contains 14 distinct sequential TVS traces on 07_hsr_140km."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.data.canonical import ResourceInterval, TVSSection
-        from headway.ui.file_manager import FileManager
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         # In 07_hsr_140km, links LNK_0180 to LNK_0221 (42 links of 313m each = 13,146m) form the 14 TVS zones (3 links each)
         proj.infrastructure.tvs_sections = [
             TVSSection(
@@ -775,14 +784,14 @@ class TestReportIntegration:
 
     def test_tvs_capacity_impact_table(self) -> None:
         """v1.8.0 Task 2/3: Assert TVS capacity impact table exists and calculates throughput correctly."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.data.canonical import ResourceInterval, TVSSection
         from headway.reporting.report_models import ReportSectionId
         from headway.reporting.tables import create_tvs_capacity_table
-        from headway.ui.file_manager import FileManager
         from headway.ui.simulation_runner import SimulationRunner
 
         # 1. Integration check on corridor pipeline
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         proj.infrastructure.tvs_sections = [
             TVSSection(
                 tvs_id=f"TVS_{i+1:02d}",
@@ -862,10 +871,10 @@ class TestReportIntegration:
 
     def test_reporting_tvs_not_applicable_when_no_tunnels(self) -> None:
         """DEF-09: Assert Section 13 is marked not applicable when project has no tunnels or TVS sections."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         proj.infrastructure.tvs_sections = []
         proj.infrastructure.tunnels = []
 
@@ -879,9 +888,12 @@ class TestReportIntegration:
     def test_reporting_tvs_loud_failure_when_infra_exists_but_trajectory_missing(self) -> None:
         """DEF-09: Assert loud error is raised when TVS infrastructure is present but simulation trajectory is missing."""
         from headway.data.canonical import ResourceInterval, TVSSection
-        from headway.ui.file_manager import FileManager
+        from tests.corrected_variants import hsr_corridor_signals_at_block_boundaries
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        # v1.11.2: the project is only a TVS-infrastructure container here, but it is passed
+        # to assemble_report, whose block-geometry audit (ON by default) validates it. Shipped
+        # 07 fails that audit by design, so the corrected 07 variant is used.
+        proj = hsr_corridor_signals_at_block_boundaries()
         proj.infrastructure.tvs_sections = [
             TVSSection(
                 tvs_id="TVS_01",
@@ -906,10 +918,10 @@ class TestReportIntegration:
         Section 16 (Scenario Comparison) and Section 7/9 (Mixed-Traffic Matrix) are is_applicable = False,
         and phantom data strings (SCEN_UPGRADE, METRO_COMMUTER, METRO_EXPRESS) do not exist in ReportDocument.
         """
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         assert len(proj.scenarios) == 1
         assert proj.scenarios[0].scenario_id == "SCEN_BASELINE"
         assert len(proj.operations.service_patterns) == 1
@@ -940,10 +952,10 @@ class TestReportIntegration:
 
     def test_platform_occupation_chart_and_table_enhancements(self) -> None:
         """v1.9.0 Part 3: Assert platform occupation chart has 3 traces and platform table has new 6-column format."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         sec_plt = doc.get_section(ReportSectionId.STATION_PLATFORM_OCCUPATION)
@@ -1013,10 +1025,10 @@ class TestReportIntegration:
 
     def test_uic406_track_clearance_split_and_speeds(self) -> None:
         """v1.9.0 Part 1: Assert clearance_time_s > 0.0 for track blocks and v_in_kmh, v_out_kmh populated."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         # Blocking intervals assertion
@@ -1042,10 +1054,10 @@ class TestReportIntegration:
 
     def test_constrained_block_length_sensitivity_16_cases(self) -> None:
         """v1.9.1: Assert sensitivity chart data contains exactly 16 cases with AS-BUILT pinned."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         study = pkg.sensitivity_result
@@ -1096,10 +1108,10 @@ class TestReportIntegration:
 
     def test_wire_and_audit_numerical_operational_parameters(self) -> None:
         """DEF-15 / v1.9.2: Verify UI numerical and operational parameters propagation."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
 
         # Test 1: Planning margin & Monte Carlo replications propagation
         pkg, doc = SimulationRunner.run_simulation_pipeline(
@@ -1148,11 +1160,11 @@ class TestReportIntegration:
 
     def test_section_11_signal_provenance_and_fallbacks(self) -> None:
         """v1.10.0: Assert Section 11 Signal Provenance columns, primary lookup, and fallback chainage matching."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
         # 1. Primary method on 05_comprehensive_line (BLK_UP_01 -> SIG_UP_01 / SIG_UP_02)
-        proj, _, _ = FileManager.load_example_project("05_comprehensive_line")
+        proj, _, _ = load_corrected_variant("05_comprehensive_line")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         sec11 = doc.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
@@ -1187,32 +1199,67 @@ class TestReportIntegration:
         assert float(first_row["Entry Signal Ch. (km)"]) == pytest.approx(0.050, abs=1e-3)
         assert float(first_row["Exit Signal Ch. (km)"]) == pytest.approx(3.050, abs=1e-3)
 
-        # 2. Fallback method: when blocks lack explicit signal IDs, fallback locates signals by chainage
+        # 2. Fallback method: when blocks lack explicit signal IDs, fallback locates signals by
+        # chainage. v1.11.2: the fallback is TRACK-AWARE for entry and exit (shared with
+        # pre-simulation validation), and is exercised in FORWARD and REVERSE.
         import copy
+
+        from headway.signalling.block_geometry_validation import (
+            ERR_BLOCK_NO_EXIT_SIGNAL,
+            BlockGeometryValidationError,
+        )
+
+        # (a) Every signal id stripped: the two turnaround blocks and the siding exit onto
+        # ANOTHER track, which v1.11.1 borrowed silently; now exactly those three raise, and
+        # the entry fallback produces no span mismatch on any other block.
         proj_no_sigs = copy.deepcopy(proj)
         for b in proj_no_sigs.signalling.blocks:
             b.entry_signal_id = None
             b.exit_signal_id = None
+        for direction in (RunningDirection.FORWARD, RunningDirection.REVERSE):
+            with pytest.raises(BlockGeometryValidationError) as excinfo:
+                SimulationRunner.run_simulation_pipeline(proj_no_sigs, direction)
+            assert excinfo.value.error_code == ERR_BLOCK_NO_EXIT_SIGNAL
+            assert sorted((f.code, f.block_id) for f in excinfo.value.findings) == [
+                (ERR_BLOCK_NO_EXIT_SIGNAL, "BLK_DN_07"),
+                (ERR_BLOCK_NO_EXIT_SIGNAL, "BLK_SD_01"),
+                (ERR_BLOCK_NO_EXIT_SIGNAL, "BLK_UP_10"),
+            ]
 
-        pkg_fb, doc_fb = SimulationRunner.run_simulation_pipeline(proj_no_sigs, RunningDirection.FORWARD)
-        sec11_fb = doc_fb.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
-        assert sec11_fb is not None
-        prov_table_fb = sec11_fb.tables[0]
-        fb_first = prov_table_fb.raw_dataframe.iloc[0]
+        # (b) Strip every block whose boundaries exist on its own track (all but those three):
+        # the fallback must recover the original signals, on the right track and at the
+        # right end (DN blocks run against chainage), identically in both directions.
+        explicit = {b.block_id: (b.entry_signal_id, b.exit_signal_id) for b in proj.signalling.blocks}
+        keep = {"BLK_DN_07", "BLK_SD_01", "BLK_UP_10"}
+        proj_fb = copy.deepcopy(proj)
+        for b in proj_fb.signalling.blocks:
+            if b.block_id not in keep:
+                b.entry_signal_id = None
+                b.exit_signal_id = None
+        for direction in (RunningDirection.FORWARD, RunningDirection.REVERSE):
+            pkg_fb, doc_fb = SimulationRunner.run_simulation_pipeline(proj_fb, direction)
+            sec11_fb = doc_fb.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
+            assert sec11_fb is not None
+            df_fb = sec11_fb.tables[0].raw_dataframe
+            fb_first = df_fb.iloc[0]
 
-        assert fb_first["Resource ID"] == "BLK_UP_01"
-        assert fb_first["Entry Signal ID"] == "SIG_UP_01"
-        assert fb_first["Exit Signal ID"] == "SIG_UP_02"
-        assert float(fb_first["Entry Signal Ch. (km)"]) > 0.0
-        assert float(fb_first["Exit Signal Ch. (km)"]) > 0.0
+            assert fb_first["Resource ID"] == "BLK_UP_01"
+            assert fb_first["Entry Signal ID"] == "SIG_UP_01"
+            assert fb_first["Exit Signal ID"] == "SIG_UP_02"
+            assert float(fb_first["Entry Signal Ch. (km)"]) == pytest.approx(0.050, abs=1e-3)
+            assert float(fb_first["Exit Signal Ch. (km)"]) == pytest.approx(3.050, abs=1e-3)
+            blocks_fb = df_fb[df_fb["Type"] == "TRACK_BLOCK"].set_index("Resource ID")
+            for bid, (en, ex) in explicit.items():
+                assert (blocks_fb.loc[bid, "Entry Signal ID"], blocks_fb.loc[bid, "Exit Signal ID"]) == (en, ex), (
+                    direction, bid)
 
 
     def test_section_11_physical_end_chainage(self) -> None:
         """v1.10.1: Assert Section 11 Physical End Chainage (km) column exists and equals start + length / 1000."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         sec11 = doc.get_section(ReportSectionId.GEOMETRY_PROVENANCE)
@@ -1266,10 +1313,10 @@ class TestReportIntegration:
 
     def test_blocking_stairway_legend_uses_actual_service_id_no_phantom(self) -> None:
         """v1.10.2 / DEF-17: Section blocking stairway legend uses actual service pattern ID and no phantom SVC_CORRIDOR."""
-        from headway.ui.file_manager import FileManager
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
-        proj, _, _ = FileManager.load_example_project("07_hsr_140km")
+        proj, _, _ = load_corrected_variant("07_hsr_140km")
         pkg, doc = SimulationRunner.run_simulation_pipeline(proj, RunningDirection.FORWARD)
 
         # 1. Metadata carries the actual service pattern / train type identity
@@ -1320,3 +1367,165 @@ class TestReportIntegration:
         assert names[0] == "Leader Train (METRO_1)"
         assert names[1].startswith("Follower Train (METRO_2) [Shifted +")
 
+
+
+_DIRS = [RunningDirection.FORWARD, RunningDirection.REVERSE]
+
+
+def _replace_block(pkg, block_id, **changes):
+    import dataclasses
+
+    recs = pkg.metadata["provenance_records"]
+    assert any(r.resource_id == block_id for r in recs), block_id
+    pkg.metadata["provenance_records"] = [
+        dataclasses.replace(r, **changes) if r.resource_id == block_id else r for r in recs
+    ]
+
+
+@pytest.mark.parametrize("direction", _DIRS, ids=lambda d: d.name)
+class TestReportLevelBlockGeometryAuditV1112:
+    """v1.11.2 / item 2: the report-level block-geometry audit for packages that did NOT go
+    through SimulationRunner (no pipeline validation). Every package here is built from
+    scratch by ``_create_synthetic_full_package`` and assembled with the DEFAULT ReportConfig
+    and NO project — the public-API path. Strict: invalid geometry raises."""
+
+    def test_valid_synthetic_package_assembles(self, direction):
+        assert ReportAssembler.assemble_report(_create_synthetic_full_package(direction)) is not None
+
+    def test_length_mismatch_raises(self, direction):
+        pkg = _create_synthetic_full_package(direction)
+        _replace_block(pkg, "BLK_03", resource_length_m=750.0)  # signals 1.8 -> 2.4 km = 600 m
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+        msg = str(excinfo.value)
+        assert "BLK_03" in msg and "750.0 m" in msg and "600.0 m" in msg
+
+    def test_tolerance_is_one_metre(self, direction):
+        pkg = _create_synthetic_full_package(direction)
+        _replace_block(pkg, "BLK_03", resource_length_m=600.9)
+        assert ReportAssembler.assemble_report(pkg) is not None
+        _replace_block(pkg, "BLK_03", resource_length_m=601.5)
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+
+    def test_missing_exit_boundary_raises(self, direction):
+        pkg = _create_synthetic_full_package(direction)
+        _replace_block(pkg, "BLK_04", exit_signal_id="N/A", exit_signal_chainage_km=None)
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_NO_EXIT_SIGNAL"
+        assert "BLK_04" in str(excinfo.value)
+
+    def test_missing_entry_signal_uses_recorded_entry_end(self, direction):
+        # Runner packages record the block's entry end (direction of travel) when no entry
+        # signal resolves on the block's own track: entry id "N/A", chainage = entry end.
+        pkg = _create_synthetic_full_package(direction)
+        _replace_block(pkg, "BLK_02", entry_signal_id="N/A", entry_signal_chainage_km=1.2)
+        assert ReportAssembler.assemble_report(pkg) is not None
+        _replace_block(pkg, "BLK_02", entry_signal_chainage_km=1.0)  # 1.0 -> 1.8 = 800 m
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+        assert "entry 'block entry end' @ 1.000 km" in str(excinfo.value)
+
+    def test_no_entry_information_uses_block_end_opposite_the_exit(self, direction):
+        # External package with no entry info at all: the entry end is the block end opposite
+        # the exit, whichever way the block runs.
+        pkg = _create_synthetic_full_package(direction)
+        # (a) block running WITH chainage: 1.2 -> 1.8, exit at 1.8 -> entry 1.2, 600 m.
+        _replace_block(pkg, "BLK_02", entry_signal_id="N/A", entry_signal_chainage_km=None)
+        assert ReportAssembler.assemble_report(pkg) is not None
+        # (b) block running AGAINST chainage (a DN-line block): exit at the low end 1.2 ->
+        # entry is the high end 1.8, 600 m. The v1.11.2-pre rule (always the low-chainage
+        # start) measured 0 m here and raised falsely.
+        _replace_block(pkg, "BLK_02", exit_signal_chainage_km=1.2)
+        assert ReportAssembler.assemble_report(pkg) is not None
+        # A wrong length is still caught from the correct end.
+        _replace_block(pkg, "BLK_02", physical_end_chainage_km=2.0)  # entry 2.0 -> exit 1.2 = 800 m
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+        assert "entry 'block entry end' @ 2.000 km" in str(excinfo.value)
+
+    def test_turnaround_block_is_checked_against_path_span(self, direction):
+        # A turnaround block (05 BLK_UP_10 shape): signal chainages 24.05 -> 24.95 km (900 m
+        # delta) but a 1000 m along-track path via the line reversal.
+        turn = dict(physical_chainage_km=24.0, resource_length_m=1000.0, entry_signal_chainage_km=24.05,
+                    exit_signal_chainage_km=24.95, signal_path_span_m=1000.0, signal_path_is_turnaround=True)
+        pkg = _create_synthetic_full_package(direction)
+        _replace_block(pkg, "BLK_05", **turn)
+        assert ReportAssembler.assemble_report(pkg) is not None
+        # Path span disagreeing with the length is caught ...
+        _replace_block(pkg, "BLK_05", signal_path_span_m=1100.0)
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+        assert "turnaround path span 1100.0 m" in str(excinfo.value)
+        # ... and without the turnaround flag the chainage delta (900 m) is used -> mismatch.
+        _replace_block(pkg, "BLK_05", signal_path_span_m=1000.0, signal_path_is_turnaround=False)
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert "signal chainage span 900.0 m" in str(excinfo.value)
+
+    def test_supplied_project_is_validated_with_pipeline_rules(self, direction):
+        from headway.signalling.block_geometry_validation import BlockGeometryValidationError
+        from headway.ui.file_manager import FileManager
+        from tests.corrected_variants import single_track_signal_to_signal
+
+        shipped_01, _, _ = FileManager.load_example_project("01_single_track")
+        with pytest.raises(BlockGeometryValidationError) as excinfo:
+            ReportAssembler.assemble_report(_create_synthetic_full_package(direction), project=shipped_01)
+        assert excinfo.value.error_code == "ERR_BLOCK_GEOMETRY_MISMATCH"
+        assert {f.block_id for f in excinfo.value.findings} == {"BLK_01"}
+        assert ReportAssembler.assemble_report(
+            _create_synthetic_full_package(direction), project=single_track_signal_to_signal()
+        ) is not None
+
+    def test_session_fallback_project_is_not_audited_but_bound_project_is(self, direction, monkeypatch):
+        """Only a project bound to the call (argument / ``package.metadata["project"]``) is
+        audited. The UI session project is global state unrelated to the package; auditing it
+        made unrelated report tests fail depending on which example a previous test loaded."""
+        from headway.signalling.block_geometry_validation import BlockGeometryValidationError
+        from headway.ui.file_manager import FileManager
+        from headway.ui.state import session_state
+
+        shipped_01, _, _ = FileManager.load_example_project("01_single_track")
+        monkeypatch.setattr(session_state, "current_project", shipped_01, raising=False)
+        assert ReportAssembler.assemble_report(_create_synthetic_full_package(direction)) is not None
+
+        pkg = _create_synthetic_full_package(direction)
+        pkg.metadata["project"] = shipped_01
+        with pytest.raises(BlockGeometryValidationError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert {f.block_id for f in excinfo.value.findings} == {"BLK_01"}
+
+        # The package's own provenance is still audited with the session fallback active.
+        pkg = _create_synthetic_full_package(direction)
+        _replace_block(pkg, "BLK_03", resource_length_m=750.0)
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+
+    def test_stored_runner_package_reassembly_is_audited(self, direction):
+        """Results / Reports tabs re-assemble ``session_state.latest_result_package`` with no
+        project. A runner package (05 turnaround variant: exercises the turnaround path span)
+        re-assembles cleanly; the same package with tampered geometry raises."""
+        from headway.ui.simulation_runner import SimulationRunner
+        from tests.corrected_variants import comprehensive_line_with_explicit_turnaround_exits
+
+        pkg, _doc = SimulationRunner.run_simulation_pipeline(
+            comprehensive_line_with_explicit_turnaround_exits(), running_direction=direction,
+            simulation_mode="Full Integrated Suite",
+        )
+        recs = {r.resource_id: r for r in pkg.metadata["provenance_records"]}
+        assert recs["BLK_UP_10"].signal_path_is_turnaround and recs["BLK_UP_10"].signal_path_span_m == pytest.approx(1000.0)
+        assert recs["BLK_DN_07"].signal_path_is_turnaround and recs["BLK_DN_07"].signal_path_span_m == pytest.approx(4000.0)
+        assert not recs["BLK_UP_03"].signal_path_is_turnaround
+        assert ReportAssembler.assemble_report(package=pkg) is not None
+        _replace_block(pkg, "BLK_UP_03", resource_length_m=recs["BLK_UP_03"].resource_length_m + 250.0)
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(package=pkg)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+        assert "BLK_UP_03" in str(excinfo.value)
