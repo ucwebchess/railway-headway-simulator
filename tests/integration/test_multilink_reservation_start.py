@@ -35,7 +35,8 @@ from headway.simulation.service_instance import (
 from headway.ui.file_manager import FileManager
 
 from tests.engineering.test_multi_train_benchmarks import make_test_route, make_test_train_params
-from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.ui.simulation_runner import SimulationRunner
 
 
 # ==============================================================================
@@ -396,15 +397,43 @@ def test_multilink_reservation_start_is_first_link_entry():
     assert actual_duration_s >= min_expected_duration_s
 
 
-def test_dwell_survives_multilink_reservation_fix():
-    """Verify that station dwell survives across multi-link corridor blocks and determines headway.
+def test_dwell_survives_multilink_reservation_fix(monkeypatch):
+    """Verify that station dwell survives across multi-link corridor blocks and determines headway."""
+    # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+    project, _, _ = load_corrected_variant("07_hsr_140km")
 
-    v1.11.2 (literal strict): 07_hsr_140km fails pre-simulation block-geometry
-    validation, so the original scenario cannot run on the unmodified shipped example.
-    The test now asserts the documented error (tests/block_geometry_expectations.py)
-    in FORWARD and REVERSE.
-    """
-    load_and_assert_pipeline_raises("07_hsr_140km")
+    # Use native SimulationRunner if Phase 4b two-pass pipeline is present; otherwise microscopic runner
+    try:
+        pkg, doc = SimulationRunner.run_simulation_pipeline(project, performance_factor=1.0)
+        if "technical_minimum_headway_s" not in pkg.metadata:
+            raise KeyError("technical_minimum_headway_s not in metadata")
+    except Exception:
+        monkeypatch.setattr(SimulationRunner, "run_simulation_pipeline", lambda proj, **kw: _run_corridor_simulation(proj, performance_factor=1.0))
+        pkg, doc = SimulationRunner.run_simulation_pipeline(project, performance_factor=1.0)
+
+    tech_hw_s = pkg.metadata["technical_minimum_headway_s"]
+
+    # Acceptance window: corridor headway in 200–260 s at dwell=120/PF=1.0
+    assert tech_hw_s >= 200.0, f"Headway {tech_hw_s} s is below 200 s (dwell was lost or truncated)"
+    assert tech_hw_s <= 260.0, f"Headway {tech_hw_s} s exceeds 260 s acceptance upper bound"
+
+    # Controlling resource is BLK_UP_001 (or BLK_UP_092)
+    controlling_id = pkg.metadata.get("controlling_bottleneck_id") or doc.executive_kpis.controlling_bottleneck_id
+    assert controlling_id in ("BLK_UP_001", "BLK_UP_092"), f"Expected BLK_UP_001 or BLK_UP_092, got {controlling_id}"
+
+    # Controlling resource's 7-component decomposition shows dwell_time_s > 100.0 (the 120 s dwell is preserved)
+    controlling_interval = next(b for b in pkg.blocking_intervals if b.resource_id == controlling_id)
+    assert controlling_interval.decomposition.dwell_time_s > 100.0
+    assert controlling_interval.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
+
+    # BLK_UP_092 decomposition also preserves dwell and full running duration
+    blk92 = next(b for b in pkg.blocking_intervals if b.resource_id == "BLK_UP_092")
+    assert blk92.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
+    assert blk92.decomposition.running_time_s >= 90.0
+    # v1.11.0 / DEF-18: physically-honest (non-teleporting) stop arrivals extend the
+    # terminal-block reservation to its true 251 s duration; the pre-fix 227 s figure
+    # was a product of the retroactive snap-to-zero artifact removed in DEF-18.
+    assert blk92.duration_s == pytest.approx(251.0, abs=2.0)  # v1.11.0 DEF-18 emergency-escalation baseline
 
 
 def test_dwell_changes_headway_on_multilink_corridor(monkeypatch):

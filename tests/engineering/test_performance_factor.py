@@ -50,7 +50,11 @@ from headway.simulation.multi_train_engine import MultiTrainSimulator
 from headway.simulation.service_instance import ServiceType, TrainGenerator, TrainServiceInstance
 from headway.simulation.state import DynamicMode
 from headway.ui.file_manager import FileManager
-from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.reporting.excel_export import ExcelReportExporter
+from headway.reporting.html_renderer import HtmlReportRenderer
+from headway.reporting.pdf_renderer import PdfReportRenderer
+from headway.ui.simulation_runner import SimulationRunner
 
 
 # ---------------------------------------------------------------------------
@@ -415,14 +419,32 @@ class TestComprehensiveLineBaselineIntegrity:
         assert an_up.performance_factor_source == "default"
 
     def test_forward_and_reverse_simulation_with_factor(self):
-        """Simulation pipeline runs cleanly with explicit performance factor in both directions.
+        """Simulation pipeline runs cleanly with explicit performance factor in both directions."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, report, _ = load_corrected_variant("05_comprehensive_line")
+        assert report.is_simulation_ready
 
-        v1.11.2 (literal strict): 05_comprehensive_line fails pre-simulation block-geometry
-        validation, so the original scenario cannot run on the unmodified shipped example.
-        The test now asserts the documented error (tests/block_geometry_expectations.py)
-        in FORWARD and REVERSE.
-        """
-        load_and_assert_pipeline_raises("05_comprehensive_line")
+        # Forward with 0.90 factor
+        pkg_fwd, doc_fwd = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.FORWARD,
+            performance_factor=0.90,
+        )
+        assert doc_fwd.executive_kpis.performance_factor == 0.90
+        assert doc_fwd.executive_kpis.performance_factor_str == "90%"
+        assert doc_fwd.executive_kpis.performance_factor_source == "analysis"
+        assert doc_fwd.executive_kpis.technical_headway_s > 0.0
+
+        # Reverse with 0.85 factor
+        pkg_rev, doc_rev = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.REVERSE,
+            performance_factor=0.85,
+        )
+        assert doc_rev.executive_kpis.performance_factor == 0.85
+        assert doc_rev.executive_kpis.performance_factor_str == "85%"
+        assert doc_rev.executive_kpis.performance_factor_source == "analysis"
+        assert doc_rev.executive_kpis.technical_headway_s > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -432,12 +454,30 @@ class TestComprehensiveLineBaselineIntegrity:
 class TestPerformanceFactorReporting:
     """Reporting across HTML, PDF, Excel includes performance factor KPI card and metadata."""
 
-    def test_executive_kpi_card_and_document_rendering(self):
-        """ReportDocument renders Performance Factor KPI in HTML, PDF, and Excel exports.
+    def test_executive_kpi_card_and_document_rendering(self, tmp_path: Path):
+        """ReportDocument renders Performance Factor KPI in HTML, PDF, and Excel exports."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, report, _ = load_corrected_variant("05_comprehensive_line")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            performance_factor=0.88,
+        )
 
-        v1.11.2 (literal strict): 05_comprehensive_line fails pre-simulation block-geometry
-        validation, so the original scenario cannot run on the unmodified shipped example.
-        The test now asserts the documented error (tests/block_geometry_expectations.py)
-        in FORWARD and REVERSE.
-        """
-        load_and_assert_pipeline_raises("05_comprehensive_line")
+        assert doc.executive_kpis.performance_factor == 0.88
+        assert doc.executive_kpis.performance_factor_str == "88%"
+        assert doc.executive_kpis.performance_factor_source == "analysis"
+
+        # 1. HTML Renderer contains KPI
+        html_str = HtmlReportRenderer.render(doc)
+        assert "Performance Factor" in html_str
+        assert "88%" in html_str
+
+        # 2. PDF Renderer generates valid PDF
+        pdf_path = tmp_path / "report.pdf"
+        PdfReportRenderer.render(doc, str(pdf_path))
+        assert pdf_path.exists() and pdf_path.stat().st_size > 1000
+
+        # 3. Excel Export includes Performance Factor in Executive Summary
+        xlsx_path = tmp_path / "report.xlsx"
+        ExcelReportExporter.export(doc, str(xlsx_path))
+        assert xlsx_path.exists() and xlsx_path.stat().st_size > 1000

@@ -24,6 +24,7 @@ from tests.block_geometry_expectations import (
     comprehensive_line_with_explicit_turnaround_exits,
     load_and_assert_pipeline_raises,
 )
+from tests.corrected_variants import load_corrected_variant
 
 
 def _samples(times, dists):
@@ -104,14 +105,24 @@ class TestBlockLengthMismatch:
 
     _ON = staticmethod(lambda: ReportConfig(validate_block_geometry=True))
 
-    def test_flag_ships_off_in_v1111(self):
-        assert VALIDATE_BLOCK_GEOMETRY_DEFAULT is False
-        assert ReportConfig().validate_block_geometry is False
+    def test_flag_ships_on_in_v1112(self):
+        """v1.11.2 (strict): the report-level audit is ON by default (v1.11.1 shipped it OFF)."""
+        assert VALIDATE_BLOCK_GEOMETRY_DEFAULT is True
+        assert ReportConfig().validate_block_geometry is True
 
-    def test_flag_off_does_not_audit(self):
+    def test_default_config_audits_and_raises(self):
+        """Default config (no flag passed) raises on a mismatching package."""
         project, pkg = self._baseline_package()
         self._mutate_first(pkg, entry_signal_chainage_km=10.0, exit_signal_chainage_km=10.5, resource_length_m=1000.0)
-        doc = ReportAssembler.assemble_report(pkg, project=project)  # default config: flag OFF
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg, project=project)
+        assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
+
+    def test_flag_off_does_not_audit(self):
+        """Explicit ``validate_block_geometry=False`` skips the report-level audit."""
+        project, pkg = self._baseline_package()
+        self._mutate_first(pkg, entry_signal_chainage_km=10.0, exit_signal_chainage_km=10.5, resource_length_m=1000.0)
+        doc = ReportAssembler.assemble_report(pkg, config=ReportConfig(validate_block_geometry=False), project=project)
         assert doc is not None
 
     def test_flag_on_explicit_long_mismatch_raises(self):
@@ -188,14 +199,17 @@ class TestJourneyTimePublication:
     """Q2: canonical journey duration in package metadata."""
 
     def test_hsr_forward_full_pf_journey_time_in_range(self):
-        """07 FORWARD at PF=1.0: published journey time within the expected range.
-
-        v1.11.2 (literal strict): 07_hsr_140km fails pre-simulation block-geometry
-        validation, so the original scenario cannot run on the unmodified shipped example.
-        The test now asserts the documented error (tests/block_geometry_expectations.py)
-        in FORWARD and REVERSE.
-        """
-        load_and_assert_pipeline_raises("07_hsr_140km")
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, _r, _ = load_corrected_variant("07_hsr_140km")
+        pkg, _doc = SimulationRunner.run_simulation_pipeline(
+            project,
+            running_direction=RunningDirection.FORWARD,
+            simulation_mode="Full Integrated Suite",
+            performance_factor=1.0,
+        )
+        jt = pkg.metadata["journey_time_s"]
+        assert 2900.0 <= jt <= 3100.0, jt
+        assert jt == pytest.approx(pkg.trajectories["TRN_LEADER"].journey_time_s)
 
 
 class TestReversedLinkAlignment:

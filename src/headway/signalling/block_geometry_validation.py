@@ -6,6 +6,9 @@ This module is the single source of truth for
   orientation of every link relative to increasing chainage, chainage of every node);
 * **exit-signal resolution** for a block (explicit → track-aware fallback →
   true terminal buffer stop → ``ERR_BLOCK_NO_EXIT_SIGNAL``);
+* **entry-signal resolution** for a block (explicit → track-aware fallback at the
+  block's entry end → the block's own entry end), consumed by both the span check and
+  the Section 11 provenance so the two can never disagree;
 * the **along-track path distance** between two points on the directed link graph
   (turnaround-aware: the span of a block that reverses through a loop is its path
   length, not its chainage delta);
@@ -57,6 +60,9 @@ _NULL_IDS = ("", "NONE", "N/A", "NULL")
 EXIT_SRC_EXPLICIT = "EXPLICIT"
 EXIT_SRC_FALLBACK_SAME_TRACK = "FALLBACK_SAME_TRACK"
 EXIT_SRC_BUFFER_STOP_EDGE = "BUFFER_STOP_EDGE"
+ENTRY_SRC_EXPLICIT = "EXPLICIT"
+ENTRY_SRC_FALLBACK_SAME_TRACK = "FALLBACK_SAME_TRACK"
+ENTRY_SRC_BLOCK_ENTRY_END = "BLOCK_ENTRY_END"
 
 
 class BlockGeometryValidationError(SignallingError):
@@ -232,10 +238,22 @@ class ExitBoundary:
     alignment_km: Optional[float]
 
 
+@dataclass(frozen=True)
+class EntryBoundary:
+    """Resolved entry point of a block (``boundary_id`` is None for BLOCK_ENTRY_END)."""
+
+    boundary_id: Optional[str]
+    source: str                    # ENTRY_SRC_*
+    link_id: str
+    offset_m: float
+    alignment_km: Optional[float]
+
+
 @dataclass
 class BlockGeometryReport:
     findings: List[BlockGeometryFinding] = field(default_factory=list)
     exit_boundaries: Dict[str, ExitBoundary] = field(default_factory=dict)
+    entry_boundaries: Dict[str, EntryBoundary] = field(default_factory=dict)
     spans: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @property
@@ -372,6 +390,62 @@ def resolve_exit_boundary(
     )
 
 
+def resolve_entry_boundary(
+    block: Any,
+    signals_by_id: Dict[str, Any],
+    frame: AlignmentFrame,
+    exclude_signal_id: Optional[str] = None,
+) -> Tuple[Optional[EntryBoundary], Optional[BlockGeometryFinding]]:
+    """Track-aware entry resolution (v1.11.2; symmetric to ``resolve_exit_boundary``).
+
+    1. explicit ``entry_signal_id`` that exists → used as-is (any track);
+       explicit id that does not exist → ``ERR_BLOCK_GEOMETRY_MISMATCH`` (the span cannot
+       be verified — never a silent substitute);
+    2. otherwise the nearest signal **on one of the block's own tracks** within
+       ``EXIT_FALLBACK_TOLERANCE_KM`` of the block's ENTRY END in its direction of travel
+       (start of its first link interval), excluding the block's resolved exit signal;
+    3. otherwise the block's own entry end (e.g. a block starting at the line origin).
+    """
+    bid = block.block_id
+    ivs = list(block.link_intervals or [])
+    first = ivs[0]
+    entry_km = frame.align_m(first.link_id, float(first.start_offset_m)) / 1000.0 if first.link_id in frame.links else None
+
+    raw = _clean_id(getattr(block, "entry_signal_id", None))
+    if raw is not None:
+        sig = signals_by_id.get(raw)
+        if sig is None or getattr(sig, "link_id", None) not in frame.links:
+            return None, BlockGeometryFinding(
+                ERR_BLOCK_GEOMETRY_MISMATCH, bid,
+                f"block '{bid}': explicit entry signal '{raw}' does not exist on the network; "
+                "the block's entry→exit span cannot be verified.",
+                {"explicit_entry_signal_id": raw},
+            )
+        return EntryBoundary(raw, ENTRY_SRC_EXPLICIT, sig.link_id, float(sig.offset_m),
+                             _signal_alignment_km(sig, frame)), None
+
+    if entry_km is not None:
+        tracks = _block_tracks(block, frame)
+        candidates: List[Tuple[float, str, Any, float]] = []
+        for sid, sig in signals_by_id.items():
+            if sid == exclude_signal_id or getattr(sig, "link_id", None) not in frame.links:
+                continue
+            if getattr(frame.links[sig.link_id], "track_id", None) not in tracks:
+                continue
+            s_km = _signal_alignment_km(sig, frame)
+            if s_km is None:
+                continue
+            dist = abs(s_km - entry_km)
+            if dist <= EXIT_FALLBACK_TOLERANCE_KM + 1e-9:
+                candidates.append((dist, sid, sig, s_km))
+        if candidates:
+            _, sid, sig, s_km = min(candidates, key=lambda c: (c[0], c[1]))
+            return EntryBoundary(sid, ENTRY_SRC_FALLBACK_SAME_TRACK, sig.link_id, float(sig.offset_m), s_km), None
+
+    return EntryBoundary(None, ENTRY_SRC_BLOCK_ENTRY_END, first.link_id, float(first.start_offset_m),
+                         round(entry_km, 6) if entry_km is not None else None), None
+
+
 def _overlap_findings(blocks: Sequence[Any]) -> List[BlockGeometryFinding]:
     """``ERR_BLOCK_OVERLAP`` — two blocks claiming the same metres of the same link.
 
@@ -430,15 +504,16 @@ def validate_block_geometry(project: Any) -> BlockGeometryReport:
             continue
         report.exit_boundaries[bid] = exit_b
 
-        # Entry point: explicit entry signal if it exists, else the block's own entry end.
-        entry_id = _clean_id(getattr(blk, "entry_signal_id", None))
-        entry_sig = signals_by_id.get(entry_id) if entry_id else None
-        if entry_sig is not None and getattr(entry_sig, "link_id", None) in frame.links:
-            entry_pt = (entry_sig.link_id, float(entry_sig.offset_m))
-            entry_src = "ENTRY_SIGNAL"
-        else:
-            entry_pt = (ivs[0].link_id, float(ivs[0].start_offset_m))
-            entry_src = "BLOCK_ENTRY_END"
+        entry_b, finding = resolve_entry_boundary(
+            blk, signals_by_id, frame,
+            exclude_signal_id=exit_b.boundary_id if exit_b.source != EXIT_SRC_BUFFER_STOP_EDGE else None,
+        )
+        if finding is not None:
+            report.findings.append(finding)
+            continue
+        report.entry_boundaries[bid] = entry_b
+        entry_pt = (entry_b.link_id, entry_b.offset_m)
+        entry_src = entry_b.source
         exit_pt = (exit_b.link_id, exit_b.offset_m)
 
         length = block_length_m(blk)

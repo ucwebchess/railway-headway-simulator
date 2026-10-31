@@ -103,28 +103,15 @@ def load_and_assert_pipeline_raises(example: str, directions: Optional[Iterable[
     assert_pipeline_raises_block_geometry(project, example, directions or BOTH_DIRECTIONS, **kw)
 
 
-def comprehensive_line_with_explicit_turnaround_exits():
-    """In-memory variant of 05_comprehensive_line (shipped files untouched).
-
-    The two 05 blocks that fail ERR_BLOCK_NO_EXIT_SIGNAL are given EXPLICIT exit signals
-    on the opposite line — an engineering statement that they are turnaround blocks:
-
-      BLK_UP_10: SIG_UP_10 (LNK_10 @ 50 m, 24.05 km) -> SIG_DN_01 (LNK_11 @ 50 m, 24.95 km)
-                 along-track path 950 + 50 = 1000 m == length; chainage delta only 900 m
-      BLK_DN_07: SIG_DN_07 (LNK_17 @ 50 m, 3.95 km)  -> SIG_UP_01 (LNK_01 @ 50 m, 0.05 km)
-                 along-track path 3950 + 50 = 4000 m == length; chainage delta 3900 m
-
-    With these, every 05 block validates, so the full pipeline runs in both directions.
-    """
-    import copy
-
-    from headway.ui.file_manager import FileManager
-
-    project, _, _ = FileManager.load_example_project("05_comprehensive_line")
-    project = copy.deepcopy(project)
-    explicit = {"BLK_UP_10": "SIG_DN_01", "BLK_DN_07": "SIG_UP_01"}
-    project.signalling.blocks = [
-        b.model_copy(update={"exit_signal_id": explicit[b.block_id]}) if b.block_id in explicit else b
-        for b in project.signalling.blocks
-    ]
-    return project
+# In-memory corrected variants of the defective examples live in tests/corrected_variants.py
+# (no dependency on v1.11.2-only modules, so the same fixtures can be replayed on older
+# releases for differential checks). Re-exported here for existing imports.
+from tests.corrected_variants import (  # noqa: E402,F401
+    CORRECTED_VARIANTS,
+    comprehensive_line_with_explicit_turnaround_exits,
+    hsr_corridor_signals_at_block_boundaries,
+    load_corrected_variant,
+    patch_examples_with_corrected_variants,
+    single_track_signal_to_signal,
+    tunnel_tvs_signal_to_signal,
+)

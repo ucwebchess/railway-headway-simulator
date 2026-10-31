@@ -116,6 +116,81 @@ def _largest_remainder_percentages(values: Sequence[float], decimals: int = 1) -
         floors[k] += 1
     return [f / scale for f in floors]
 
+def _audit_block_geometry(provenance_records: List[Any], project: Any = None) -> None:
+    """Strict report-level block-geometry audit (v1.11.2; ``validate_block_geometry``).
+
+    1. If the input ``project`` is supplied, it is validated with exactly the pipeline rules
+       (``enforce_block_geometry``: ERR_BLOCK_NO_EXIT_SIGNAL / ERR_BLOCK_GEOMETRY_MISMATCH /
+       ERR_BLOCK_OVERLAP, raised as ``BlockGeometryValidationError``).
+    2. The package's own TRACK_BLOCK provenance is always audited (``ReportingError``):
+       * no exit boundary recorded (``exit_signal_id`` "N/A"/empty or no exit chainage)
+         -> ERR_BLOCK_NO_EXIT_SIGNAL. Runner-produced packages always record one (a signal,
+         or the buffer-stop node for a true terminal), so this only fires for external or
+         tampered packages;
+       * no entry signal -> the recorded entry-end chainage (runner packages, which resolve
+         the entry with the pipeline's track-aware rule); if none is recorded, the block end
+         opposite the exit (direction-symmetric);
+       * span = ``signal_path_span_m`` for a turnaround block (alignment-chainage delta is not
+         a length there), otherwise |exit − entry| alignment chainage;
+       * |span − block length| > 1.0 m -> ERR_BLOCK_LENGTH_MISMATCH.
+    """
+    if project is not None and getattr(getattr(project, "signalling", None), "blocks", None):
+        from headway.signalling.block_geometry_validation import enforce_block_geometry
+
+        enforce_block_geometry(project)
+
+    def _missing(sig_id: Any) -> bool:
+        return sig_id is None or str(sig_id).strip().upper() in ("", "N/A", "NONE")
+
+    for r in provenance_records:
+        if getattr(r, "resource_type", "TRACK_BLOCK") != "TRACK_BLOCK":
+            continue
+        blk_len_m = getattr(r, "resource_length_m", None)
+        if blk_len_m is None:
+            continue
+        ex_id = getattr(r, "exit_signal_id", "N/A")
+        ex_ch = getattr(r, "exit_signal_chainage_km", None)
+        if _missing(ex_id) or ex_ch is None:
+            raise ReportingError(
+                f"ERR_BLOCK_NO_EXIT_SIGNAL: block '{r.resource_id}' has no exit boundary in the "
+                f"result package (exit signal '{ex_id}', chainage {ex_ch}); its length "
+                f"{float(blk_len_m):.1f} m cannot be verified. Runner-produced packages always "
+                "record the exit signal or terminal buffer stop.",
+                error_code="ERR_BLOCK_NO_EXIT_SIGNAL",
+            )
+        en_id = getattr(r, "entry_signal_id", "N/A")
+        en_ch = getattr(r, "entry_signal_chainage_km", None)
+        if _missing(en_id) or en_ch is None:
+            if _missing(en_id) and en_ch is not None:
+                # Runner packages record the block's entry end (in its direction of travel)
+                # when no entry signal resolves on the block's own track.
+                en_id = "block entry end"
+            else:
+                # No entry information at all (external package): the entry end is the block
+                # end opposite its exit, whichever way the block runs (direction-symmetric).
+                ends = [e for e in (getattr(r, "physical_chainage_km", None),
+                                    getattr(r, "physical_end_chainage_km", None)) if e is not None]
+                if not ends:
+                    continue
+                en_id = "block entry end"
+                en_ch = max(ends, key=lambda e: abs(float(e) - float(ex_ch)))
+        path_span = getattr(r, "signal_path_span_m", None)
+        if getattr(r, "signal_path_is_turnaround", False) and path_span is not None:
+            span_m = float(path_span)
+            how = "along-track turnaround path span"
+        else:
+            span_m = abs(float(ex_ch) - float(en_ch)) * 1000.0
+            how = "entry/exit signal chainage span"
+        if abs(span_m - float(blk_len_m)) > 1.0:
+            raise ReportingError(
+                f"ERR_BLOCK_LENGTH_MISMATCH: block '{r.resource_id}' length {float(blk_len_m):.1f} m "
+                f"disagrees with {how} {span_m:.1f} m "
+                f"(entry '{en_id}' @ {float(en_ch):.3f} km, exit '{ex_id}' @ {float(ex_ch):.3f} km; "
+                f"delta {abs(span_m - float(blk_len_m)):.2f} m > 1.0 m tolerance).",
+                error_code="ERR_BLOCK_LENGTH_MISMATCH",
+            )
+
+
 class ReportAssembler:
     """Assembles standardized simulation results into a structured ReportDocument."""
 
@@ -134,6 +209,11 @@ class ReportAssembler:
 
         # Resolve active canonical project
         proj = project or (package.metadata.get("project") if package.metadata else None)
+        # Only a project bound to THIS call (argument or package metadata) is validated by the
+        # block-geometry audit. The UI session fallback below is kept for display binding,
+        # but it is global state with no guaranteed relationship to ``package``: auditing it
+        # would raise for (or pass) a different project depending on what was loaded last.
+        audit_proj = proj
         if not proj:
             try:
                 from headway.ui.state import session_state
@@ -160,32 +240,13 @@ class ReportAssembler:
         provenance_records = list(package.metadata.get("provenance_records", [])) if package.metadata else []
         prov_map = {r.resource_id: r for r in provenance_records}
 
-        # v1.11.1 / Task 7: loud-failure geometry consistency audit — a track block's
-        # length (sum of its link intervals) must agree with the chainage span between its
-        # entry and exit boundary signals within 1.0 m, REGARDLESS of how the signal
-        # chainages were obtained (explicit or derived). Gated by the
-        # `validate_block_geometry` feature flag (default OFF). v1.11.2: runner-produced
-        # packages are already validated pre-simulation (block_geometry_validation), so
-        # this is only a safety net for externally supplied packages. Records are skipped
-        # only when a boundary signal does not exist (e.g. terminal buffer stop).
+        # Block-geometry audit at report level (v1.11.1 Task 7; strict and ON by default since
+        # v1.11.2). Packages produced by SimulationRunner were already validated before
+        # simulation; this guards every OTHER way a package reaches the assembler (the public
+        # ``headway.reporting.ReportAssembler`` API with an externally built or modified
+        # package, and re-assembly of a stored package from the Results / Reports tabs).
         if cfg.validate_block_geometry:
-            for r in provenance_records:
-                en_ch = getattr(r, "entry_signal_chainage_km", None)
-                ex_ch = getattr(r, "exit_signal_chainage_km", None)
-                blk_len_m = getattr(r, "resource_length_m", None)
-                if en_ch is None or ex_ch is None or blk_len_m is None:
-                    continue
-                if getattr(r, "entry_signal_id", "N/A") == "N/A" or getattr(r, "exit_signal_id", "N/A") == "N/A":
-                    continue
-                span_m = abs(float(ex_ch) - float(en_ch)) * 1000.0
-                if abs(span_m - float(blk_len_m)) > 1.0:
-                    raise ReportingError(
-                        f"ERR_BLOCK_LENGTH_MISMATCH: block '{r.resource_id}' length {blk_len_m:.1f} m "
-                        f"disagrees with entry/exit signal chainage span {span_m:.1f} m "
-                        f"(entry '{r.entry_signal_id}' @ {en_ch:.3f} km, exit '{r.exit_signal_id}' @ {ex_ch:.3f} km; "
-                        f"delta {abs(span_m - float(blk_len_m)):.2f} m > 1.0 m tolerance).",
-                        error_code="ERR_BLOCK_LENGTH_MISMATCH",
-                    )
+            _audit_block_geometry(provenance_records, audit_proj)
         proj_geom: Dict[str, Tuple[float, float]] = {}
         if proj and getattr(proj, "signalling", None) and getattr(proj.signalling, "blocks", None):
             cum_m = 0.0

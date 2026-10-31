@@ -67,6 +67,7 @@ from headway.scenarios.scenario_comparison import (
     ScenarioComparisonReport,
 )
 from headway.signalling.block_geometry_validation import (
+    ENTRY_SRC_BLOCK_ENTRY_END,
     EXIT_SRC_BUFFER_STOP_EDGE,
     BlockGeometryValidationError,
     build_alignment_frame,
@@ -1253,20 +1254,6 @@ class SimulationRunner:
                 sig_chainage_map[s.signal_id] = round(_align_m(s.link_id, s.offset_m) / 1000.0, 3)
                 sig_chainage_src[s.signal_id] = "DERIVED_ALIGNMENT"
 
-        sig_candidates = [
-            (s.signal_id, sig_chainage_map[s.signal_id])
-            for s in signals
-            if s.signal_id in sig_chainage_map
-        ]
-
-        def _resolve_signal_by_chainage(target_km: float, max_tol_km: float = 0.5) -> Optional[Tuple[str, float]]:
-            if not sig_candidates:
-                return None
-            within_tol = [c for c in sig_candidates if abs(c[1] - target_km) <= max_tol_km]
-            if not within_tol:
-                return None
-            return min(within_tol, key=lambda it: abs(it[1] - target_km))
-
         cum_km = 0.0
         for blk in blocks:
             blk_len = 0.0
@@ -1287,32 +1274,30 @@ class SimulationRunner:
                 blk_end_km = round(cum_km + blk_len / 1000.0, 3)
                 prov_geom_source = "FALLBACK_ROUTE_RELATIVE"
 
-            # --- Entry Signal Resolution (Primary -> Fallback) ---
-            raw_en_sig = getattr(blk, "entry_signal_id", None)
-            if raw_en_sig and str(raw_en_sig).strip().upper() not in ("", "NONE", "N/A"):
-                en_sig_id = str(raw_en_sig).strip()
-                if en_sig_id in sig_chainage_map:
-                    en_ch_km = sig_chainage_map[en_sig_id]
-                    en_ch_src = sig_chainage_src.get(en_sig_id)
-                else:
-                    fb = _resolve_signal_by_chainage(blk_start_km)
-                    en_ch_km = fb[1] if fb else blk_start_km
-                    en_ch_src = sig_chainage_src.get(fb[0]) if fb else "FALLBACK_BLOCK_GEOMETRY"
+            # --- Entry Signal Resolution (v1.11.2) ---
+            # Same track-aware resolver as pre-simulation validation (explicit -> nearest
+            # signal on the block's own track within 0.5 km of its ENTRY END in the direction
+            # of travel -> the block's own entry end). The v1.11.1 any-track nearest-by-
+            # chainage lookup at the low-chainage end is gone: it could borrow another track's
+            # signal and, for blocks running against chainage, the wrong end of the block.
+            _entry_b = block_geometry_report.entry_boundaries.get(blk.block_id)
+            if _entry_b is None:
+                en_sig_id, en_ch_km, en_ch_src = "N/A", None, None
+            elif _entry_b.source == ENTRY_SRC_BLOCK_ENTRY_END:
+                en_sig_id = "N/A"
+                en_ch_km = round(float(_entry_b.alignment_km), 3) if _entry_b.alignment_km is not None else None
+                en_ch_src = "BLOCK_ENTRY_END"
             else:
-                fb = _resolve_signal_by_chainage(blk_start_km)
-                if fb:
-                    en_sig_id, en_ch_km = fb
-                    en_ch_src = sig_chainage_src.get(fb[0])
-                else:
-                    en_sig_id = "N/A"
-                    en_ch_km = None
-                    en_ch_src = None
+                en_sig_id = _entry_b.boundary_id
+                en_ch_km = sig_chainage_map.get(en_sig_id, _entry_b.alignment_km)
+                en_ch_src = sig_chainage_src.get(en_sig_id)
 
             # --- Exit Signal Resolution (v1.11.2 / Task 2) ---
             # Same resolver as pre-simulation validation (track-aware fallback; never a
             # signal from another track). Every block reaching this point has a resolved
             # exit boundary, otherwise ERR_BLOCK_NO_EXIT_SIGNAL was raised before Pass 1.
             _exit_b = block_geometry_report.exit_boundaries.get(blk.block_id)
+            _span_rec = block_geometry_report.spans.get(blk.block_id, {})
             if _exit_b is None:
                 ex_sig_id, ex_ch_km, ex_ch_src = "N/A", None, None
             elif _exit_b.source == EXIT_SRC_BUFFER_STOP_EDGE:
@@ -1341,6 +1326,8 @@ class SimulationRunner:
                     exit_signal_chainage_km=ex_ch_km,
                     entry_signal_chainage_source=en_ch_src,
                     exit_signal_chainage_source=ex_ch_src,
+                    signal_path_span_m=_span_rec.get("path_span_m"),
+                    signal_path_is_turnaround=bool(_span_rec.get("turnaround", False)),
                 )
             )
             cum_km += blk_len / 1000.0

@@ -26,6 +26,13 @@ from headway.ui.progress import ProgressTracker
 from headway.ui.simulation_runner import SimulationJobConfig, SimulationRunner
 from headway.ui.state import session_state
 from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.reporting.csv_export import CsvReportExporter
+from headway.reporting.excel_export import ExcelReportExporter
+from headway.reporting.html_renderer import HtmlReportRenderer
+from headway.reporting.json_export import JsonReportExporter
+from headway.reporting.pdf_renderer import PdfReportRenderer
+from headway.reporting.report_package import ReportPackageExporter
 
 
 @pytest.fixture(autouse=True)
@@ -47,6 +54,38 @@ class TestUiE2EWorkflows:
         in FORWARD and REVERSE.
         """
         load_and_assert_pipeline_raises("01_single_track")
+
+    def test_e2e_001_single_track_forward_flow_on_corrected_variant(self):
+        """P15-E2E-001 to P15-E2E-006: Single Track complete assessment flow (FORWARD)."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        # 1. Load Example
+        proj, report, _ = load_corrected_variant("01_single_track")
+        session_state.set_project(proj, report)
+        assert session_state.is_simulation_ready() is True
+
+        # 2. Configure Direction
+        session_state.selected_running_direction = RunningDirection.FORWARD
+
+        # 3. Execute Simulation Pipeline
+        tracker = ProgressTracker("single_track_forward")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=proj,
+            running_direction=RunningDirection.FORWARD,
+            simulation_mode="Full Integrated Suite",
+            tracker=tracker,
+        )
+        session_state.set_latest_results(pkg, doc)
+
+        # 4. Validate Results
+        assert pkg.running_direction == RunningDirection.FORWARD
+        assert doc.metadata.running_direction == RunningDirection.FORWARD
+        assert doc.executive_kpis.technical_headway_s > 0
+        assert doc.executive_kpis.theoretical_capacity_tph > 0
+
+        # 5. HTML Preview
+        html = HtmlReportRenderer.render(doc)
+        assert "Running Direction: FORWARD" in html
+        assert "Technical Minimum Headway" in html
 
     def test_e2e_002_double_track_reverse_flow(self):
         """P15-E2E-007 to P15-E2E-012: Double Track assessment with mandatory REVERSE running direction."""
@@ -86,6 +125,27 @@ class TestUiE2EWorkflows:
         in FORWARD and REVERSE.
         """
         load_and_assert_pipeline_raises("04_tunnel_tvs")
+
+    def test_e2e_003_tunnel_tvs_safety_assessment_on_corrected_variant(self):
+        """P15-E2E-013 to P15-E2E-016: Tunnel TVS corridor single-train occupancy constraint."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        # 1. Load Tunnel TVS Example
+        proj, report, _ = load_corrected_variant("04_tunnel_tvs")
+        session_state.set_project(proj, report)
+
+        # Ensure TVS sections exist
+        assert len(proj.infrastructure.tvs_sections) > 0
+
+        # 2. Execute Simulation with TVS
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=proj,
+            running_direction=RunningDirection.FORWARD,
+            simulation_mode="Full Integrated Suite",
+        )
+        session_state.set_latest_results(pkg, doc)
+
+        assert pkg.running_direction == RunningDirection.FORWARD
+        assert "tvs_events" in pkg.metadata
 
     def test_e2e_004_scenario_branching_and_immutability(self):
         """P15-E2E-017 to P15-E2E-019: Scenario lifecycle and baseline protection."""
@@ -169,3 +229,58 @@ class TestUiE2EWorkflows:
         in FORWARD and REVERSE.
         """
         load_and_assert_pipeline_raises("01_single_track")
+
+    def test_e2e_007_multi_format_deliverable_exports_on_corrected_variant(self):
+        """P15-E2E-024 to P15-E2E-025: Formal PDF, Excel, JSON, CSV, and Assessment ZIP exports."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        proj, report, _ = load_corrected_variant("01_single_track")
+        session_state.set_project(proj, report)
+
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=proj,
+            running_direction=RunningDirection.FORWARD,
+            simulation_mode="Full Integrated Suite",
+        )
+        session_state.set_latest_results(pkg, doc)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_dir = Path(tmp_dir)
+
+            # 1. PDF
+            pdf_path = out_dir / "Assessment.pdf"
+            PdfReportRenderer.render(doc, output_path=pdf_path)
+            assert pdf_path.exists()
+            assert pdf_path.stat().st_size > 0
+
+            # 2. Excel
+            xlsx_path = out_dir / "Assessment.xlsx"
+            ExcelReportExporter.export(doc, output_path=xlsx_path)
+            assert xlsx_path.exists()
+            assert xlsx_path.stat().st_size > 0
+
+            # 3. JSON
+            json_path = out_dir / "Assessment.json"
+            JsonReportExporter.export(doc, output_path=json_path)
+            assert json_path.exists()
+            assert json_path.stat().st_size > 0
+
+            # 4. CSVs
+            csv_dir = out_dir / "csvs"
+            csv_dir.mkdir()
+            csv_files = CsvReportExporter.export(doc, output_dir=csv_dir)
+            assert len(csv_files) > 0
+
+            # 5. Complete Assessment Package ZIP
+            pkg_zip = out_dir / "Complete_Package.zip"
+            ReportPackageExporter.export_package(
+                document=doc,
+                output_zip_path=pkg_zip,
+                include_pdf=True,
+                include_html=True,
+                include_excel=True,
+                include_csv=True,
+                include_json=True,
+                include_figures=False,  # Skip headless kaleido figure export in test
+            )
+            assert pkg_zip.exists()
+            assert pkg_zip.stat().st_size > 0

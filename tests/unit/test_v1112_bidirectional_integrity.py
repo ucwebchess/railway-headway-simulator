@@ -23,6 +23,9 @@ from headway.signalling.block_geometry_validation import (
     EXIT_SRC_BUFFER_STOP_EDGE,
     EXIT_SRC_EXPLICIT,
     EXIT_SRC_FALLBACK_SAME_TRACK,
+    ENTRY_SRC_BLOCK_ENTRY_END,
+    ENTRY_SRC_EXPLICIT,
+    ENTRY_SRC_FALLBACK_SAME_TRACK,
     BlockGeometryValidationError,
     build_alignment_frame,
     validate_block_geometry,
@@ -205,6 +208,121 @@ class TestTask2ExitFallback:
             _run(p, direction)
         assert excinfo.value.error_code == ERR_BLOCK_NO_EXIT_SIGNAL
         assert "'SIG_DOES_NOT_EXIST' does not exist" in str(excinfo.value)
+
+
+class TestEntryFallbackTrackAware:
+    """Missing entry signals: validation and Section 11 provenance share ONE track-aware
+    resolver (explicit -> nearest same-track signal within 0.5 km of the block's entry end in
+    its direction of travel -> the block's own entry end). v1.11.2-pre: validation measured
+    from the block entry end while provenance borrowed the nearest signal on ANY track at the
+    block's LOW-chainage end, so a signal-less 05 gave 15 false +50 m mismatches and DN blocks
+    were resolved at the wrong end."""
+
+    @staticmethod
+    def _prov(pkg):
+        return {r.resource_id: r for r in pkg.metadata["provenance_records"]}
+
+    @DIRS
+    def test_same_track_entry_fallback_used_and_published(self, direction):
+        p = _load("02_double_track")
+        _replace_block(p, "BLK_U2", entry_signal_id=None)
+        # An other-track signal at distance 0 that wins the id tie-break if tracks were ignored.
+        _add_signal(p, "SIG_DX", "LNK_DN_01", 1500.0)
+        report = validate_block_geometry(p)
+        assert report.ok
+        e = report.entry_boundaries["BLK_U2"]
+        assert (e.boundary_id, e.source, e.alignment_km) == ("SIG_U2", ENTRY_SRC_FALLBACK_SAME_TRACK, pytest.approx(1.5))
+        pkg, _doc = _run(p, direction)
+        r = self._prov(pkg)["BLK_U2"]
+        assert (r.entry_signal_id, r.entry_signal_chainage_km) == ("SIG_U2", pytest.approx(1.5))
+
+    @DIRS
+    def test_other_track_signal_is_never_borrowed_for_entry(self, direction):
+        p = _load("02_double_track")
+        _replace_block(p, "BLK_U1", entry_signal_id=None)
+        p.signalling.signals = [s for s in p.signalling.signals if s.signal_id != "SIG_U1"]
+        _add_signal(p, "SIG_DX", "LNK_DN_01", 100.0)
+        report = validate_block_geometry(p)
+        assert report.ok  # measured from the block's own entry end: 0.1 -> 1.5 km = 1400 m
+        e = report.entry_boundaries["BLK_U1"]
+        assert (e.boundary_id, e.source, e.alignment_km) == (None, ENTRY_SRC_BLOCK_ENTRY_END, pytest.approx(0.1))
+        pkg, _doc = _run(p, direction)
+        r = self._prov(pkg)["BLK_U1"]
+        assert (r.entry_signal_id, r.entry_signal_chainage_km, r.entry_signal_chainage_source) == (
+            "N/A", pytest.approx(0.1), "BLOCK_ENTRY_END")
+
+    @DIRS
+    def test_block_against_chainage_resolves_entry_at_its_high_end(self, direction):
+        # BLK_DN_03 runs 22.0 -> 17.0 km. Its entry is SIG_DN_03 @ 21.95, not the low-end
+        # candidates SIG_DN_04 @ 16.95 / SIG_UP_08 @ 17.05 that v1.11.1 provenance looked at.
+        p = comprehensive_line_with_explicit_turnaround_exits()
+        _replace_block(p, "BLK_DN_03", entry_signal_id=None, exit_signal_id=None)
+        report = validate_block_geometry(p)
+        assert report.ok
+        e, x = report.entry_boundaries["BLK_DN_03"], report.exit_boundaries["BLK_DN_03"]
+        assert (e.boundary_id, e.source, e.alignment_km) == ("SIG_DN_03", ENTRY_SRC_FALLBACK_SAME_TRACK, pytest.approx(21.95))
+        assert (x.boundary_id, x.source) == ("SIG_DN_04", EXIT_SRC_FALLBACK_SAME_TRACK)
+        pkg, _doc = _run(p, direction)
+        r = self._prov(pkg)["BLK_DN_03"]
+        assert (r.entry_signal_id, r.exit_signal_id) == ("SIG_DN_03", "SIG_DN_04")
+        assert abs(r.entry_signal_chainage_km - r.exit_signal_chainage_km) * 1000.0 == pytest.approx(r.resource_length_m, abs=1.0)
+
+    def test_block_against_chainage_without_entry_signal_uses_its_high_end(self):
+        # Validation is a property of the input model (direction-independent by construction).
+        p = comprehensive_line_with_explicit_turnaround_exits()
+        _replace_block(p, "BLK_DN_03", entry_signal_id=None)
+        p.signalling.signals = [s for s in p.signalling.signals if s.signal_id != "SIG_DN_03"]
+        report = validate_block_geometry(p)
+        e = report.entry_boundaries["BLK_DN_03"]
+        # No same-track signal within 0.5 km of the entry end -> the block's own entry end,
+        # which for a block running against chainage is its HIGH end (22.0 km, not 17.0).
+        assert (e.boundary_id, e.source, e.alignment_km) == (None, ENTRY_SRC_BLOCK_ENTRY_END, pytest.approx(22.0))
+        span = report.spans["BLK_DN_03"]
+        assert span["entry_point"] == ("LNK_13", 0.0) and span["exit_boundary"] == "SIG_DN_04"
+        # 05 places every signal 50 m past its block boundary, so block-entry-end -> exit
+        # signal is 22.0 -> 16.95 km = 5050 m vs 5000 m: reported, never auto-corrected.
+        # (Measured from the low end, v1.11.2-pre would have produced 50 m.)
+        codes = {(f.code, f.block_id) for f in report.findings}
+        assert span["path_span_m"] == pytest.approx(5050.0)
+        assert codes == {(ERR_BLOCK_GEOMETRY_MISMATCH, "BLK_DN_03"),
+                         # BLK_DN_02's explicit exit SIG_DN_03 no longer exists -> loud.
+                         (ERR_BLOCK_NO_EXIT_SIGNAL, "BLK_DN_02")}
+
+    @DIRS
+    def test_all_signal_ids_stripped_05_raises_only_the_three_unresolvable_exits(self, direction):
+        # Identical outcome on the shipped file and on the turnaround variant: only the blocks
+        # whose exit lies on another track (2 turnarounds + the siding) raise; no span
+        # mismatch is produced by the entry fallback.
+        for p in (_load("05_comprehensive_line"), comprehensive_line_with_explicit_turnaround_exits()):
+            for b in p.signalling.blocks:
+                _replace_block(p, b.block_id, entry_signal_id=None, exit_signal_id=None)
+            with pytest.raises(BlockGeometryValidationError) as excinfo:
+                _run(p, direction)
+            assert excinfo.value.error_code == ERR_BLOCK_NO_EXIT_SIGNAL
+            assert sorted((f.code, f.block_id) for f in excinfo.value.findings) == [
+                (ERR_BLOCK_NO_EXIT_SIGNAL, "BLK_DN_07"),
+                (ERR_BLOCK_NO_EXIT_SIGNAL, "BLK_SD_01"),
+                (ERR_BLOCK_NO_EXIT_SIGNAL, "BLK_UP_10"),
+            ]
+
+    @DIRS
+    def test_unknown_explicit_entry_id_raises(self, direction):
+        p = _load("03_station_platform")
+        _replace_block(p, "BLK_STN_01", entry_signal_id="SIG_DOES_NOT_EXIST")
+        with pytest.raises(BlockGeometryValidationError) as excinfo:
+            _run(p, direction)
+        assert excinfo.value.error_code == ERR_BLOCK_GEOMETRY_MISMATCH
+        assert "explicit entry signal 'SIG_DOES_NOT_EXIST' does not exist" in str(excinfo.value)
+
+    def test_explicit_entries_unchanged_on_clean_examples(self):
+        for ex in ("02_double_track", "03_station_platform", "06_multilink_blocks"):
+            p = _load(ex)
+            report = validate_block_geometry(p)
+            assert report.ok
+            for b in p.signalling.blocks:
+                if b.entry_signal_id:
+                    e = report.entry_boundaries[b.block_id]
+                    assert (e.boundary_id, e.source) == (b.entry_signal_id, ENTRY_SRC_EXPLICIT)
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import gradio as gr
 import pytest
 
 from headway.core.configuration import AppConfig
+from headway.infrastructure.direction import RunningDirection
 from headway.reporting.html_renderer import HtmlReportRenderer
 from headway.reporting.report_assembly import ReportAssembler, ReportSectionId, ReportType
 from headway.reporting.report_config import ReportConfig
@@ -32,6 +33,7 @@ from headway.ui.tab_results import create_results_tab
 from headway.ui.tab_rolling_stock_signalling import create_rolling_stock_signalling_tab
 from headway.ui.tab_scenarios import create_scenarios_tab
 from headway.ui.tab_simulation import create_simulation_tab
+from tests.corrected_variants import patch_examples_with_corrected_variants
 from tests.engineering.test_report_benchmarks import build_benchmark_package
 
 
@@ -258,6 +260,53 @@ def test_audit_03_and_04_cross_tab_and_direction_propagation():
         assert "BLK_01" in sim_res[3]
         assert session_state.latest_result_package is None
 
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("direction", ["REVERSE", "FORWARD"])
+def test_audit_03_and_04_cross_tab_and_direction_propagation_on_corrected_variant(direction, monkeypatch):
+    """Audit 03 & 04 (v1.11.1 body): direction selector propagation and the Results-tab
+    XLSX / JSON export handlers with real results, in BOTH directions.
+
+    v1.11.2: the UI loads example 01 by name, so the loader is routed to the corrected
+    in-memory 01 variant (BLK_01 extended to its exit signal; tests/corrected_variants.py).
+    The shipped 01 raising ERR_BLOCK_GEOMETRY_MISMATCH in the UI is asserted by
+    test_audit_03_and_04_cross_tab_and_direction_propagation above.
+    """
+    patch_examples_with_corrected_variants(monkeypatch)
+    ok, msg = session_state.load_example("01_single_track")
+    assert ok, msg  # load_example swallows exceptions; never let a failed load pass silently
+    session_state.latest_result_package = None
+
+    with gr.Blocks() as app:
+        sim_comp = create_simulation_tab()  # noqa: F841
+        res_comp = create_results_tab()  # noqa: F841
+
+    fns = {fn_obj.fn.__name__: fn_obj.fn for fn_obj in app.fns.values() if hasattr(fn_obj.fn, "__name__")}
+
+    sim_res = fns["handle_run_simulation"](direction, "DETERMINISTIC", 0.1, 1800.0, 180.0, 10)
+    assert sim_res[0] == 100.0, sim_res
+    assert session_state.latest_result_package is not None
+    assert session_state.latest_result_package.running_direction == RunningDirection[direction]
+
+    # Results tab export handlers work with latest results
+    xlsx_res = fns["export_excel_results"]()
+    x_val = xlsx_res["value"] if isinstance(xlsx_res, dict) else xlsx_res.value
+    if "base64," in str(x_val):
+        m_x = re.search(r'download="([^"]+)"', str(x_val))
+        xlsx_path = Path(session_state.reports_dir) / m_x.group(1) if m_x else Path(x_val)
+    else:
+        xlsx_path = Path(x_val)
+    assert xlsx_path.exists() and xlsx_path.stat().st_size > 0
+
+    json_res = fns["export_json_results"]()
+    j_val = json_res["value"] if isinstance(json_res, dict) else json_res.value
+    if "base64," in str(j_val):
+        m_j = re.search(r'download="([^"]+)"', str(j_val))
+        json_path = Path(session_state.reports_dir) / m_j.group(1) if m_j else Path(j_val)
+    else:
+        json_path = Path(j_val)
+    assert json_path.exists() and json_path.stat().st_size > 0
 
 
 @pytest.mark.regression

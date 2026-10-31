@@ -27,7 +27,8 @@ from headway.reporting.report_config import (
 from headway.core.exceptions import ReportingError
 from headway.reporting.report_models import ReportDocument, ReportSectionId, ReportType
 from tests.engineering.test_report_benchmarks import build_benchmark_package
-from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.ui.simulation_runner import SimulationRunner
 
 
 @pytest.mark.unit
@@ -95,15 +96,25 @@ class TestV160ReportConfiguration:
             ReportAssembler.assemble_report(pkg, config=cfg)
         assert "ERR_REPORT_MISSING_STOCHASTIC" in str(exc_info.value)
 
-    def test_simulation_mode_wiring_to_effective_performance_factor(self):
-        """Verify simulation mode tokens (100 vs 95) map to eff_pf.
+    def test_simulation_mode_wiring_to_effective_performance_factor(self) -> None:
+        """Verify simulation mode tokens (100 vs 95) map to eff_pf."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, report, _ = load_corrected_variant("05_comprehensive_line")
+        assert report.is_simulation_ready
 
-        v1.11.2 (literal strict): 05_comprehensive_line fails pre-simulation block-geometry
-        validation, so the original scenario cannot run on the unmodified shipped example.
-        The test now asserts the documented error (tests/block_geometry_expectations.py)
-        in FORWARD and REVERSE.
-        """
-        load_and_assert_pipeline_raises("05_comprehensive_line")
+        # Mode with 95
+        pkg_95, doc_95 = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            simulation_mode="AN_HSR_HSR_UP_95 (Degraded Performance - Factor 0.95)",
+        )
+        assert abs(doc_95.executive_kpis.performance_factor - 0.95) < 1e-4
+
+        # Mode with 100
+        pkg_100, doc_100 = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            simulation_mode="AN_HSR_HSR_UP_100 (Full Performance - Factor 1.00)",
+        )
+        assert abs(doc_100.executive_kpis.performance_factor - 1.0) < 1e-4
 
 
 @pytest.mark.unit
@@ -249,22 +260,53 @@ class TestV160ExtendedDynamicNarratives:
         assert "P95" in combined
         assert "standard deviation" in combined.lower()
 
-    def test_explicit_performance_factor_overrides_dropdown_and_analysis(self):
-        """Verify that passing explicit performance_factor overrides dropdown and analysis configuration (DEF-11).
+    def test_explicit_performance_factor_overrides_dropdown_and_analysis(self) -> None:
+        """Verify that passing explicit performance_factor overrides dropdown and analysis configuration (DEF-11)."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        from headway.ui.simulation_runner import SimulationRunner
+        from headway.infrastructure.direction import RunningDirection
 
-        v1.11.2 (literal strict): 07_hsr_140km fails pre-simulation block-geometry
-        validation, so the original scenario cannot run on the unmodified shipped example.
-        The test now asserts the documented error (tests/block_geometry_expectations.py)
-        in FORWARD and REVERSE.
-        """
-        load_and_assert_pipeline_raises("07_hsr_140km")
+        project, _, _ = load_corrected_variant("07_hsr_140km")
 
-    def test_section_18_fixed_vs_variable_blocking_breakdown(self):
-        """Verify Section 18 properly calculates and displays the fixed vs variable percentage breakdown (DEF-11 / Task C).
+        # Pass dropdown selection with nominal 1.00 label, but override with explicit slider value 0.85
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.FORWARD,
+            simulation_mode="AN_HSR_HSR_UP (PF: 1.00)",
+            performance_factor=0.85,
+        )
 
-        v1.11.2 (literal strict): 07_hsr_140km fails pre-simulation block-geometry
-        validation, so the original scenario cannot run on the unmodified shipped example.
-        The test now asserts the documented error (tests/block_geometry_expectations.py)
-        in FORWARD and REVERSE.
-        """
-        load_and_assert_pipeline_raises("07_hsr_140km")
+        assert doc.executive_kpis.performance_factor == 0.85
+        assert doc.executive_kpis.performance_factor_str == "85%"
+        assert pkg.metadata.get("performance_factor") == 0.85
+
+    def test_section_18_fixed_vs_variable_blocking_breakdown(self) -> None:
+        """Verify Section 18 properly calculates and displays the fixed vs variable percentage breakdown (DEF-11 / Task C)."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        from headway.ui.simulation_runner import SimulationRunner
+        from headway.infrastructure.direction import RunningDirection
+
+        project, _, _ = load_corrected_variant("07_hsr_140km")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.FORWARD,
+            performance_factor=1.00,
+        )
+
+        sec18 = doc.get_section(ReportSectionId.CONCLUSIONS_RECOMMENDATIONS)
+        assert sec18 is not None
+        assert sec18.is_applicable is True
+
+        combined_text = " ".join(sec18.narrative_paragraphs)
+        assert "controlling bottleneck BLK_UP_092" in combined_text
+        # v1.11.0 / Task 8: mandated category mapping — Fixed Overhead excludes dwell;
+        # variable share = geometric clearance + passenger dwell + residual rear.
+        assert "total blocking time of 251.0 s" in combined_text
+        assert "Fixed Overhead (signalling setup + approach + release) = 17.0 s (6.8%)" in combined_text
+        assert "Position-Dependent Running Time (performance-factor sensitive) = 110.0 s (43.8%)" in combined_text
+        assert "Geometric Clearance (clearing + residual rear, vehicle-length dependent) + Passenger Dwell = 124.0 s (49.4%)" in combined_text
+        # v1.11.1 / Task 4: single-source payload values (t_running = 110.0 s from the
+        # controlling interval decomposition -> 0.95 derating adds 110/0.95 - 110 = 5.79 s).
+        assert "derating the performance factor to 0.95" in combined_text
+        assert "extends the position-dependent running time by 5.8 s" in combined_text
+        assert "increases the technical headway by 2.3% to 256.8 s" in combined_text

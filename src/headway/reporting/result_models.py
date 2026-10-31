@@ -180,12 +180,17 @@ class ResourceProvenanceRecord:
     entry_signal_chainage_km: Optional[float] = None
     exit_signal_id: str = "N/A"
     exit_signal_chainage_km: Optional[float] = None
-    # v1.11.1 / Task 7: provenance of each boundary signal's chainage value — the
-    # geometry-mismatch audit (ERR_BLOCK_LENGTH_MISMATCH) only enforces when the chainage
-    # shares the block's datum (DERIVED_ALIGNMENT), since explicit signal stationing may
-    # legitimately use a different network datum.
+    # v1.11.1 / Task 7: provenance of each boundary signal's chainage value (informational;
+    # the report-level geometry audit is unconditional on the chainage source).
     entry_signal_chainage_source: Optional[str] = None
     exit_signal_chainage_source: Optional[str] = None
+    # v1.11.2: along-track entry→exit path span as verified by pre-simulation block-geometry
+    # validation, and whether that path is a turnaround (crosses the alignment-direction
+    # reversal, e.g. an UP block whose explicit exit signal is on the DN line). On a
+    # turnaround the alignment-chainage delta is NOT a length measure, so the report-level
+    # audit compares the block length against ``signal_path_span_m`` instead.
+    signal_path_span_m: Optional[float] = None
+    signal_path_is_turnaround: bool = False
 
 
 @dataclass

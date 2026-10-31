@@ -117,8 +117,6 @@ def test_report_binding_from_loaded_excel_project():
     from headway.data.converter import convert_raw_to_canonical
     from headway.data.validation import ValidationReport
     from headway.reporting.report_assembly import ReportAssembler
-    from headway.reporting.html_renderer import HtmlReportRenderer
-    from headway.reporting.result_models import SimulationResultPackage
 
     ex_dir = Path("examples/05_comprehensive_line")
     importer = ExcelImporter()
@@ -131,6 +129,31 @@ def test_report_binding_from_loaded_excel_project():
             raw_wbs[raw.workbook_type] = raw
 
     project = convert_raw_to_canonical(raw_wbs)
+
+    # v1.11.2: a project bound to the report is validated with the pipeline block-geometry
+    # rules (validate_block_geometry ON by default). Shipped 05 has two turnaround blocks
+    # whose only exit signals are on the other track -> the documented raise. The binding
+    # assertions below then run on the same import with the 05T correction applied (two
+    # exit signals made explicit; rolling stock / infrastructure untouched).
+    from headway.signalling.block_geometry_validation import (
+        ERR_BLOCK_NO_EXIT_SIGNAL,
+        BlockGeometryValidationError,
+    )
+    from tests.corrected_variants import apply_comprehensive_line_turnaround_exits
+
+    with pytest.raises(BlockGeometryValidationError) as excinfo:
+        ReportAssembler.assemble_report(_binding_package(project), project=project)
+    assert excinfo.value.error_code == ERR_BLOCK_NO_EXIT_SIGNAL
+    assert {f.block_id for f in excinfo.value.findings} == {"BLK_UP_10", "BLK_DN_07"}
+    project = apply_comprehensive_line_turnaround_exits(project)
+
+    pkg = _binding_package(project)
+    doc = ReportAssembler.assemble_report(pkg, project=project)
+    _assert_binding(doc)
+
+
+def _binding_package(project):
+    from headway.reporting.result_models import SimulationResultPackage
 
     decomp = BlockingTimeDecomposition(1.0, 5.0, 10.0, 0.0, 2.0, 0.0, 1.0)
     bi = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp, physical_start_offset_m=0.0, physical_end_offset_m=1000.0, alignment_start_m=0.0, alignment_end_m=1000.0)
@@ -175,7 +198,11 @@ def test_report_binding_from_loaded_excel_project():
         },
     )
 
-    doc = ReportAssembler.assemble_report(pkg, project=project)
+    return pkg
+
+
+def _assert_binding(doc):
+    from headway.reporting.html_renderer import HtmlReportRenderer
 
     # 1. Verify Rolling Stock Parameters match loaded Excel workbook
     rs = doc.rolling_stock

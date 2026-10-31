@@ -29,7 +29,9 @@ from headway.reporting.tables import (
     create_tvs_assessment_table,
 )
 from headway.simulation.trajectory import TrajectorySample, TrainTrajectory
-from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.reporting.report_models import ReportSectionId
+from headway.ui.simulation_runner import SimulationRunner
 
 
 class TestV170ReportingPolish:
@@ -206,11 +208,23 @@ class TestV170ReportingPolish:
             assert len(row["Operational Impact"]) > 0
 
     def test_e2e_report_sections_include_new_tables(self):
-        """E2E verification that ReportDocument contains both TVS and Stochastic tables.
+        """E2E verification that ReportDocument contains both TVS and Stochastic tables."""
+        # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+        project, _, _ = load_corrected_variant("04_tunnel_tvs")
+        pkg, doc = SimulationRunner.run_simulation_pipeline(
+            project=project,
+            running_direction=RunningDirection.FORWARD,
+            performance_factor=1.0,
+        )
 
-        v1.11.2 (literal strict): 04_tunnel_tvs fails pre-simulation block-geometry
-        validation, so the original scenario cannot run on the unmodified shipped example.
-        The test now asserts the documented error (tests/block_geometry_expectations.py)
-        in FORWARD and REVERSE.
-        """
-        load_and_assert_pipeline_raises("04_tunnel_tvs")
+        # Section 13 (TVS Assessment)
+        sec_tvs = doc.get_section(ReportSectionId.TVS_ASSESSMENT)
+        assert sec_tvs.is_applicable
+        assert len(sec_tvs.tables) >= 1
+        assert sec_tvs.tables[0].table_id == "TBL_TVS_ASSESSMENT"
+
+        # Section 15 (Stochastic Reliability)
+        sec_stoch = doc.get_section(ReportSectionId.STOCHASTIC_RELIABILITY)
+        assert sec_stoch.is_applicable
+        assert len(sec_stoch.tables) == 1
+        assert sec_stoch.tables[0].table_id == "TBL_STOCHASTIC_HEADWAY"

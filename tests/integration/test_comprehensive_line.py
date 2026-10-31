@@ -22,7 +22,8 @@ from headway.infrastructure.direction import DirectionPolicyError, RunningDirect
 from headway.infrastructure.graph import PhysicalNetworkGraph
 from headway.infrastructure.route import RouteEngine
 from headway.ui.file_manager import FileManager
-from tests.block_geometry_expectations import load_and_assert_pipeline_raises
+from tests.corrected_variants import load_corrected_variant
+from headway.ui.simulation_runner import SimulationRunner
 
 
 EXAMPLE_DIR = Path("examples") / "05_comprehensive_line"
@@ -131,14 +132,28 @@ def test_comprehensive_line_file_manager_discovery_and_loading():
 
 @pytest.mark.integration
 def test_comprehensive_line_forward_and_reverse_analyses_resolve():
-    """Verify that microscopic simulation and headway resolution succeed in both FORWARD and REVERSE directions.
+    """Verify that microscopic simulation and headway resolution succeed in both FORWARD and REVERSE directions."""
+    # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
+    project, report, _ = load_corrected_variant("05_comprehensive_line")
+    assert report.is_simulation_ready
 
-    v1.11.2 (literal strict): 05_comprehensive_line fails pre-simulation block-geometry
-    validation, so the original scenario cannot run on the unmodified shipped example.
-    The test now asserts the documented error (tests/block_geometry_expectations.py)
-    in FORWARD and REVERSE.
-    """
-    load_and_assert_pipeline_raises("05_comprehensive_line")
+    # 1. Forward Direction Run
+    pkg_fwd, doc_fwd = SimulationRunner.run_simulation_pipeline(
+        project=project,
+        running_direction=RunningDirection.FORWARD,
+    )
+    assert pkg_fwd.running_direction == RunningDirection.FORWARD
+    assert doc_fwd.metadata.running_direction == RunningDirection.FORWARD
+    assert doc_fwd.executive_kpis.technical_headway_s > 0.0
+
+    # 2. Reverse Direction Run
+    pkg_rev, doc_rev = SimulationRunner.run_simulation_pipeline(
+        project=project,
+        running_direction=RunningDirection.REVERSE,
+    )
+    assert pkg_rev.running_direction == RunningDirection.REVERSE
+    assert doc_rev.metadata.running_direction == RunningDirection.REVERSE
+    assert doc_rev.executive_kpis.technical_headway_s > 0.0
 
 
 @pytest.mark.integration

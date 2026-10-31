@@ -283,3 +283,129 @@ def test_user_data_shape_447_links_92_blocks(tmp_path: Path):
         assert by_code["ERR_BLOCK_NO_EXIT_SIGNAL"] == {"BLK_UP_091", "BLK_UP_092"}
         assert by_code["ERR_BLOCK_GEOMETRY_MISMATCH"] == {f"BLK_UP_{i:03d}" for i in range(1, 91)}
         assert not any("BLK_LNK_" in f.block_id for f in err.findings)
+
+
+# ---------------------------------------------------------------------------
+# v1.11.2 coverage migration: the two tests above assert that their ORIGINAL fixtures are
+# rejected (genuine geometry defects). The tests below restore the original FEATURE
+# assertions — user-defined blocks become the runtime resources verbatim, in order, and no
+# BLK_LNK_* is ever synthesised — on the same fixture shapes with physically consistent
+# block/signal geometry, so the simulation runs to completion under strict validation.
+# The fixture corridor is NOMINAL (forward-only), as in the originals: FORWARD only.
+# ---------------------------------------------------------------------------
+
+
+def _write_signalling_wb(path: Path, signals, blocks, geometry=None, route=None) -> Path:
+    wb = openpyxl.Workbook()
+    meta = wb.active
+    meta.title = "METADATA"
+    meta.append(["PROPERTY", "VALUE"])
+    meta.append(["WORKBOOK_TYPE", "SIGNALLING"])
+    meta.append(["SCHEMA_VERSION", "1.0.0"])
+    ws_sys = wb.create_sheet("SignallingSystem")
+    ws_sys.append(["TECHNOLOGY_TYPE", "ASPECT_MODEL", "DEFAULT_OVERLAP_M", "SIGHTING_TIME_S", "ROUTE_SETUP_TIME_S", "RELEASE_DELAY_S"])
+    ws_sys.append(["GENERIC_FIXED_BLOCK_ENGINEERING_MODEL", "THREE_ASPECT", 50.0, 8.0, 3.0, 4.0])
+    ws_sig = wb.create_sheet("Signals")
+    ws_sig.append(["SIGNAL_ID", "LINK_ID", "OFFSET_M", "DIRECTION", "SIGNAL_TYPE"])
+    for row in signals:
+        ws_sig.append(list(row))
+    ws_blk = wb.create_sheet("Blocks")
+    ws_blk.append(["BLOCK_ID", "LINK_ID", "START_OFFSET_M", "END_OFFSET_M", "ENTRY_SIGNAL_ID", "EXIT_SIGNAL_ID"])
+    for row in blocks:
+        ws_blk.append(list(row))
+    if geometry is not None:
+        ws_geom = wb.create_sheet("BlockGeometry")
+        ws_geom.append(["BLOCK_ID", "SEQUENCE", "LINK_ID", "START_OFFSET_M", "END_OFFSET_M"])
+        for row in geometry:
+            ws_geom.append(list(row))
+    ws_rte = wb.create_sheet("InterlockingRoutes")
+    ws_rte.append(["ROUTE_ID", "ENTRY_SIGNAL_ID", "EXIT_SIGNAL_ID", "LINK_SEQUENCE", "PROTECTED_BLOCKS", "CONFLICTING_ROUTES"])
+    ws_rte.append(list(route))
+    wb.save(path)
+    return path
+
+
+def _convert(tmp_path: Path, link_ids, sig_file: Path):
+    infra_file = _create_minimal_infrastructure_wb(tmp_path / "01_Infrastructure.xlsx", link_ids)
+    rs_file = _create_minimal_rolling_stock_wb(tmp_path / "03_RollingStock.xlsx")
+    importer = ExcelImporter()
+    report = ValidationReport()
+    raw_sig = importer.load_workbook(sig_file, report)
+    raw_inf = importer.load_workbook(infra_file, report)
+    raw_rs = importer.load_workbook(rs_file, report)
+    return convert_raw_to_canonical({"SIGNALLING": raw_sig, "INFRASTRUCTURE": raw_inf, "ROLLING_STOCK": raw_rs})
+
+
+def test_three_user_blocks_over_three_links_runtime_resources_consistent_geometry(tmp_path: Path):
+    """Test 5a on consistent geometry: 3 user blocks over 3 links run end-to-end; the runtime
+    resource list is exactly the 3 user block IDs and no BLK_LNK_* is synthesised.
+
+    Only change vs. the original fixture: each signal sits ON its block's entry boundary
+    (LNK_k @ 0 m instead of @ 100 m), so every block's entry->exit span equals its length
+    (exits resolve to the next block's entry signal on the same track; BLK_USER_03 ends at
+    the ENDPOINT buffer stop ND_0004).
+    """
+    link_ids = ["LNK_01", "LNK_02", "LNK_03"]
+    user_block_ids = ["BLK_USER_01", "BLK_USER_02", "BLK_USER_03"]
+    sig_file = _write_signalling_wb(
+        tmp_path / "02_Signalling.xlsx",
+        signals=[(f"SIG_{i:02d}", lnk, 0.0, "NOMINAL", "MAIN") for i, lnk in enumerate(link_ids, start=1)],
+        blocks=[(b, lnk, 0.0, 1000.0, f"SIG_{i:02d}", None) for i, (b, lnk) in enumerate(zip(user_block_ids, link_ids), start=1)],
+        route=("RTE_01", "SIG_01", "SIG_03", "LNK_01, LNK_02, LNK_03", "BLK_USER_01, BLK_USER_02, BLK_USER_03", ""),
+    )
+    project = _convert(tmp_path, link_ids, sig_file)
+
+    pkg, doc = SimulationRunner.run_simulation_pipeline(project=project, running_direction=RunningDirection.FORWARD)
+
+    # Original v1.11.1 assertions, unchanged.
+    resource_ids = [b.resource_id for b in pkg.blocking_intervals]
+    assert resource_ids == user_block_ids
+    assert len(resource_ids) == 3
+    assert not any("BLK_LNK_" in rid for rid in resource_ids)
+    assert not any(rid.startswith("BLK_LNK") for rid in resource_ids)
+    assert not any("BLK_LNK_" in rec.resource_id for rec in pkg.metadata.get("provenance_records", []))
+
+
+def test_user_data_shape_447_links_92_blocks_consistent_geometry(tmp_path: Path):
+    """Test 4 on consistent geometry: the user-data SHAPE is preserved exactly — 448 nodes,
+    447 links, 91 signals, 92 blocks BLK_UP_001..092 (multi-link BlockGeometry) — and the
+    pipeline runs end-to-end with the 92 user blocks as runtime resources, in order.
+
+    Geometry made consistent (the original fixture covered only 0–100 m of each 1000 m link,
+    put signals inside the following block, and left links 369–447 in no block):
+      * BLK_UP_i (i = 1..91) covers links 4(i-1)+1 .. 4i in full; BLK_UP_092 covers links
+        365..447 in full and ends at the ENDPOINT buffer stop ND_0448 (true terminal).
+      * SIG_i (i = 1..91) sits on the boundary between BLK_UP_i and BLK_UP_{i+1}
+        (LNK_{4i+1} @ 0 m): exit of BLK_UP_i, entry of BLK_UP_{i+1}. BLK_UP_001 starts at the
+        ENDPOINT ND_0001 with no entry signal — 91 signals for 92 blocks, as in the original.
+    """
+    n_links = 447
+    link_ids = [f"LNK_{i:04d}" for i in range(1, n_links + 1)]
+    signals = [(f"SIG_{i:03d}", link_ids[4 * i], 0.0, "NOMINAL", "MAIN") for i in range(1, 92)]
+    blocks, geometry = [], []
+    for i in range(1, 93):
+        start = (i - 1) * 4
+        end = i * 4 if i <= 91 else n_links
+        entry_sig = f"SIG_{i - 1:03d}" if i >= 2 else None
+        exit_sig = f"SIG_{i:03d}" if i <= 91 else None
+        blocks.append((f"BLK_UP_{i:03d}", link_ids[start], 0.0, 1000.0, entry_sig, exit_sig))
+        geometry += [(f"BLK_UP_{i:03d}", seq, link_ids[k], 0.0, 1000.0) for seq, k in enumerate(range(start, end), start=1)]
+    sig_file = _write_signalling_wb(
+        tmp_path / "02_Signalling.xlsx", signals=signals, blocks=blocks, geometry=geometry,
+        route=("RTE_01", "SIG_001", "SIG_091", ", ".join(link_ids), "", ""),
+    )
+    project = _convert(tmp_path, link_ids, sig_file)
+    assert len(project.infrastructure.nodes) == 448
+    assert len(project.infrastructure.track_links) == 447
+    assert len(project.signalling.signals) == 91
+
+    pkg, doc = SimulationRunner.run_simulation_pipeline(project=project, running_direction=RunningDirection.FORWARD)
+
+    # Original v1.11.1 assertions, unchanged.
+    assert len(project.signalling.blocks) == 92
+    resource_ids = [b.resource_id for b in pkg.blocking_intervals]
+    assert len(resource_ids) == 92
+    assert resource_ids[:5] == ["BLK_UP_001", "BLK_UP_002", "BLK_UP_003", "BLK_UP_004", "BLK_UP_005"]
+    assert resource_ids[-5:] == ["BLK_UP_088", "BLK_UP_089", "BLK_UP_090", "BLK_UP_091", "BLK_UP_092"]
+    assert not any("BLK_LNK_" in rid for rid in resource_ids)
+    assert not any("BLK_LNK_" in rec.resource_id for rec in pkg.metadata.get("provenance_records", []))

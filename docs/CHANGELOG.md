@@ -42,14 +42,29 @@ example data was modified.** Full suite: 1022/1022 passed.
   | `05_comprehensive_line` | `ERR_BLOCK_NO_EXIT_SIGNAL` | BLK_UP_10, BLK_DN_07 (only cross-track signals in range) |
   | `07_hsr_140km` | `ERR_BLOCK_NO_EXIT_SIGNAL` | BLK_UP_091 (+ 20 `ERR_BLOCK_GEOMETRY_MISMATCH`, ±313 m) |
 
-  `02_double_track`, `03_station_platform` and `06_multilink_blocks` validate cleanly. Tests that
-  ran 01/04/05/07 now assert the documented error (`tests/block_geometry_expectations.py`).
+  `02_double_track`, `03_station_platform` and `06_multilink_blocks` validate cleanly. The raise
+  for every example is asserted in FORWARD and REVERSE (`TestBidirectionalSymmetry`,
+  `tests/unit/test_v1112_bidirectional_integrity.py`). The v1.11.1 feature tests that ran
+  01/04/05/07 keep their original bodies and run on corrected **in-memory** variants
+  (`tests/corrected_variants.py`; the shipped files are not modified), so no feature coverage
+  is lost.
+- **Report-level block-geometry audit on by default** (`VALIDATE_BLOCK_GEOMETRY_DEFAULT = True`).
+  `ReportAssembler.assemble_report` validates every package it assembles:
+  - a project bound to the call (`project=` or `package.metadata["project"]`) is validated with
+    exactly the pipeline rules (`BlockGeometryValidationError`); the UI session-state fallback
+    project is *not* audited (it is global state unrelated to the package);
+  - the package's own TRACK_BLOCK provenance is always audited: no recorded exit boundary ->
+    `ERR_BLOCK_NO_EXIT_SIGNAL`; |entry->exit span - length| > 1.0 m -> `ERR_BLOCK_LENGTH_MISMATCH`
+    (turnaround blocks use the recorded along-track path span, `signal_path_span_m`).
+  The explicit opt-out `ReportConfig(validate_block_geometry=False)` still exists.
 
 ### Added
 - **`headway.signalling.block_geometry_validation`** (Tasks 1, 2, 3, 5): `BlockGeometryValidationError`
   (`SignallingError`; `.error_code`, `.findings` — every finding is listed, the code is the highest
   priority present: NO_EXIT > MISMATCH > OVERLAP), `validate_block_geometry`, `enforce_block_geometry`,
-  `build_alignment_frame`, `along_track_distance`, `resolve_exit_boundary`.
+  `build_alignment_frame`, `along_track_distance`, `resolve_exit_boundary`, `resolve_entry_boundary`
+  (`BlockGeometryReport.entry_boundaries` / `exit_boundaries` are the single source for both the
+  span check and the Section 11 provenance).
   - `ERR_BLOCK_GEOMETRY_MISMATCH` — |entry→exit along-track path distance − reported block length|
     > 1.0 m; reports block, length, span and difference (Task 1).
   - `ERR_BLOCK_NO_EXIT_SIGNAL` — the exit-signal fallback is track-aware; a cross-track signal is
@@ -64,6 +79,10 @@ example data was modified.** Full suite: 1022/1022 passed.
   `tests/integration/test_simulation_runner_e2e.py`. The symmetry test covers all 7 examples plus a
   05 turnaround variant built in memory (only the two turnaround exit signals made explicit).
 - `ERR_RESIDUAL_COORDINATE_FRAME` guard on the residual-rear coordinate contract.
+- `ResourceProvenanceRecord.signal_path_span_m` / `signal_path_is_turnaround`.
+- `tests/corrected_variants.py` (01V, 04V, 05T, 07V: minimum correction of exactly the documented
+  defect) and `tests/unit/test_v1112_corrected_variants.py` (variants validate, shipped raise the
+  documented codes, only the named blocks/signals differ, shipped `.xlsx` never written).
 
 ### Fixed
 - **Boundary speed continuity (Task 4)**: `v_out` of block *n* and `v_in` of block *n+1* are now
@@ -84,21 +103,28 @@ example data was modified.** Full suite: 1022/1022 passed.
 - **Monte Carlo narrative (Task 11)**: states statistics only (no robustness claim) and adds:
   "Reactionary delay propagation under mixed traffic is not evaluated and requires a multi-train
   simulation."
+- **Entry-signal fallback (track-aware, direction-symmetric)**: a block without an entry signal
+  now resolves to the nearest signal **on its own track** within 0.5 km of its entry end *in its
+  direction of travel*, else to the block's own entry end; an explicit entry id that does not
+  exist raises `ERR_BLOCK_GEOMETRY_MISMATCH` (span cannot be verified). Validation and Section 11
+  share this resolver. Previously Section 11 took the nearest signal on *any* track at the block's
+  *low-chainage* end while validation measured from the block entry end: on 05 with signal ids
+  stripped that produced 15 false +50 m mismatches, and blocks running against chainage (05 DN)
+  were resolved at the wrong end. The report-level audit's missing-entry fallback is fixed the
+  same way (recorded entry end, else the block end opposite the exit).
 - **Section 18**: bottleneck location reads "alignment chainage X km (route-relative Y km)". REVERSE
   previously printed the unlabelled route-relative value.
 
 ### Changed
-- `VALIDATE_BLOCK_GEOMETRY_DEFAULT` stays `False`. The report-level `ERR_BLOCK_LENGTH_MISMATCH` audit
-  is kept only as a safety net for externally supplied packages, because runner-produced packages
-  are validated before simulation.
+- `VALIDATE_BLOCK_GEOMETRY_DEFAULT` is now `True` (see Breaking). Benchmark fixture BLK_02 and the
+  DEF-09 report test were corrected accordingly (both carried inconsistent block geometry).
+- Test `test_reporting_blocking_intervals_hsr_corridor` pinned the defective 07 signal chainages
+  (0.989 / 2.554 km: a 1565 m signal span for a 1252 m block); it now asserts 0.000 / 1.252 km on
+  the corrected 07 variant, span = length, and terminal exit `ND_0448`.
 
 ### Known limitations
 - Corridors declared NOMINAL (forward-only) reject REVERSE in direction validation, which runs before
   geometry validation. Such corridors are therefore geometry-validated in FORWARD only.
-- Lost coverage, accepted under literal-strict: feature tests that depended on running
-  01/04/05/07 now assert the error instead. This includes the post-release XLSX/JSON export-handler
-  coverage with results. The 05 reversed-link assertions are kept by running them unchanged on the
-  05 turnaround variant in both directions.
 
 ---
 
