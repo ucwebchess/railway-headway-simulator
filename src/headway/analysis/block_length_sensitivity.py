@@ -47,7 +47,7 @@ def calculate_block_length_sensitivity(
     min_headway_floor_s: Optional[float] = None,
     candidate_lengths_m: Optional[Sequence[int]] = None,
 ) -> SensitivityStudyResult:
-    """Calculate 16-case constrained block length sensitivity pinned to AS-BUILT baseline.
+    """Calculate constrained block length sensitivity, residual-pinned to the as-built baseline.
 
     X-Axis cases:
     ['AS-BUILT', '25m', '50m', '75m', '100m', '150m', '200m', '400m', '600m', '800m', '1000m', '1200m', '1400m', '1600m', '1800m', '2000m'] (exactly 16 cases).
@@ -64,14 +64,33 @@ def calculate_block_length_sensitivity(
 
     base_cap = round(3600.0 / baseline_headway_s, 1)
 
-    # Base block traversal time reference
-    t_base = (2.0 * baseline_block_length_m + train_length_m) / v + sighting_time_s + release_delay_s
+    # v1.11.0 / Task 3: residual-pinned decomposition.
+    #   hw(bl) = R0_dir + K_kin(bl),  where
+    #     K_kin(bl) = kinematic kernel (approach sighting + block traversal + release)
+    #     R0_dir    = direction-specific residual overhead preserved from the measured
+    #                 as-built baseline: R0_dir = H_base_dir − K_kin(bl_base).
+    #   This replaces the direction-independent pinned-delta form
+    #   hw(bl) = H_base + (K(bl) − K(bl_base)) — algebraically identical, but the
+    #   explicit residual term keeps every candidate trace anchored to the MEASURED
+    #   as-built operating point of the analysed running direction, so FWD/REV studies
+    #   cannot silently share a fabricated delta structure.
+    def _kinematic_kernel_s(bl: float) -> float:
+        # Graceful handling for bl < train_length_m: train spans multiple contiguous blocks
+        n_blocks_train = max(1, math.ceil(train_length_m / bl))
+        effective_occupancy_len = max(bl + train_length_m, n_blocks_train * bl)
+        # 3-aspect approach distance: 1 block warning + sighting
+        t_approach = (bl + v * sighting_time_s) / v
+        t_traversal = effective_occupancy_len / v
+        return t_approach + t_traversal + release_delay_s
+
+    k_base_kernel = _kinematic_kernel_s(float(baseline_block_length_m))
+    residual_r0_s = max(0.0, baseline_headway_s - k_base_kernel)
 
     floor_hw = min_headway_floor_s if min_headway_floor_s is not None else max(45.0, baseline_headway_s * 0.5)
 
     points: List[SensitivityPointResult] = []
 
-    # Point 0: AS-BUILT (Baseline pinned)
+    # Point 0: AS-BUILT (residual-pinned: R0 + K(bl_base) == measured baseline exactly)
     points.append(
         SensitivityPointResult(
             parameter_name="block_length_m",
@@ -81,24 +100,17 @@ def calculate_block_length_sensitivity(
             limiting_bottleneck_id=baseline_bottleneck_id,
             delta_capacity_vs_baseline=0.0,
             percentage_gain_vs_baseline=0.0,
-            notes="AS-BUILT Baseline (Pinned)",
+            notes=f"AS-BUILT Baseline (residual-pinned, R0={residual_r0_s:.1f} s)",
+            details={"kinematic_kernel_s": round(k_base_kernel, 2), "residual_overhead_s": round(residual_r0_s, 2)},
         )
     )
 
     # Candidate lengths (e.g. 25m to 2000m)
     for bl in candidate_lengths:
-        # Graceful handling for bl < train_length_m (202m):
-        # When bl < train_length_m, train spans multiple contiguous blocks
         n_blocks_train = max(1, math.ceil(train_length_m / bl))
-        effective_occupancy_len = max(bl + train_length_m, n_blocks_train * bl)
+        k_cand = _kinematic_kernel_s(float(bl))
 
-        # 3-aspect approach distance: 1 block warning + sighting
-        t_approach = (bl + v * sighting_time_s) / v
-        t_traversal = effective_occupancy_len / v
-        t_cand = t_approach + t_traversal + release_delay_s
-
-        delta_t = t_cand - t_base
-        hw = max(floor_hw, round(baseline_headway_s + delta_t, 1))
+        hw = max(floor_hw, round(residual_r0_s + k_cand, 1))
         cap = round(3600.0 / hw, 1)
         delta_cap = round(cap - base_cap, 1)
         pct_gain = round((delta_cap / max(1.0, base_cap)) * 100.0, 1)
@@ -112,7 +124,8 @@ def calculate_block_length_sensitivity(
                 limiting_bottleneck_id=f"BLK_{bl}M",
                 delta_capacity_vs_baseline=delta_cap,
                 percentage_gain_vs_baseline=pct_gain,
-                notes=f"Recalculated block={bl}m, spanning={n_blocks_train} blocks",
+                notes=f"Recalculated block={bl}m, spanning={n_blocks_train} blocks; R0 residual preserved from as-built",
+                details={"kinematic_kernel_s": round(k_cand, 2), "residual_overhead_s": round(residual_r0_s, 2)},
             )
         )
 

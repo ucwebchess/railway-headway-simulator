@@ -146,6 +146,10 @@ class ResourceTimingRecord:
     total_blocking_s: float
     is_controlling: bool = False
     reconciliation_difference_s: float = 0.0
+    # v1.11.0 / Task 10: absolute alignment (network) stationing — None when the interval
+    # carries no alignment offsets (e.g. synthetic fixtures); tables render "N/A".
+    alignment_chainage_km: Optional[float] = None
+    alignment_length_m: Optional[float] = None
 
 
 @dataclass(frozen=True)

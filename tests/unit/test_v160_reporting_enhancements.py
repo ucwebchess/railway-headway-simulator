@@ -298,8 +298,12 @@ class TestV160ExtendedDynamicNarratives:
 
         combined_text = " ".join(sec18.narrative_paragraphs)
         assert "controlling bottleneck BLK_UP_092" in combined_text
-        assert "137.0 s (56.1%) is fixed overhead" in combined_text
-        assert "120.0 s station dwell and 17.0 s of signalling setup/approach/release" in combined_text
-        assert "107.0 s is variable running time" in combined_text
+        # v1.11.0 / Task 8: mandated category mapping — Fixed Overhead excludes dwell;
+        # variable share = geometric clearance + passenger dwell + residual rear.
+        assert "total blocking time of 251.0 s" in combined_text
+        assert "Fixed Overhead (signalling setup + approach + release) = 17.0 s (6.8%)" in combined_text
+        assert "Position-Dependent Running Time (performance-factor sensitive) = 110.0 s (43.8%)" in combined_text
+        assert "Geometric Clearance (clearing + residual rear, vehicle-length dependent) + Passenger Dwell = 124.0 s (49.4%)" in combined_text
         assert "derating the performance factor to 0.95" in combined_text
-        assert "increases the technical headway by 2.0% to 249.0 s" in combined_text
+        assert "extends the position-dependent running time by 5.5 s" in combined_text
+        assert "increases the technical headway by 2.2% to 256.5 s" in combined_text

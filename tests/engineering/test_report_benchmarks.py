@@ -180,6 +180,9 @@ def build_benchmark_blocking_intervals(
                 running_direction=running_direction,
                 physical_start_offset_m=idx * 600.0,
                 physical_end_offset_m=(idx + 1) * 600.0,
+                # v1.11.0 / Task 5: alignment (network) stationing for chainage/length consumers.
+                alignment_start_m=idx * 600.0,
+                alignment_end_m=(idx + 1) * 600.0,
                 decomposition=decomp,
             )
         )
@@ -393,6 +396,19 @@ def build_benchmark_package(
             "station_stops": [stop_rec],
             "provenance_records": [prov_rec],
             "stochastic_headway_samples": [85.0 + i * 0.5 for i in range(20)],
+            # v1.11.0 / Task 2: single-source Monte Carlo payload consumed identically
+            # by the stochastic narrative, histogram and statistics table.
+            "monte_carlo_results": {
+                "samples_s": [85.0 + i * 0.5 for i in range(20)],
+                "mean_s": stat.mean,
+                "std_dev_s": stat.std_dev,
+                "p50_s": stat.p50,
+                "p90_s": stat.p90,
+                "p95_s": stat.p95,
+                "p99_s": stat.p99,
+                "replications": 20,
+                "deterministic_headway_s": headway_s,
+            },
             "tvs_events": [tvs_rec],
             "scenarios": ["SCEN_BASE", "SCEN_EXPANSION"],
         },

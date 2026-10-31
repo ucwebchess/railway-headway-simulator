@@ -136,11 +136,11 @@ class TestSimulationRunnerE2E:
         assert pkg is not None
         assert doc is not None
         assert len(pkg.trajectories["TRN_LEADER"].samples) > 2500
-        assert 2000.0 <= doc.executive_kpis.total_service_duration_s <= 3000.0
+        assert 2000.0 <= doc.executive_kpis.total_service_duration_s <= 3600.0  # v1.11.0/DEF-18: 3001 s with exact station stopping
         assert doc.executive_kpis.controlling_bottleneck_id == "BLK_UP_092"
         technical_headway_s = doc.executive_kpis.technical_headway_s
-        assert 235.0 < technical_headway_s < 255.0
-        assert technical_headway_s == pytest.approx(244.0, abs=6.0)
+        assert 235.0 < technical_headway_s < 265.0
+        assert technical_headway_s == pytest.approx(254.0, abs=6.0)  # v1.11.0/DEF-18 new physics baseline
 
     def test_e2e_reverse_simulation_monotonicity_and_equivalence(self, comprehensive_project):
         """Verify reverse simulation completes with monotonically decreasing corridor distance."""
@@ -193,7 +193,13 @@ class TestSimulationRunnerE2E:
             )
             # Station stop internal event chronology
             assert rec.arrival_time_s <= rec.dwell_start_time_s
-            assert rec.dwell_start_time_s < rec.dwell_end_time_s
+            # v1.11.0 / Task 4: records are now trajectory-derived. A train only dwells
+            # at platforms its ACTIVE service pattern stops at; pass-through platforms
+            # have a physical zero-length dwell window (dwell_start == dwell_end).
+            if rec.dwell_start_time_s == rec.dwell_end_time_s:
+                assert rec.arrival_time_s == rec.dwell_start_time_s  # pass-through: no standstill
+            else:
+                assert rec.dwell_start_time_s < rec.dwell_end_time_s
             assert rec.dwell_end_time_s <= rec.departure_time_s
             assert rec.departure_time_s < rec.clearance_time_s
 
@@ -432,10 +438,11 @@ class TestSimulationRunnerE2E:
         assert blk92.decomposition.setup_time_s == pytest.approx(3.0, abs=0.1)
         assert blk92.decomposition.approach_time_s == pytest.approx(10.0, abs=0.1)
         assert blk92.decomposition.release_time_s == pytest.approx(4.0, abs=0.1)
-        assert blk92.decomposition.running_time_s == pytest.approx(99.0, abs=5.0)
+        # v1.11.0 / DEF-18: smooth braking-curve arrival extends terminal running time
+        assert blk92.decomposition.running_time_s == pytest.approx(109.0, abs=5.0)
         assert blk92.decomposition.geometric_clearance_time_s > 0.0
         assert blk92.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
-        assert blk92.duration_s == pytest.approx(244.0, abs=6.0)
+        assert blk92.duration_s == pytest.approx(254.0, abs=6.0)
 
     def test_origin_block_has_zero_approach(self, hsr_sim_results):
         """DEF-06: Origin block has zero approach time because train is already stationary at platform."""
@@ -445,7 +452,7 @@ class TestSimulationRunnerE2E:
         assert blk01.decomposition.setup_time_s == pytest.approx(3.0, abs=0.1)
         assert blk01.decomposition.approach_time_s == 0.0
         assert blk01.decomposition.release_time_s == pytest.approx(4.0, abs=0.1)
-        assert blk01.duration_s == pytest.approx(235.0, abs=6.0)
+        assert blk01.duration_s == pytest.approx(240.0, abs=6.0)
 
     def test_decomposition_components_sum_to_duration(self, hsr_sim_results):
         """DEF-06: Seven additive decomposition components reconcile with interval duration for every block."""
@@ -470,8 +477,8 @@ class TestSimulationRunnerE2E:
         pkg, doc = hsr_sim_results
         assert pkg.metadata["controlling_bottleneck_id"] == "BLK_UP_092"
         assert doc.executive_kpis.controlling_bottleneck_id == "BLK_UP_092"
-        assert doc.executive_kpis.technical_headway_s == pytest.approx(244.0, abs=6.0)
-        assert pkg.metadata["technical_minimum_headway_s"] == pytest.approx(244.0, abs=6.0)
+        assert doc.executive_kpis.technical_headway_s == pytest.approx(254.0, abs=6.0)
+        assert pkg.metadata["technical_minimum_headway_s"] == pytest.approx(254.0, abs=6.0)
 
     def test_origin_block_undetermined_raises_error(self, hsr_project, monkeypatch):
         """DEF-06: ERR_ORIGIN_BLOCK_UNDETERMINED raised when origin block cannot be mapped from route."""

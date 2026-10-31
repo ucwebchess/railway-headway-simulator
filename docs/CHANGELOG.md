@@ -23,6 +23,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.0] — 2026-10-31
+
+Phase 4c physics & reporting integrity release — 12-task defect remediation programme.
+Full-suite status: all tests green (rc=0); 7-example × 2-direction live audit clean
+(zero blocking-arithmetic breaches, alignment chainage populated for every block).
+
+### Added
+- **Exact Station Stopping & Overspeed Guard (DEF-18 / Task 12)**: New modulated substep stop controller in both `integrator.py` and `multi_train_engine.py` (a_step = −v²/2D, 50 ms substeps). Braking regulation is capacity-limited at the configured service rate but escalates within the true physical emergency capability (`emergency_deceleration_ms2`) when late-approach corrections demand it — a hard clamp at the service rate mathematically guarantees overshoot; service-curve excursions are flagged with `WARNING_OVERSPEED_ARRIVAL` events. Arrival is accepted only at standstill within ±1.0 m / ≤0.5 km h⁻¹; overshoot standstills (|Δ| ≤ 50 m) terminate without position rewriting. Stop targets persist for 100 m of overshoot so station dwells cannot be skipped. Audited: **max platform-stop overshoot 0.000 m, max terminal overshoot 0.000 m across all 7 examples × 2 directions.**
+- **Alignment (Network) Stationing on Blocking Intervals (Task 5)**: `ResourceBlockingInterval` gained `alignment_start_m` / `alignment_end_m` (absolute network chainage, link-start accumulated), populated by the runner for every block; `physical_*_offset_m` remain route-relative. Section 5 occupation ranking narrative/table and Section 10 resource timing now derive true block lengths and chainage from alignment offsets and fail loudly (`ERR_SEC05_GEOMETRY_MISSING`) when absent. New table columns: `Block Length (km)`, `Alignment Chainage (km)` (Section 5) and `Alignment Chainage (km)`, `Alignment Length (m)` (Section 10).
+- **Single-Source Monte Carlo Payload (Task 2)**: Runner computes real numpy statistics from the replication sample array and publishes `metadata["monte_carlo_results"]` (samples/mean/std/p50/p90/p95/p99/replications/deterministic headway); Section 15 narrative, histogram and statistics table all consume this payload exclusively, raising `ReportingError` when missing (`ERR_MONTE_CARLO_EMPTY` for empty replication sets).
+- **Platform Chronology & Trajectory-Derived Occupation (Task 4)**: Platform occupation records are rebuilt from the actual trajectory — arrival approach via interpolated front-crossing of the platform start, exact platform-matched dwell, rear clearance from the rear leaving the platform end, final release = clearance + system release delay. Residual-rear occupation comes from fouling usage records inside the dwell window only. Records are published in strict chronological order; platforms never reached by a truncated simulation produce no record; scheduled stops without a standstill raise `ERR_PLATFORM_STANDSTILL_MISSING`.
+- **Residual-Pinned Sensitivity Model (Task 3)**: Block-length sensitivity refactored to `hw(bl) = R0_dir + K_kin(bl)` with the direction-specific residual overhead `R0_dir = H_base_dir − K_kin(bl_base)` preserved across all candidates ("residual-fade" through the kernel only); the as-built point reproduces the measured baseline exactly. Kernel/residual split exposed in point `details`.
+
+### Changed
+- **Fixed vs Variable Blocking Categorisation (Task 8)**: Mandated mapping applied in Sections 7/18 — Fixed Overhead = signalling setup + approach + release (dwell excluded); Position-Dependent Running is the performance-factor-sensitive component; variable share = Geometric Clearance (clearing + residual rear) + Passenger Dwell. PF-derating impact statement now derived from the position-dependent running time (0.95 → +5.5 s, +2.2 % at the 07_hsr baseline).
+- **Slack-to-Second Semantics (Task 6)**: `BottleneckDiagnosis.slack_to_second_s` is now the headway margin between the #1 and #2 ranked conflicts (`conflict_ranking`, sorted by required headway), replacing stale per-conflict slack bookkeeping.
+- **Signed Rear Trajectory Positions (Task 9)**: Removed erroneous `max(0.0, …)` clamping of rear positions in the runner's station-stop records and reverse-direction trajectory extraction; engine rear positions remain signed and unclipped.
+- **Verification Verdict Wording (Task 11)**: Section 17 verdict now states "Numerical trajectory solver converged successfully. Engineering verification of reporting consistency is pending." instead of conflating solver convergence with reporting verification.
+- **Resource Timing Table (Task 10)**: `Chainage (km)` renamed to `Route-Relative Chainage (km)` with an added `Alignment Chainage (km)` column; Section 11 provenance keeps the route-relative `physical_chainage_km`.
+
+### Fixed
+- **Blocking-Time Arithmetic Invariant (Task 1)**: Runner enforces a strict invariant — the seven decomposition components must sum exactly (±1 ms) to the reported Total Blocking duration; violations raise `ERR_BLOCKING_ARITHMETIC_MISMATCH` instead of silently publishing unreconciled rows. Audited live across all 7 example projects × 2 directions: zero breaches.
+- **New physics baselines (07_hsr_140km FORWARD)**: journey time 2969 s, technical headway 251.0 s, BLK_UP_092 decomposition 3.0/10.0/110.0/120.0/4.0/0.0/4.0; station stops land exactly at platform markers (565.0/34,995/70,051/105,107/139,224 m, both directions); final-approach deceleration peaks at 0.866 m s⁻² (within the 1.2 m s⁻² emergency capability) in brief marker-convergence corrections; no >3 km h⁻¹ per-second speed discontinuities.
+- **TVS Governorship (Task 7, verified)**: TVS minimum headway remains conditional — governing only when exceeding the signalling headway; examples without tunnel sections render Section 13 as explicitly not applicable.
+
+---
+
 ## [1.10.2] — 2026-10-22
 
 ### Fixed

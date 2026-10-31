@@ -117,7 +117,9 @@ class _FastCorridorSimulator(MultiTrainSimulator):
             if plat_obj:
                 plat_offset = plat_obj.start_offset_m + min(plat_obj.length_m, train.params.length_m)
                 plat_pos = train.route.physical_to_route_distance(plat_obj.link_id, plat_offset)
-                if plat_pos is not None and plat_pos > curr_pos - 1.0:
+                # v1.11.0 / DEF-18: keep the stop available after physical overshoot
+                # (arrival/deceleration limits prohibit retroactive snaps).
+                if plat_pos is not None and plat_pos > curr_pos - 100.0:
                     if not self.coordinator.resource_controller.is_resource_available(stop.platform_id, train.train_id, self.current_time_s):
                         holding_pt = max(0.0, plat_pos - 50.0)
                         if holding_pt < min_eoa:
@@ -426,7 +428,10 @@ def test_dwell_survives_multilink_reservation_fix(monkeypatch):
     blk92 = next(b for b in pkg.blocking_intervals if b.resource_id == "BLK_UP_092")
     assert blk92.decomposition.dwell_time_s == pytest.approx(120.0, abs=1.0)
     assert blk92.decomposition.running_time_s >= 90.0
-    assert blk92.duration_s == pytest.approx(227.0, abs=2.0)
+    # v1.11.0 / DEF-18: physically-honest (non-teleporting) stop arrivals extend the
+    # terminal-block reservation to its true 251 s duration; the pre-fix 227 s figure
+    # was a product of the retroactive snap-to-zero artifact removed in DEF-18.
+    assert blk92.duration_s == pytest.approx(251.0, abs=2.0)  # v1.11.0 DEF-18 emergency-escalation baseline
 
 
 def test_dwell_changes_headway_on_multilink_corridor(monkeypatch):

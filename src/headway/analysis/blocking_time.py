@@ -102,6 +102,11 @@ class ResourceBlockingInterval:
     decomposition: Optional[BlockingTimeDecomposition] = None
     physical_start_offset_m: Optional[float] = None
     physical_end_offset_m: Optional[float] = None
+    # v1.11.0 / Task 10: absolute infrastructure alignment chainage offsets (link-relative
+    # stationing accumulated through the network), distinct from the route-relative
+    # physical offsets above which begin at 0.0 at the simulated route origin.
+    alignment_start_m: Optional[float] = None
+    alignment_end_m: Optional[float] = None
     capacity: int = 1
     usage_index: int = 1
     description: Optional[str] = None
@@ -152,6 +157,8 @@ class ResourceBlockingInterval:
             decomposition=decomp,
             physical_start_offset_m=self.physical_start_offset_m,
             physical_end_offset_m=self.physical_end_offset_m,
+            alignment_start_m=self.alignment_start_m,
+            alignment_end_m=self.alignment_end_m,
             capacity=self.capacity,
             usage_index=self.usage_index,
             description=self.description,

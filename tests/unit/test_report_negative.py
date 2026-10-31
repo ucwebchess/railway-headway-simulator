@@ -54,6 +54,11 @@ def _create_minimal_interval(start: float = 10.0, end: float = 80.0) -> Resource
         end_time_s=end,
         train_id="TRN_01",
         decomposition=decomp,
+        physical_start_offset_m=0.0,
+        physical_end_offset_m=1000.0,
+        # v1.11.0 / Task 5: alignment (network) stationing required by Section 5 consumers.
+        alignment_start_m=0.0,
+        alignment_end_m=1000.0,
     )
 
 

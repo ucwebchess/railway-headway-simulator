@@ -292,13 +292,22 @@ class VisualizationAdapter:
             diff = d.reconciliation_difference_s if d else 0.0
 
             length_m = (bi.physical_end_offset_m or 0.0) - (bi.physical_start_offset_m or 0.0)
+            # v1.11.0 / Task 10: alignment (network) stationing alongside the route-relative offsets.
+            alignment_km = round((bi.alignment_start_m / 1000.0), 3) if getattr(bi, "alignment_start_m", None) is not None else None
+            alignment_length_m = (
+                round(abs(bi.alignment_end_m - bi.alignment_start_m), 1)
+                if getattr(bi, "alignment_start_m", None) is not None and getattr(bi, "alignment_end_m", None) is not None
+                else None
+            )
 
             rec = ResourceTimingRecord(
                 resource_index=idx,
                 resource_id=bi.resource_id,
                 resource_category=bi.resource_category.value if hasattr(bi.resource_category, "value") else str(bi.resource_category),
                 route_chainage_km=round((bi.physical_start_offset_m or 0.0) / 1000.0, 3),
+                alignment_chainage_km=alignment_km,
                 resource_length_m=round(abs(length_m), 1),
+                alignment_length_m=alignment_length_m,
                 entry_speed_kmh=round(float(getattr(d, "v_in_kmh", 0.0)), 1) if d else 0.0,
                 exit_speed_kmh=round(float(getattr(d, "v_out_kmh", 0.0)), 1) if d else 0.0,
                 setup_time_s=round(setup, 2),
