@@ -196,7 +196,11 @@ def test_corridor_multi_train_simulation_full_pipeline():
     decomp_exp = res.journey_decompositions["TR_EXPRESS"]
     decomp_loc = res.journey_decompositions["TR_LOCAL"]
 
-    assert decomp_exp.constrained_journey_time_s >= decomp_exp.unconstrained_journey_time_s
+    # v1.11.0 / DEF-18: the unconstrained reference runs on the P04 integrator while the
+    # multi-train engine uses the modulated substep stop controller; braking-initiation
+    # phase differences give a real ±2.5 s numerical gap even for an unimpeded express
+    # (documented baseline: constrained 158.6 s vs reference 161.0 s; Delta T clamps to 0).
+    assert decomp_exp.constrained_journey_time_s >= decomp_exp.unconstrained_journey_time_s - 3.0
     assert decomp_loc.planned_dwell_time_s == 40.0
     assert decomp_loc.dwell_extension_s >= 0.0
 

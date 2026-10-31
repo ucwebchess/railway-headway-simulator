@@ -30,6 +30,12 @@ from headway.simulation.state import DynamicMode, OperationalState, TrainDynamic
 from headway.simulation.targets import BrakingTarget, BrakingTargetResolver, BrakingTargetType
 from headway.simulation.trajectory import TrajectorySample, TrainTrajectory
 
+# v1.11.0 / DEF-18: Stop-arrival physics constants.
+# A stop may only be finalized when the train is effectively at standstill
+# (< 0.5 km/h). Retroactive speed snaps from higher approach speeds are prohibited.
+ARRIVAL_SPEED_TOL_MS = 0.5 / 3.6  # 0.5 km/h
+ARRIVAL_POSITION_TOL_M = 0.5  # berthing tolerance around a stop marker [m]
+
 
 class MicroscopicSimulator:
     """Executes deterministic microscopic train dynamics simulation along a route."""
@@ -210,13 +216,13 @@ class MicroscopicSimulator:
                 record_sample(cur_t, route_len, 0.0, 0.0, None, cur_mode, cur_op)
                 break
 
-            # 3. Clean up past targets
-            active_targets = [t for t in active_targets if t.effective_target_position_m > cur_s - 0.2]
-
-            # 4. Check if arriving at a stop target (station or route end)
+            # 3. Check if arriving at a stop target (station or route end).
+            #    v1.11.0 / DEF-18: evaluated BEFORE target cleanup so a physical
+            #    standstill within the berthing tolerance still registers the stop.
             arrived_at_stop = False
             for t in list(active_targets):
-                if t.target_speed_ms == 0.0 and abs(cur_s - t.effective_target_position_m) <= 0.5 and cur_v < 0.5:
+                # v1.11.0 / DEF-18: arrival is only accepted at true standstill (< 0.5 km/h)
+                if t.target_speed_ms == 0.0 and abs(cur_s - t.effective_target_position_m) <= ARRIVAL_POSITION_TOL_M and cur_v <= ARRIVAL_SPEED_TOL_MS:
                     cur_s = t.effective_target_position_m
                     cur_v = 0.0
                     cur_a = 0.0
@@ -251,6 +257,12 @@ class MicroscopicSimulator:
                     break
                 continue
 
+            # 4. Clean up past targets (targets kept while still within berthing tolerance)
+            active_targets = [
+                t for t in active_targets
+                if t.effective_target_position_m > cur_s - (ARRIVAL_POSITION_TOL_M + 1e-9)
+            ]
+
             # 5. Evaluate speed limits and braking constraints
             v_limit = get_permissible_speed(cur_s)
 
@@ -260,6 +272,8 @@ class MicroscopicSimulator:
 
             # Find governing braking curve speed among active targets
             v_brake_limit = float("inf")
+            governing_stop = None
+            governing_stop_dist = float("inf")
             for t in active_targets:
                 dist_to_target = t.effective_target_position_m - cur_s
                 if dist_to_target > 0:
@@ -272,6 +286,23 @@ class MicroscopicSimulator:
                     max_allowed = math.sqrt(max(0.0, max_allowed_sq))
                     if max_allowed < v_brake_limit:
                         v_brake_limit = max_allowed
+                    if t.target_speed_ms == 0.0 and dist_to_target < governing_stop_dist:
+                        governing_stop = t
+                        governing_stop_dist = dist_to_target
+
+            # v1.11.0 / DEF-18: stop-type targets engage braking one step EARLY so the
+            # train is never above the braking curve when the modulated stop controller
+            # takes over (eliminates above-curve onset lead and endpoint overshoot).
+            stop_anticipation = 0.0
+            b_stop_eff = max(0.05, self.params.max_service_deceleration_ms2 * self.performance_factor)
+            # v1.11.0 / DEF-18 follow-up: physical brake authority cap for the stop
+            # controller — regulation at the service rate unless the required modulated
+            # deceleration slightly exceeds the service curve, in which case braking may
+            # escalate up to the true emergency capability (never beyond it), so a
+            # capacity-limited clamp cannot mathematically guarantee an overshoot.
+            b_stop_hard = max(b_stop_eff, float(getattr(self.params, "emergency_deceleration_ms2", b_stop_eff) or b_stop_eff))
+            if governing_stop is not None:
+                stop_anticipation = b_stop_eff * dt
 
             # Resistances at current position
             res_eval = self.dist_resistance.evaluate(
@@ -285,7 +316,7 @@ class MicroscopicSimulator:
             is_coast = False
             tract_n = None
 
-            if cur_v >= v_brake_limit - 0.05:
+            if cur_v >= v_brake_limit - 0.05 - stop_anticipation:
                 # Braking needed for downstream target
                 cur_mode = DynamicMode.SERVICE_BRAKING
                 cur_op = OperationalState.RUNNING
@@ -315,16 +346,105 @@ class MicroscopicSimulator:
             )
             a = fb_res.capped_acceleration_ms2
 
-            # Numerical integration step
+            # v1.11.0 / DEF-18: Modulated stop-arrival control (braking-curve true).
+            # Inside the arrival window of a zero-speed target the train is advanced in
+            # sub-steps with the modulated exact-arrival deceleration a = -v^2/(2D),
+            # hard-bounded by configured service braking. Speed may reach 0 only when the
+            # front physically reaches the target; retroactive snap-to-zero is prohibited.
+            stop_window_m = cur_v * dt * 2.0 + (cur_v * cur_v) / (2.0 * b_stop_eff) * 1.10 + 5.0
+            modulated_stop = (
+                governing_stop is not None
+                and cur_v > 0.0
+                and governing_stop_dist <= stop_window_m
+                and governing_stop.effective_target_position_m > cur_s
+            )
+
             step_dt = dt
-            if a < 0 and cur_v + a * dt < 0:
-                t_stop = -cur_v / a if abs(a) > 1e-6 else 0.0
-                step_dt = max(1e-4, t_stop)
-                s_next = cur_s + cur_v * step_dt + 0.5 * a * (step_dt ** 2)
-                v_next = 0.0
+            if modulated_stop:
+                n_sub = max(20, int(math.ceil(dt / 0.005)))
+                sub_h = dt / n_sub
+                s_acc = float(cur_s)
+                v_acc = float(cur_v)
+                t_used = 0.0
+                a_last = a
+                warned_key = (tid, round(governing_stop.effective_target_position_m, 2))
+                for _sub in range(n_sub):
+                    if t_used >= dt - 1e-12 or v_acc <= 0.0:
+                        break
+                    h = min(sub_h, dt - t_used)
+                    D = eoa_dist = (governing_stop.effective_target_position_m - s_acc)
+                    if D <= 0.0:
+                        # Physical overshoot past the target: continue service braking.
+                        a_step = -b_stop_hard
+                        if warned_key not in self._overspeed_warned and v_acc > ARRIVAL_SPEED_TOL_MS:
+                            trajectory.events.append(
+                                BoundaryEvent(
+                                    event_type=CrossingEventType.WARNING_OVERSPEED_ARRIVAL,
+                                    timestamp_s=round(cur_t + t_used, 4),
+                                    route_distance_m=round(s_acc, 2),
+                                    train_id=tid,
+                                    is_front=True,
+                                    speed_ms=round(v_acc, 4),
+                                    description=(
+                                        f"ERR_OVERSPEED_ARRIVAL: train '{tid}' overshot stop target "
+                                        f"{governing_stop.effective_target_position_m:.1f} m at {v_acc * 3.6:.1f} km/h — "
+                                        f"service braking continues without retroactive speed snap"
+                                    ),
+                                )
+                            )
+                            self._overspeed_warned.add(warned_key)
+                    else:
+                        a_req_stop = (v_acc * v_acc) / (2.0 * D)
+                        if a_req_stop <= b_stop_eff + 1e-9:
+                            a_step = -a_req_stop  # modulated exact-arrival braking
+                        else:
+                            # Above the service braking curve: escalate within the
+                            # physical emergency capability so the standstill still lands
+                            # on the marker; the curve violation remains logged below.
+                            a_step = -min(a_req_stop, b_stop_hard)
+                            if warned_key not in self._overspeed_warned and v_acc > ARRIVAL_SPEED_TOL_MS:
+                                trajectory.events.append(
+                                    BoundaryEvent(
+                                        event_type=CrossingEventType.WARNING_OVERSPEED_ARRIVAL,
+                                        timestamp_s=round(cur_t + t_used, 4),
+                                        route_distance_m=round(s_acc, 2),
+                                        train_id=tid,
+                                        is_front=True,
+                                        speed_ms=round(v_acc, 4),
+                                        description=(
+                                            f"ERR_OVERSPEED_ARRIVAL: train '{tid}' approaches stop target "
+                                            f"{governing_stop.effective_target_position_m:.1f} m at {v_acc * 3.6:.1f} km/h "
+                                            f"requiring {a_req_stop:.2f} m/s^2 > service braking {b_stop_eff:.2f} m/s^2 "
+                                            f"— braking continues without snap (overshoot possible)"
+                                        ),
+                                    )
+                                )
+                                self._overspeed_warned.add(warned_key)
+                    a_last = a_step
+                    if a_step < 0.0 and v_acc + a_step * h <= 0.0:
+                        t_half = v_acc / max(1e-9, -a_step)
+                        t_half = min(t_half, h)
+                        s_acc += v_acc * t_half + 0.5 * a_step * (t_half ** 2)
+                        v_acc = 0.0
+                        t_used += t_half
+                        break
+                    s_acc += v_acc * h + 0.5 * a_step * (h ** 2)
+                    v_acc = max(0.0, v_acc + a_step * h)
+                    t_used += h
+                step_dt = dt
+                s_next = s_acc
+                v_next = v_acc
+                a = a_last
             else:
-                s_next = cur_s + cur_v * step_dt + 0.5 * a * (step_dt ** 2)
-                v_next = max(0.0, cur_v + a * step_dt)
+                # Numerical integration step
+                if a < 0 and cur_v + a * dt < 0:
+                    t_stop = -cur_v / a if abs(a) > 1e-6 else 0.0
+                    step_dt = max(1e-4, t_stop)
+                    s_next = cur_s + cur_v * step_dt + 0.5 * a * (step_dt ** 2)
+                    v_next = 0.0
+                else:
+                    s_next = cur_s + cur_v * step_dt + 0.5 * a * (step_dt ** 2)
+                    v_next = max(0.0, cur_v + a * step_dt)
 
             # Hard clamp: simulated speed must never exceed permissible speed envelope (Task 2 / RHS-PHYS-001)
             v_permissible = min(v_limit, get_permissible_speed(min(route_len, s_next)))
@@ -332,21 +452,6 @@ class MicroscopicSimulator:
             max_kmh = round(v_permissible * 3.6, 2)
             if v_next * 3.6 > max_kmh:
                 v_next = max_kmh / 3.6
-
-            # P04-NUM-006: Step subdivision for stop targets (stations or route end)
-            for t in active_targets:
-                if t.target_speed_ms == 0.0 and cur_s < t.effective_target_position_m:
-                    if s_next >= t.effective_target_position_m:
-                        ds = t.effective_target_position_m - cur_s
-                        if cur_v > 1e-4:
-                            step_dt = (2.0 * ds) / cur_v
-                            a = - (cur_v ** 2) / (2.0 * ds)
-                        else:
-                            step_dt = 1e-4
-                            a = 0.0
-                        s_next = t.effective_target_position_m
-                        v_next = 0.0
-                        break
 
             if s_next > route_len:
                 s_next = route_len

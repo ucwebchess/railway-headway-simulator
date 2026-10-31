@@ -59,6 +59,13 @@ from headway.simulation.time_distance import MultiTrainTimeDistanceDataset, Time
 from headway.simulation.trajectory import TrajectorySample, TrainTrajectory
 from headway.simulation.tvs_queue import TVSQueueTracker
 
+# v1.11.0 / DEF-18: Stop-arrival physics constants.
+# A station/EOA stop may only be finalized at effective standstill (< 0.5 km/h)
+# within the berthing tolerance. Retroactive speed snaps from higher approach
+# speeds are prohibited; overspeed approaches raise WARNING_OVERSPEED_ARRIVAL.
+ARRIVAL_SPEED_TOL_MS = 0.5 / 3.6  # 0.5 km/h
+ARRIVAL_POSITION_TOL_M = 1.0  # berthing tolerance around stop/EOA marker [m]
+
 if TYPE_CHECKING:
     from headway.signalling.coordinator import SignallingCoordinator
 
@@ -129,6 +136,8 @@ class MultiTrainSimulator:
         # Route-to-resource spatial indexing cache (DEF-05 performance optimization)
         self._route_resource_intervals: Dict[str, List[Tuple[int, str, Any, int, float, float]]] = {}
         self._route_block_eoa_entries: Dict[str, List[Tuple[float, str]]] = {}
+        # v1.11.0 / DEF-18: one-shot overspeed-arrival warnings (train_id, stop marker)
+        self._overspeed_warned: Set[Tuple[str, float]] = set()
 
     def register_train(self, train: TrainServiceInstance) -> None:
         """Register a single train instance for simulation."""
@@ -383,7 +392,10 @@ class MultiTrainSimulator:
                 except Exception:
                     plat_pos = None
 
-                if plat_pos is not None and plat_pos > curr_pos - 15.0:
+                # v1.11.0 / DEF-18: a stop target must remain available for a train that
+                # physically overshot the marker but has not yet completed its dwell —
+                # otherwise the train would sail past the station without ever stopping.
+                if plat_pos is not None and plat_pos > curr_pos - 100.0:
                     # Check platform availability
                     res_key = stop.platform_id or (plat_obj.platform_id if plat_obj else stop.station_id)
                     if not self.coordinator.resource_controller.is_resource_available(res_key, train.train_id, self.current_time_s):
@@ -501,15 +513,20 @@ class MultiTrainSimulator:
         v_target = min(v_permissible_ms, v_brake_limit)
 
         # 3. Dynamic Mode & Acceleration Selection
-        arrival_dist = max(3.0, curr_v * dt * 1.5)
+        # v1.11.0 / DEF-18: station arrival is only accepted at true standstill
+        # (< 0.5 km/h). The previous implementation teleported the front to the stop
+        # marker and snapped speed to zero from up to 21.6 km/h within a single
+        # integration step (~6x emergency braking) — removed.
         if cause == "STATION_STOP" and (
-            (dist_to_eoa <= arrival_dist and curr_v < 6.0)
-            or (curr_s >= eoa_m - 1.0 and curr_v < 6.0)
-            or (curr_v == 0.0 and abs(curr_s - eoa_m) <= 15.0)
+            (abs(curr_s - eoa_m) <= ARRIVAL_POSITION_TOL_M and curr_v <= ARRIVAL_SPEED_TOL_MS)
+            or (curr_v == 0.0 and abs(curr_s - eoa_m) <= 50.0)
         ):
             # Arrived at scheduled station stop
             stop = train.stops[train.current_stop_index]
-            train.current_position_m = round(eoa_m, 3)
+            if abs(train.current_position_m - eoa_m) <= ARRIVAL_POSITION_TOL_M:
+                # mm-scale berthing correction at standstill (speed already < 0.5 km/h)
+                train.current_position_m = round(eoa_m, 3)
+            # else: physical overshoot standstill position preserved — never teleport back
             train.current_speed_ms = 0.0
             train.current_acceleration_ms2 = 0.0
             train.is_dwelling = True
@@ -533,7 +550,8 @@ class MultiTrainSimulator:
             self._train_occupied_resources.setdefault(train.train_id, set()).add(p_id)
             return
 
-        if (dist_to_eoa <= 1.0 and curr_v < 1.0) or (curr_v == 0.0 and dist_to_eoa <= 2.0):
+        # v1.11.0 / DEF-18: generic stop finalization requires standstill (< 0.5 km/h)
+        if (dist_to_eoa <= 1.0 and curr_v <= ARRIVAL_SPEED_TOL_MS) or (curr_v == 0.0 and dist_to_eoa <= 2.0):
             # Stopped at target
             if eoa_m < route_len:
                 train.current_position_m = round(max(0.0, eoa_m - 0.1), 3)
@@ -575,8 +593,11 @@ class MultiTrainSimulator:
             elif train.dynamic_mode == DynamicMode.SUPERVISED_BRAKING:
                 # Safety-critical supervised braking uses full unscaled capability
                 target_dec = train.params.max_service_deceleration_ms2
-            elif curr_v >= v_brake_limit - 0.05:
-                # Braking needed for downstream target (EOA or downstream speed drop)
+            elif curr_v >= v_brake_limit - (0.05 + (b_service * dt if cause == "STATION_STOP" else 0.0)):
+                # Braking needed for downstream target (EOA or downstream speed drop).
+                # v1.11.0 / DEF-18: station stops engage one full step EARLIER
+                # (anticipation margin b_service*dt) so the train is never above the
+                # braking curve when the modulated stop controller takes over.
                 train.dynamic_mode = DynamicMode.SERVICE_BRAKING
                 train.operational_state = OperationalState.RUNNING
                 target_dec = train.params.max_service_deceleration_ms2 * train.performance_factor
@@ -604,15 +625,121 @@ class MultiTrainSimulator:
             )
             a_req = fb_res.capped_acceleration_ms2
 
-            # Numerical integration step
-            if a_req < 0 and curr_v + a_req * dt < 0:
-                t_stop = -curr_v / a_req if abs(a_req) > 1e-6 else 0.0
-                step_dt = max(1e-4, t_stop)
-                new_s = curr_s + curr_v * step_dt + 0.5 * a_req * (step_dt ** 2)
-                new_v = 0.0
+            # v1.11.0 / DEF-18: Braking-curve control for station stop targets.
+            # Near a station stop EOA the train is advanced in sub-steps with true
+            # feedback control: modulated exact-arrival deceleration a = -v^2/(2D),
+            # hard-bounded by the configured service braking deceleration. Speed may
+            # only reach 0 when the front physically reaches the stop marker; a discrete
+            # timestep may NEVER snap the speed of a moving train to zero.
+            b_used = max(0.05, b_service)
+            stop_window_m = (
+                curr_v * dt * 2.0 + (curr_v * curr_v) / (2.0 * b_used) * 1.10 + 5.0
+            )
+            is_stop_eoa = cause == "STATION_STOP" or (cause is None and eoa_m >= route_len - 0.01)
+            stop_control = (
+                is_stop_eoa
+                and curr_v > 0.0
+                and a_req < 0.0
+                and 0.0 < dist_to_eoa <= stop_window_m
+            )
+
+            if stop_control:
+                warn_key = (train.train_id, round(eoa_m, 2))
+                already_warned = warn_key in self._overspeed_warned
+                # v1.11.0 / DEF-18 follow-up: physical brake authority for the stop
+                # controller. The controller primarily regulates at the service rate,
+                # but when the required modulated deceleration slightly exceeds the
+                # service curve (one-step approach lag), it may apply up to the
+                # EMERGENCY braking capability to land the standstill on the marker —
+                # capping at service braking mathematically guarantees an overshoot.
+                b_hard = max(b_used, float(getattr(train.params, "emergency_deceleration_ms2", b_used) or b_used))
+                n_sub = max(20, min(100, int(math.ceil(dt / 0.05)) * 1)) * 1
+                sub_h = dt / n_sub
+                s_acc = float(curr_s)
+                v_acc = float(curr_v)
+                t_used = 0.0
+                a_last = a_req
+                for _sub in range(n_sub):
+                    if t_used >= dt - 1e-12 or v_acc <= 0.0:
+                        break
+                    h = min(sub_h, dt - t_used)
+                    D = eoa_m - s_acc
+                    if D <= 0.0:
+                        # Physically overshot the marker: continue braking at the full
+                        # physical capability to limit the overrun.
+                        a_step = -b_hard
+                        if not already_warned and v_acc > ARRIVAL_SPEED_TOL_MS:
+                            train.events.append(
+                                BoundaryEvent(
+                                    event_type=CrossingEventType.WARNING_OVERSPEED_ARRIVAL,
+                                    timestamp_s=round(self.current_time_s + t_used, 3),
+                                    route_distance_m=round(s_acc, 2),
+                                    train_id=train.train_id,
+                                    is_front=True,
+                                    speed_ms=round(v_acc, 4),
+                                    description=(
+                                        f"ERR_OVERSPEED_ARRIVAL: train '{train.train_id}' overshot station stop "
+                                        f"marker at {eoa_m:.1f} m at {v_acc * 3.6:.1f} km/h — braking continues "
+                                        f"without retroactive speed snap"
+                                    ),
+                                )
+                            )
+                            self._overspeed_warned.add(warn_key)
+                            already_warned = True
+                    else:
+                        a_stop = (v_acc * v_acc) / (2.0 * D)
+                        if a_stop <= b_used + 1e-9:
+                            # Exact-arrival modulated braking (driver regulation to marker)
+                            a_step = -a_stop
+                        else:
+                            # Above the service braking curve: escalate within the
+                            # physical emergency capability so the train still lands on
+                            # the marker; explicit warning remains visible to the audit.
+                            a_step = -min(a_stop, b_hard)
+                            if not already_warned and v_acc > ARRIVAL_SPEED_TOL_MS:
+                                train.events.append(
+                                    BoundaryEvent(
+                                        event_type=CrossingEventType.WARNING_OVERSPEED_ARRIVAL,
+                                        timestamp_s=round(self.current_time_s + t_used, 3),
+                                        route_distance_m=round(s_acc, 2),
+                                        train_id=train.train_id,
+                                        is_front=True,
+                                        speed_ms=round(v_acc, 4),
+                                        description=(
+                                            f"ERR_OVERSPEED_ARRIVAL: train '{train.train_id}' approaches station stop "
+                                            f"marker {eoa_m:.1f} m at {v_acc * 3.6:.1f} km/h requiring {a_stop:.2f} m/s^2 "
+                                            f"> service braking {b_used:.2f} m/s^2 — braking continues without snap (overshoot possible)"
+                                        ),
+                                    )
+                                )
+                                self._overspeed_warned.add(warn_key)
+                                already_warned = True
+                    a_last = a_step
+                    # In-substep standstill closure (physical: braking to rest mid-substep)
+                    if a_step < 0.0 and v_acc + a_step * h <= 0.0:
+                        t_h_stop = v_acc / max(1e-9, -a_step)
+                        t_h_stop = min(t_h_stop, h)
+                        s_acc += v_acc * t_h_stop + 0.5 * a_step * (t_h_stop ** 2)
+                        v_acc = 0.0
+                        t_used += t_h_stop
+                        break
+                    s_acc += v_acc * h + 0.5 * a_step * (h ** 2)
+                    v_acc = max(0.0, v_acc + a_step * h)
+                    t_used += h
+
+                new_s = s_acc
+                new_v = v_acc
+                a_req = a_last
             else:
-                new_s = curr_s + curr_v * dt + 0.5 * a_req * (dt ** 2)
-                new_v = max(0.0, curr_v + a_req * dt)
+                # Numerical integration step
+                if a_req < 0 and curr_v + a_req * dt < 0:
+                    t_stop = -curr_v / a_req if abs(a_req) > 1e-6 else 0.0
+                    step_dt = max(1e-4, t_stop)
+                    new_s = curr_s + curr_v * step_dt + 0.5 * a_req * (step_dt ** 2)
+                    new_v = 0.0
+                else:
+                    new_s = curr_s + curr_v * dt + 0.5 * a_req * (dt ** 2)
+                    new_v = max(0.0, curr_v + a_req * dt)
 
             # Hard clamp: simulated speed must never exceed permissible speed envelope (Task 2 / DEF-16)
             v_permissible_next = train.get_permissible_speed_ms(min(route_len, new_s))
@@ -623,16 +750,44 @@ class MultiTrainSimulator:
             if new_v * 3.6 > max_kmh:
                 new_v = max_kmh / 3.6
 
+            # v1.11.0 / DEF-18: EOA crossing resolution obeys braking-curve physics.
+            # Speed may be clamped to 0 ONLY at effective standstill (< 0.5 km/h).
+            # Faster approaches emit an explicit WARNING_OVERSPEED_ARRIVAL event.
             if eoa_m < route_len and new_s >= eoa_m:
-                new_s = max(0.0, eoa_m - 0.1)
-                new_v = 0.0
-                a_req = 0.0
+                if new_v <= ARRIVAL_SPEED_TOL_MS:
+                    new_s = eoa_m if cause == "STATION_STOP" else max(0.0, eoa_m - 0.1)
+                    new_v = 0.0
+                    a_req = 0.0
+                else:
+                    train.events.append(
+                        BoundaryEvent(
+                            event_type=CrossingEventType.WARNING_OVERSPEED_ARRIVAL,
+                            timestamp_s=round(self.current_time_s, 3),
+                            route_distance_m=round(curr_s, 2),
+                            train_id=train.train_id,
+                            is_front=True,
+                            speed_ms=round(new_v, 4),
+                            description=(
+                                f"ERR_OVERSPEED_ARRIVAL: train '{train.train_id}' approaches target at "
+                                f"{new_v * 3.6:.1f} km/h crossing EOA {eoa_m:.1f} m (cause={cause or 'UNKNOWN'}); "
+                                f"speed snaps prohibited — service braking continues"
+                            ),
+                        )
+                    )
+                    if cause != "STATION_STOP":
+                        # Signalling movement authority: protective ATP clamp at the EOA
+                        # (a SPAD is not permitted); the warning above keeps it visible.
+                        new_s = max(0.0, eoa_m - 0.1)
+                        new_v = 0.0
+                        a_req = 0.0
+                    # Station stops: allow physical overshoot; braking curve remains active.
 
             train.current_speed_ms = round(new_v, 4)
             train.current_acceleration_ms2 = round(a_req, 4)
             train.current_position_m = round(min(route_len, new_s), 3)
 
-            if new_s >= route_len - 0.2 and new_v < 0.2:
+            # v1.11.0 / DEF-18: route completion finalizes only at standstill (< 0.5 km/h)
+            if new_s >= route_len - 0.2 and new_v <= ARRIVAL_SPEED_TOL_MS:
                 train.current_position_m = route_len
                 train.current_speed_ms = 0.0
                 train.current_acceleration_ms2 = 0.0

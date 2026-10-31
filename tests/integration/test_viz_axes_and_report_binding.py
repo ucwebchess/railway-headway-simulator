@@ -27,7 +27,7 @@ def test_axis_layout_seven_component():
     """Test 1a: Seven-component chart has Block Resource on X and Blocking Time [s] on Y."""
     decomp1 = BlockingTimeDecomposition(1.0, 5.0, 10.0, 0.0, 2.0, 0.0, 1.0)
     decomp2 = BlockingTimeDecomposition(1.0, 4.0, 12.0, 0.0, 2.0, 0.0, 1.0)
-    bi1 = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp1)
+    bi1 = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp1, physical_start_offset_m=0.0, physical_end_offset_m=1000.0, alignment_start_m=0.0, alignment_end_m=1000.0)
     bi2 = ResourceBlockingInterval("INT_02", "BLK_02", ResourceCategory.TRACK_BLOCK, "TRN_01", 10.0, 30.0, decomposition=decomp2)
 
     fig = create_seven_component_figure([bi1, bi2])
@@ -43,7 +43,7 @@ def test_axis_layout_stairway():
     """Test 1b: Blocking stairway chart has Block Resource on X and Time [s] on Y."""
     decomp1 = BlockingTimeDecomposition(1.0, 5.0, 10.0, 0.0, 2.0, 0.0, 1.0)
     decomp2 = BlockingTimeDecomposition(1.0, 4.0, 12.0, 0.0, 2.0, 0.0, 1.0)
-    bi1 = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp1)
+    bi1 = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp1, physical_start_offset_m=0.0, physical_end_offset_m=1000.0, alignment_start_m=0.0, alignment_end_m=1000.0)
     bi2 = ResourceBlockingInterval("INT_02", "BLK_02", ResourceCategory.TRACK_BLOCK, "TRN_01", 10.0, 30.0, decomposition=decomp2)
     conf = ResourceConflict("C1", bi1, bi1, ConflictType.IDENTICAL_RESOURCE, 19.0, 0.0, 19.0, 0.0)
 
@@ -133,7 +133,7 @@ def test_report_binding_from_loaded_excel_project():
     project = convert_raw_to_canonical(raw_wbs)
 
     decomp = BlockingTimeDecomposition(1.0, 5.0, 10.0, 0.0, 2.0, 0.0, 1.0)
-    bi = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp)
+    bi = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp, physical_start_offset_m=0.0, physical_end_offset_m=1000.0, alignment_start_m=0.0, alignment_end_m=1000.0)
     hw = HeadwayResult(
         run_id="RUN_01",
         analysis_id="AN_01",
@@ -230,7 +230,7 @@ def test_report_binding_via_session_state_fallback(monkeypatch):
     monkeypatch.setattr(session_state, "current_project", project)
 
     decomp = BlockingTimeDecomposition(1.0, 5.0, 10.0, 0.0, 2.0, 0.0, 1.0)
-    bi = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp)
+    bi = ResourceBlockingInterval("INT_01", "BLK_01", ResourceCategory.TRACK_BLOCK, "TRN_01", 0.0, 19.0, decomposition=decomp, physical_start_offset_m=0.0, physical_end_offset_m=1000.0, alignment_start_m=0.0, alignment_end_m=1000.0)
     hw = HeadwayResult(
         run_id="RUN_01",
         analysis_id="AN_01",

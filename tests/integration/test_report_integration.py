@@ -121,6 +121,10 @@ def _create_synthetic_full_package(
                 decomposition=decomp,
                 physical_start_offset_m=idx * 600.0,
                 physical_end_offset_m=(idx + 1) * 600.0,
+                # v1.11.0 / Task 5: synthetic fixture carries alignment (network) stationing
+                # so reporting consumers can derive true chainage/length.
+                alignment_start_m=idx * 600.0,
+                alignment_end_m=(idx + 1) * 600.0,
             )
         )
 
@@ -308,9 +312,21 @@ def _create_synthetic_full_package(
             "provenance_records": prov_records,
             "blocking_intervals": intervals,
             "controlling_bottleneck_id": "BLK_03",
-            "stochastic_headway_samples": [90.0 + k * 0.4 for k in range(30)],
+            "stochastic_headway_samples": [headway_s + 0.0 + k * 0.4 for k in range(30)],
             "tvs_events": [tvs_ev],
             "scenarios": ["SCEN_INTEG_BASE", "SCEN_INTEG_CBTC"],
+            # v1.11.0 / Task 2: single-source Monte Carlo payload consumed by Section 15.
+            "monte_carlo_results": {
+                "samples_s": [headway_s + k * 0.4 for k in range(30)],
+                "mean_s": headway_s + 1.8,
+                "std_dev_s": 2.5,
+                "p50_s": headway_s + 1.2,
+                "p90_s": headway_s + 5.0,
+                "p95_s": headway_s + 6.5,
+                "p99_s": headway_s + 8.5,
+                "replications": 30,
+                "deterministic_headway_s": headway_s,
+            },
         },
     )
 
@@ -499,14 +515,14 @@ class TestReportIntegration:
         assert (raw_df["Setup (s)"] > 0.0).any(), "Table Setup (s) must contain non-zero values"
         assert (raw_df["Approach (s)"] > 0.0).any(), "Table Approach (s) must contain non-zero values"
         assert (raw_df["Release (s)"] > 0.0).any(), "Table Release (s) must contain non-zero values"
-        assert (raw_df["Chainage (km)"] > 0.0).any(), "Table Chainage (km) must contain non-zero values"
+        assert (raw_df["Route-Relative Chainage (km)"] > 0.0).any(), "Table Route-Relative Chainage (km) must contain non-zero values"
         assert (raw_df["Length (m)"] > 0.0).all(), "Table Length (m) must be non-zero for all rows"
 
         # In formatted dataframe as well
         assert any(float(v) > 0.0 for v in formatted_df["Setup (s)"])
         assert any(float(v) > 0.0 for v in formatted_df["Approach (s)"])
         assert any(float(v) > 0.0 for v in formatted_df["Release (s)"])
-        assert any(float(v) > 0.0 for v in formatted_df["Chainage (km)"])
+        assert any(float(v) > 0.0 for v in formatted_df["Route-Relative Chainage (km)"])
         assert all(float(v) > 0.0 for v in formatted_df["Length (m)"])
 
         # 3. Sum of 7 components in the table equals Total Blocking time
@@ -562,7 +578,7 @@ class TestReportIntegration:
         assert (raw_df["Setup (s)"] > 0.0).all()
         assert (raw_df["Approach (s)"] > 0.0).any()
         assert (raw_df["Release (s)"] > 0.0).all()
-        assert (raw_df["Chainage (km)"] > 0.0).any()
+        assert (raw_df["Route-Relative Chainage (km)"] > 0.0).any()
 
         # Controlling bottleneck BLK_UP_092
         controlling_rows = raw_df[raw_df["Resource ID"] == "BLK_UP_092"]
@@ -955,7 +971,11 @@ class TestReportIntegration:
 
         app_trace = next(t for t in fig_plt.data if t.name == "Arrival Approach")
         assert getattr(app_trace, "base", None) is None
-        assert list(app_trace.y) == [15.0, 15.0, 15.0, 15.0, 15.0]
+        # v1.11.0 / Task 4: exact trajectory-derived per-platform approach durations
+        # (crossing time of the platform start vs. the recorded standstill arrival).
+        assert list(app_trace.y) == pytest.approx(
+            [23.203, 23.801, 23.723, 23.723, 23.735], abs=0.15
+        )
 
         dwell_trace = next(t for t in fig_plt.data if t.name == "Passenger Dwell")
         assert getattr(dwell_trace, "base", None) is None
@@ -963,7 +983,9 @@ class TestReportIntegration:
 
         clr_trace = next(t for t in fig_plt.data if t.name == "Departure Clearance")
         assert getattr(clr_trace, "base", None) is None
-        assert list(clr_trace.y) == [15.0, 15.0, 15.0, 15.0, 15.0]
+        # v1.11.0 / Task 4: rear clearance is trajectory-derived (rear leaves platform end)
+        # plus the system release delay — no longer a flat placeholder.
+        assert list(clr_trace.y) == pytest.approx([32.766] * 5, abs=0.05)
 
         # 3. Assert dynamic narrative contains calculated max occupation time
         max_tot = df["Total Occupation (s)"].max()

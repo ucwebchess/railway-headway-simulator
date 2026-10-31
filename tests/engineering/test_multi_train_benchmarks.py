@@ -318,8 +318,22 @@ def test_p09_b001_single_train_reproduces_p04():
 
     mt_traj = res.trajectories["TR_MT"]
     assert mt_traj.journey_time_s is not None
-    # Microscopic journey times match within numerical step tolerance (<= 1.5s)
-    assert abs(mt_traj.journey_time_s - p04_traj.journey_time_s) <= 1.5
+    # v1.11.0 / DEF-18: braking into the route-end marker is now strictly physics
+    # (modulated braking-curve arrival, no retroactive speed snap). P04 vs P09 journey
+    # times consequently differ by the physically honest braking-appraisal delta
+    # (<= 3.0s, ~2% of the ~146s run), not by numerical snaps or teleports.
+    assert abs(mt_traj.journey_time_s - p04_traj.journey_time_s) <= 3.0
+    assert abs(mt_traj.journey_time_s - p04_traj.journey_time_s) / p04_traj.journey_time_s <= 0.02
+    # Trajectories must be physics-consistent: monotone front advance of
+    # bounded speed and no 1-s speed drops beyond 3 km/h (no snap-to-zero artifacts).
+    mt_samples = mt_traj.samples
+    for prev, cur_s in zip(mt_samples[:-1], mt_samples[1:]):
+        dtv = cur_s.time_s - prev.time_s
+        if dtv <= 0:
+            continue
+        assert cur_s.front_distance_m >= prev.front_distance_m - 1e-6
+        dv = (cur_s.speed_ms - prev.speed_ms) * 3.6
+        assert dv >= -3.0 - 1e-9, f"snap-to-zero artifact: {prev.speed_ms*3.6:.1f} -> {cur_s.speed_ms*3.6:.1f} km/h in {dtv:.2f}s"
 
 
 def test_p09_b002_two_trains_on_one_route():

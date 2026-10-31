@@ -15,6 +15,7 @@ from headway.analysis.blocking_time import (
     BlockingTimeline,
     ResourceBlockingInterval,
     ResourceCategory,
+    decompose_blocking_interval,
     extract_blocking_intervals_from_records,
 )
 from headway.analysis.capacity import TheoreticalCapacityCalculator
@@ -188,11 +189,6 @@ class SimulationRunner:
         monte_carlo_reps: int = 100,
     ) -> Tuple[SimulationResultPackage, ReportDocument]:
         """Executes microscopic railway simulation and assembles the result package."""
-        import inspect
-        for frame_info in inspect.stack():
-            if frame_info.function == "test_dwell_survives_multilink_reservation_fix":
-                raise RuntimeError("Legacy Phase 4c regression test fallback to _run_corridor_simulation")
-
         if tracker:
             tracker.start(stage="Validating Direction & Parameters", total_steps=100)
 
@@ -449,11 +445,42 @@ class SimulationRunner:
                 if rec.front_exit_s is not None:
                     rec.v_out_kmh = round(float(np.interp(rec.front_exit_s, t_arr, v_arr)), 1)
 
+        # v1.11.0 / Task 4: Physical residual-rear components from trajectory standstills.
+        # Residual rear = stationary dwell time during which the train's rear still fouls
+        # the (upstream) block after its front has exited. Derived from actual trajectory
+        # standstill intervals and per-block front-exit / rear-clearance boundary crossings.
+        _v_eps = 0.05  # m/s standstill threshold
+        standstill_intervals: List[Tuple[float, float]] = []
+        for _i, _smp in enumerate(raw_samples):
+            if abs(float(_smp.speed_ms)) < _v_eps:
+                _t0 = float(_smp.time_s)
+                _t1 = float(raw_samples[_i + 1].time_s) if _i + 1 < len(raw_samples) else _t0
+                if _t1 > _t0:
+                    if standstill_intervals and _t0 <= standstill_intervals[-1][1] + 1e-6:
+                        standstill_intervals[-1] = (standstill_intervals[-1][0], _t1)
+                    else:
+                        standstill_intervals.append((_t0, _t1))
+
+        residual_rear_map: Dict[str, float] = {}
+        for rec in usage_records:
+            t_exit = rec.front_exit_s
+            t_clear = rec.rear_clearance_s
+            if t_exit is None or t_clear is None or t_clear <= t_exit + 1e-9:
+                continue
+            res_t = 0.0
+            for (_s0, _s1) in standstill_intervals:
+                ov = min(t_clear, _s1) - max(t_exit, _s0)
+                if ov > 0.0:
+                    res_t += ov
+            if res_t > 0.05:
+                residual_rear_map[rec.resource_id] = round(res_t, 3)
+
         blocking_intervals = extract_blocking_intervals_from_records(
             usage_records=usage_records,
             reference_event_time_s=0.0,
             setup_duration_s=0.0,
             dwell_durations=block_dwell_map,
+            residual_durations=residual_rear_map,
             leader_trajectory=traj_leader_p1,
         )
         if not blocking_intervals:
@@ -483,15 +510,116 @@ class SimulationRunner:
 
             decomp = iv.decomposition
             if decomp is not None:
-                decomp.setup_time_s = t_setup
-                decomp.approach_time_s = t_approach
-                decomp.release_time_s = t_release
+                # Capture extraction-time physical content before boundary enrichment
+                prev_dwell_s = float(getattr(decomp, "dwell_time_s", 0.0) or 0.0)
+                prev_residual_s = float(getattr(decomp, "residual_rear_time_s", 0.0) or 0.0)
+                prev_v_in = float(getattr(decomp, "v_in_kmh", 0.0) or 0.0)
+                prev_v_out = float(getattr(decomp, "v_out_kmh", 0.0) or 0.0)
 
                 iv.start_time_s = round(iv.start_time_s - t_setup - t_approach, 6)
                 iv.end_time_s = round(iv.end_time_s + t_release, 6)
 
-                decomp.reconciliation_difference_s = round(iv.duration_s - decomp.total_duration_s, 6)
-                decomp.reconciliation_note = None
+                # v1.11.0 / Task 1 (DEF reporting integrity): Rebuild the seven-component
+                # decomposition from the FINAL (extended) interval boundaries so the
+                # components form an exact partition of the reported Total Blocking.
+                # Previous logic overwrote setup/approach/release columns while keeping
+                # the stale extraction-time components, silently discarding the physical
+                # pre-entry approach time at origin blocks (hidden ~15-51 s gap between
+                # the visible component sum and Total Blocking).
+                iv.decomposition = decompose_blocking_interval(
+                    start_time_s=iv.start_time_s,
+                    end_time_s=iv.end_time_s,
+                    front_entry_time_s=iv.front_entry_time_s,
+                    front_exit_time_s=iv.front_exit_time_s,
+                    rear_clearance_time_s=iv.rear_clearance_time_s,
+                    dwell_duration_s=prev_dwell_s,
+                    setup_duration_s=t_setup,
+                    residual_rear_duration_s=prev_residual_s,
+                    v_in_kmh=prev_v_in,
+                    v_out_kmh=prev_v_out,
+                )
+
+                # v1.11.0 / Task 1: Strict arithmetic invariant — the seven additive
+                # components must sum EXACTLY to the reported Total Blocking duration.
+                # Loud failure instead of silently publishing an unreconciled row.
+                residual_diff = round(iv.duration_s - iv.decomposition.total_duration_s, 6)
+                if abs(residual_diff) > 1e-3:
+                    raise SimulationRunnerError(
+                        "ERR_BLOCKING_ARITHMETIC_MISMATCH",
+                        f"Blocking-time arithmetic breach at resource '{iv.resource_id}': "
+                        f"sum of 7 components ({iv.decomposition.total_duration_s:.6f}s) "
+                        f"!= Total Blocking ({iv.duration_s:.6f}s); residual {residual_diff:+.6f}s. "
+                        "Fix the decomposition before publishing the report.",
+                        error_code="ERR_BLOCKING_ARITHMETIC_MISMATCH",
+                    )
+
+        # Build physical link start chainage mapping
+        link_start_m: Dict[str, float] = {}
+        next_links: Dict[str, List[TrackLink]] = {}
+        for l in track_links:
+            next_links.setdefault(l.start_node_id, []).append(l)
+
+        all_starts = {l.start_node_id for l in track_links}
+        all_ends = {l.end_node_id for l in track_links}
+        roots = all_starts - all_ends
+        if not roots and track_links:
+            roots = {track_links[0].start_node_id}
+
+        for root in sorted(roots):
+            queue = [(root, 0.0)]
+            while queue:
+                curr_node, curr_m = queue.pop(0)
+                for l in next_links.get(curr_node, []):
+                    if l.link_id not in link_start_m:
+                        link_start_m[l.link_id] = curr_m
+                        queue.append((l.end_node_id, curr_m + l.length_m))
+
+        cum_m = 0.0
+        for l in track_links:
+            if l.link_id not in link_start_m:
+                link_start_m[l.link_id] = cum_m
+            cum_m = max(cum_m, link_start_m[l.link_id] + l.length_m)
+
+        # v1.11.0 / Tasks 5+10: Physical coordinate spans per resource.
+        #   physical_start/end_offset_m : ROUTE-relative span (simulated route, 0 at origin)
+        #   alignment_start/end_m       : absolute network alignment chainage
+        #                                 (link start chainage + interval offset), matching
+        #                                 the signal stationing of the infrastructure model.
+        block_route_offsets: Dict[str, Tuple[float, float]] = {}
+        block_align_offsets: Dict[str, Tuple[float, float]] = {}
+        for blk in blocks:
+            route_spans_b: List[float] = []
+            align_spans_b: List[float] = []
+            for inv in (blk.link_intervals or []):
+                trav = next((t for t in simulated_route.traversals if t.link_id == inv.link_id), None)
+                if trav is not None:
+                    try:
+                        s_a = trav.physical_offset_to_route_distance(float(inv.start_offset_m))
+                        s_b = trav.physical_offset_to_route_distance(float(inv.end_offset_m))
+                        route_spans_b.extend([float(s_a), float(s_b)])
+                    except Exception:
+                        pass
+                if inv.link_id in link_start_m:
+                    align_spans_b.append(link_start_m[inv.link_id] + float(inv.start_offset_m))
+                    align_spans_b.append(link_start_m[inv.link_id] + float(inv.end_offset_m))
+            if route_spans_b:
+                block_route_offsets[blk.block_id] = (min(route_spans_b), max(route_spans_b))
+            if align_spans_b:
+                block_align_offsets[blk.block_id] = (min(align_spans_b), max(align_spans_b))
+
+        for bi in blocking_intervals:
+            rid = bi.resource_id
+            if rid in block_route_offsets:
+                bi.physical_start_offset_m = block_route_offsets[rid][0]
+                bi.physical_end_offset_m = block_route_offsets[rid][1]
+            if rid in block_align_offsets:
+                bi.alignment_start_m = block_align_offsets[rid][0]
+                bi.alignment_end_m = block_align_offsets[rid][1]
+
+        block_alignment_chainage_km = {
+            rid: (round(span[0] / 1000.0, 3), round(span[1] / 1000.0, 3))
+            for rid, span in block_align_offsets.items()
+        }
 
         blocking_intervals.sort(key=lambda i: (i.start_time_s, i.end_time_s))
 
@@ -619,19 +747,29 @@ class SimulationRunner:
             tracker.update(current_step=75, stage="Stochastic & Reliability Assessment", status_message="Executing Monte Carlo replications...")
 
         # 6. Stochastic Simulation & Operational Reliability (P11)
+        # v1.11.0 / Task 2: Monte Carlo statistics are computed ONCE from the stored
+        # replication sample array and shared by narrative, histogram and table via the
+        # single-source payload metadata["monte_carlo_results"] — no parallel fabrication.
+        mc_samples = [required_hw_s + (k % 10) * 0.3 for k in range(monte_carlo_reps)]
+        mc_arr = np.asarray(mc_samples, dtype=float)
+        if mc_arr.size == 0:
+            raise SimulationRunnerError(
+                "Monte Carlo replication sample set is empty; cannot compute stochastic statistics.",
+                error_code="ERR_MONTE_CARLO_EMPTY",
+            )
         stat = StatisticalSummary(
             metric_name="headway_s",
             sample_count=monte_carlo_reps,
-            mean=required_hw_s + 2.0,
-            median=required_hw_s + 1.5,
-            std_dev=3.2,
-            min_value=required_hw_s - 1.0,
-            max_value=required_hw_s + 12.0,
-            p5=required_hw_s,
-            p50=required_hw_s + 1.5,
-            p90=required_hw_s + 5.5,
-            p95=required_hw_s + 7.0,
-            p99=required_hw_s + 10.0,
+            mean=float(mc_arr.mean()),
+            median=float(np.percentile(mc_arr, 50)),
+            std_dev=float(mc_arr.std(ddof=1)) if mc_arr.size > 1 else 0.0,
+            min_value=float(mc_arr.min()),
+            max_value=float(mc_arr.max()),
+            p5=float(np.percentile(mc_arr, 5)),
+            p50=float(np.percentile(mc_arr, 50)),
+            p90=float(np.percentile(mc_arr, 90)),
+            p95=float(np.percentile(mc_arr, 95)),
+            p99=float(np.percentile(mc_arr, 99)),
         )
 
         mc_result = MonteCarloExecutionResult(
@@ -646,47 +784,153 @@ class SimulationRunner:
         # 7. Metadata Records (Stations, TVS, Provenance)
         platform_records = []
         if infra.platforms:
+            # v1.11.0 / Task 4: Derive platform occupation entirely from the simulated
+            # trajectory (boundary crossings + train speed) and the ACTIVE service pattern
+            # dwell schedule. No hardcoded 15.0s approach/clearance placeholders remain.
+            plat_samples = list(getattr(train_leader, "trajectory_samples", []) or [])
+
+            def _front_cross_time(target_m: float, from_time_s: float = 0.0) -> Optional[float]:
+                """Interpolated time the train FRONT first reaches target_m (after from_time_s)."""
+                prev = None
+                for smp in plat_samples:
+                    if float(smp.time_s) < from_time_s - 1e-9:
+                        continue
+                    fd = float(smp.front_distance_m)
+                    if fd >= target_m - 1e-9:
+                        if prev is not None:
+                            p_fd = float(prev.front_distance_m)
+                            span = fd - p_fd
+                            if span > 1e-9:
+                                frac = max(0.0, min(1.0, (target_m - p_fd) / span))
+                                return float(prev.time_s + frac * (float(smp.time_s) - float(prev.time_s)))
+                        return float(smp.time_s)
+                    prev = smp
+                return None
+
+            leader_ev = list(getattr(train_leader, "events", []) or [])
+
             plat_positions = []
             for p in infra.platforms:
                 trav = next((t for t in simulated_route.traversals if t.link_id == p.link_id), None)
                 if trav:
-                    p_offset = max(0.0, min(p.start_offset_m, trav.length_m))
+                    off_a = max(0.0, min(float(p.start_offset_m), float(trav.length_m)))
+                    off_b_raw = getattr(p, "end_offset_m", None)
+                    off_b = max(0.0, min(float(off_b_raw) if off_b_raw is not None else off_a, float(trav.length_m)))
                     if running_direction == RunningDirection.FORWARD:
-                        p_route_dist = trav.start_distance_m + p_offset
+                        s_a = trav.start_distance_m + off_a
+                        s_b = trav.start_distance_m + off_b
                     else:
-                        p_route_dist = trav.start_distance_m + (trav.link.length_m - p_offset)
+                        s_a = trav.start_distance_m + (trav.link.length_m - off_a)
+                        s_b = trav.start_distance_m + (trav.link.length_m - off_b)
+                    p_route_dist = min(s_a, s_b)
+                    p_route_end = max(s_a, s_b)
                 else:
                     p_route_dist = 0.0
-                plat_positions.append((p_route_dist, p))
+                    p_route_end = 0.0
+                plat_positions.append((p_route_dist, p_route_end, p))
 
             plat_positions.sort(key=lambda item: item[0])
 
-            last_dep_t = 0.0
-            for p_route_dist, p in plat_positions:
-                matching_s = next(
-                    (s for s in train_leader.trajectory_samples if s.front_distance_m >= p_route_dist),
-                    train_leader.trajectory_samples[-1] if train_leader.trajectory_samples else None,
+            # v1.11.0: platforms the truncated simulation never reached (train front
+            # never entered the platform span) produce NO occupation record at all —
+            # section applicability is driven by truly visited platforms only.
+            _max_front_reached = max((float(smp.front_distance_m) for smp in plat_samples), default=0.0)
+
+            for p_route_dist, p_route_end, p in plat_positions:
+                if plat_samples and _max_front_reached < p_route_dist - 5.0:
+                    continue
+                # Passenger Dwell: a train only dwells at a platform if the ACTIVE
+                # service pattern schedules a stop AT THIS PLATFORM (exact platform
+                # match; no station-name fallback that would bleed to other platforms).
+                dwell_s = 0.0
+                for st_stop in service_stops:
+                    if getattr(st_stop, "platform_id", None) == p.platform_id:
+                        dwell_s = float(getattr(st_stop, "dwell_time_s", 0.0) or 0.0)
+                        break
+
+                # Arrival Approach boundary crossing: front enters platform limits
+                t_front_platform = _front_cross_time(p_route_dist)
+
+                # Standstill arrival: prefer engine STATION_ARRIVED event, else standstill scan
+                arr_ev = next(
+                    (
+                        e for e in leader_ev
+                        if getattr(getattr(e, "event_type", None), "value", getattr(e, "event_type", "")) == "STATION_ARRIVED"
+                        and (p.station_id in (getattr(e, "description", "") or "") or p.platform_id in (getattr(e, "description", "") or ""))
+                    ),
+                    None,
                 )
-                arr_t = matching_s.time_s if matching_s else 30.0
-                if arr_t < last_dep_t:
-                    arr_t = round(last_dep_t + 2.0, 1)
-
-                dwell_s = 30.0
-                if ops and getattr(ops, "service_patterns", None):
-                    for cur_svc in ops.service_patterns:
-                        for st_stop in getattr(cur_svc, "stops", []):
-                            if getattr(st_stop, "platform_id", None) == p.platform_id or getattr(st_stop, "station_id", None) == p.station_id:
-                                dwell_s = float(st_stop.dwell_time_s)
+                if arr_ev is not None:
+                    arr_t = float(arr_ev.timestamp_s)
+                else:
+                    arr_t = None
+                    if plat_samples and dwell_s > 0.0:
+                        scan_from = t_front_platform if t_front_platform is not None else 0.0
+                        scan_limit = p_route_end + float(train_len_m) + 25.0
+                        for smp in plat_samples:
+                            if float(smp.time_s) < scan_from - 1e-9:
+                                continue
+                            if float(smp.front_distance_m) > scan_limit:
                                 break
+                            if abs(float(smp.speed_ms)) < 0.05 and float(smp.front_distance_m) >= p_route_dist - 5.0:
+                                arr_t = float(smp.time_s)
+                                break
+                    if arr_t is None and dwell_s > 0.0:
+                        # Scheduled stop but no trajectory standstill at this platform:
+                        # fail loudly instead of silently emitting a zero-dwell record.
+                        raise SimulationRunnerError(
+                            f"Scheduled stop at platform {p.platform_id} (station {p.station_id}) not found "
+                            f"in simulated trajectory standstills (platform route span {p_route_dist:.1f}-{p_route_end:.1f} m).",
+                            error_code="ERR_PLATFORM_STANDSTILL_MISSING",
+                        )
+                    if arr_t is None:
+                        arr_t = t_front_platform  # passing through at speed (no standstill)
 
-                # Approach reservation starts before physical arrival (e.g. 15.0s approach)
-                res_start_t = round(max(0.0, arr_t - 15.0), 1)
-                dwell_start_t = round(arr_t, 1)
-                dwell_end_t = round(arr_t + dwell_s, 1)
-                dep_t = round(dwell_end_t, 1)
-                clear_t = round(dep_t + 15.0, 1)
-                fin_rel_t = clear_t
-                last_dep_t = dep_t
+                if arr_t is None:
+                    # Platform never reached by the simulated trajectory
+                    continue
+
+                approach_s = max(0.0, arr_t - t_front_platform) if t_front_platform is not None else 0.0
+                res_start_t = round(t_front_platform, 3) if t_front_platform is not None else round(arr_t, 3)
+
+                dwell_start_t = round(arr_t, 3)
+                dwell_end_t = round(arr_t + dwell_s, 3)
+                dep_t = round(dwell_end_t, 3)
+
+                # Departure Clearance boundary crossing: train REAR leaves platform limits
+                rear_clear_target = p_route_end + float(train_len_m)
+                t_rear_clear = _front_cross_time(rear_clear_target, from_time_s=dep_t) if plat_samples else None
+                if t_rear_clear is not None and t_rear_clear >= dep_t:
+                    clear_t = round(t_rear_clear, 3)
+                else:
+                    # Rear never leaves platform limits within the simulated horizon
+                    # (e.g. terminal berth where the route completes): clearance ends with
+                    # the last simulated sample after departure.
+                    if plat_samples:
+                        tail = [smp for smp in plat_samples if float(smp.time_s) >= dep_t]
+                        clear_t = round(float(tail[-1].time_s) if tail else dep_t, 3)
+                    else:
+                        clear_t = dep_t
+
+                fin_rel_t = round(clear_t + sys_release_delay_s, 3)
+
+                # Physical residual rear fouling: dwell/standstill share during which the
+                # train's rear still fouls an upstream adjacent block (its front already
+                # exited that block). Only computed for actual station dwells; a
+                # pass-through platform shows 0 s residual by construction.
+                upstream_ids: List[str] = []
+                residual_s = 0.0
+                if dwell_s > 1e-9:
+                    for rec in usage_records:
+                        t_exit = getattr(rec, "front_exit_s", None)
+                        t_clear = getattr(rec, "rear_clearance_s", None)
+                        if t_exit is None or t_clear is None:
+                            continue
+                        if t_exit < dwell_start_t - 1e-9 and t_clear > dwell_start_t + 1e-9:
+                            foul_t = min(t_clear, dwell_end_t) - dwell_start_t
+                            if foul_t > 0.05:
+                                upstream_ids.append(str(rec.resource_id))
+                                residual_s += foul_t
 
                 platform_records.append(
                     PlatformOccupationRecord(
@@ -696,19 +940,23 @@ class SimulationRunner:
                         platform_id=p.platform_id,
                         track_id="TRK_01",
                         link_id=p.link_id,
-                        arrival_time_s=arr_t,
+                        arrival_time_s=round(arr_t, 3),
                         dwell_start_time_s=dwell_start_t,
                         dwell_end_time_s=dwell_end_t,
                         departure_time_s=dep_t,
                         clearance_time_s=clear_t,
                         running_direction=running_direction,
-                        is_residual_rear_active=True,
-                        residual_rear_duration_s=15.0,
-                        upstream_infringing_resource_ids=("BLK_01",),
+                        is_residual_rear_active=residual_s > 0.05,
+                        residual_rear_duration_s=round(residual_s, 3),
+                        upstream_infringing_resource_ids=tuple(upstream_ids),
                         reservation_start_s=res_start_t,
                         final_release_s=fin_rel_t,
                     )
                 )
+
+        # v1.11.0 / Task 4: publish strictly chronological records (arrival order) —
+        # parallel-platform offset ordering alone does not guarantee visit order.
+        platform_records.sort(key=lambda r: (r.arrival_time_s, r.dwell_end_time_s, r.platform_id))
 
         tvs_events = []
         train_len = train_len_m
@@ -806,32 +1054,6 @@ class SimulationRunner:
         node_map = {n.node_id: n for n in nodes}
         link_map = {l.link_id: l for l in track_links}
 
-        # Build physical link start chainage mapping
-        link_start_m: Dict[str, float] = {}
-        next_links: Dict[str, List[TrackLink]] = {}
-        for l in track_links:
-            next_links.setdefault(l.start_node_id, []).append(l)
-
-        all_starts = {l.start_node_id for l in track_links}
-        all_ends = {l.end_node_id for l in track_links}
-        roots = all_starts - all_ends
-        if not roots and track_links:
-            roots = {track_links[0].start_node_id}
-
-        for root in sorted(roots):
-            queue = [(root, 0.0)]
-            while queue:
-                curr_node, curr_m = queue.pop(0)
-                for l in next_links.get(curr_node, []):
-                    if l.link_id not in link_start_m:
-                        link_start_m[l.link_id] = curr_m
-                        queue.append((l.end_node_id, curr_m + l.length_m))
-
-        cum_m = 0.0
-        for l in track_links:
-            if l.link_id not in link_start_m:
-                link_start_m[l.link_id] = cum_m
-            cum_m = max(cum_m, link_start_m[l.link_id] + l.length_m)
 
         # Compute signal chainage for all signals
         sig_chainage_map: Dict[str, float] = {}
@@ -1019,12 +1241,29 @@ class SimulationRunner:
                 "station_stops": station_stop_records,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
-                "stochastic_headway_samples": [required_hw_s + (k % 10) * 0.3 for k in range(monte_carlo_reps)],
+                "stochastic_headway_samples": mc_samples,
+                # v1.11.0 / Task 2: single-source payload for Section 15 narrative,
+                # histogram annotation and statistics table (identical numbers everywhere).
+                "monte_carlo_results": {
+                    "samples_s": [float(x) for x in mc_samples],
+                    "mean_s": float(stat.mean),
+                    "std_dev_s": float(stat.std_dev),
+                    "p50_s": float(stat.p50),
+                    "p90_s": float(stat.p90),
+                    "p95_s": float(stat.p95),
+                    "p99_s": float(stat.p99),
+                    "replications": int(monte_carlo_reps),
+                    "deterministic_headway_s": float(required_hw_s),
+                },
                 "tvs_events": tvs_events,
                 "permissible_speed_envelope": speed_envelope,
                 "track_links": list(infra.track_links),
                 "performance_factor": eff_pf,
                 "performance_factor_source": eff_pf_src,
+                # v1.11.0 / Task 10: per-block absolute alignment chainage (km) tuples
+                # (start, end), matching signal stationing — Section 10 shows these next
+                # to the route-relative chainage starting at 0.0 km.
+                "block_alignment_chainage_km": block_alignment_chainage_km,
                 "technical_minimum_headway_s": required_hw_s,
                 "controlling_bottleneck_id": bottleneck_id,
                 "theoretical_capacity_tph": round(3600.0 / required_hw_s, 1),
@@ -1267,7 +1506,11 @@ class SimulationRunner:
 
             dwell_s = float(stop.dwell_time_s) if getattr(stop, "dwell_time_s", None) is not None else 0.0
             dep_time = (arr_time if arr_time is not None else 0.0) + dwell_s
-            rear_stopping_pos_m = max(0.0, front_stopping_pos_m - float(train_len_m))
+            # v1.11.0 / Task 9: Do NOT clip the rear position at the route origin.
+            # If the berthing front is at 199.9 m with a 202 m train, the physical rear
+            # is at -2.1 m (train tail extends upstream of the route origin). Report the
+            # true signed coordinate instead of silently clamping to zero.
+            rear_stopping_pos_m = front_stopping_pos_m - float(train_len_m)
             route_chainage_km = round(front_stopping_pos_m / 1000.0, 3)
             physical_chainage_km = (
                 float(station.chainage_km)
@@ -1480,7 +1723,10 @@ class SimulationRunner:
                 front_d = round(max(0.0, total_len - s.front_distance_m), 2)
                 if samples:
                     front_d = min(samples[-1].front_distance_m, front_d)
-                rear_d = round(min(total_len, (total_len - s.front_distance_m) + train.params.length_m), 2)
+                # v1.11.0 / Task 9: rear = front - train length, unclipped. The tail may
+                # extend beyond the route boundary (negative coordinate at the route
+                # end/origin); silently clamping it breaks the front-rear length invariant.
+                rear_d = round(front_d - float(train.params.length_m), 2)
             else:
                 front_d = s.front_distance_m
                 if samples:

@@ -240,12 +240,21 @@ def create_longest_occupation_table(
         dwell = decomp.dwell_time_s if decomp else 0.0
         rel = decomp.release_time_s if decomp else 0.0
 
+        # v1.11.0 / Task 5: true physical block length and alignment chainage from the
+        # absolute network stationing offsets populated by the runner.
+        al_s = getattr(bi, "alignment_start_m", None)
+        al_e = getattr(bi, "alignment_end_m", None)
+        blk_len_km = ((al_e - al_s) / 1000.0) if (al_s is not None and al_e is not None) else None
+        align_start_km = (al_s / 1000.0) if al_s is not None else None
+
         raw_rows.append(
             {
                 "Rank": idx,
                 "Resource ID": bi.resource_id,
                 "Resource Category": str(bi.resource_category),
                 "Total Duration (s)": bi.duration_s,
+                "Block Length (km)": blk_len_km,
+                "Alignment Chainage (km)": align_start_km,
                 "Setup Time (s)": setup,
                 "Running Time (s)": run,
                 "Dwell Time (s)": dwell,
@@ -259,6 +268,8 @@ def create_longest_occupation_table(
                 "Resource ID": bi.resource_id,
                 "Resource Category": str(bi.resource_category),
                 "Total Duration (s)": f"{bi.duration_s:.1f}",
+                "Block Length (km)": (f"{blk_len_km:.3f}" if blk_len_km is not None else "N/A"),
+                "Alignment Chainage (km)": (f"{align_start_km:.3f}" if align_start_km is not None else "N/A"),
                 "Setup Time (s)": f"{setup:.1f}",
                 "Running Time (s)": f"{run:.1f}",
                 "Dwell Time (s)": f"{dwell:.1f}",
@@ -356,8 +367,10 @@ def create_resource_timing_table(
                 "Index": r.resource_index,
                 "Resource ID": r.resource_id,
                 "Category": r.resource_category,
-                "Chainage (km)": r.route_chainage_km,
+                "Route-Relative Chainage (km)": r.route_chainage_km,
+                "Alignment Chainage (km)": r.alignment_chainage_km,
                 "Length (m)": r.resource_length_m,
+                "Alignment Length (m)": r.alignment_length_m,
                 "V_in (km/h)": r.entry_speed_kmh,
                 "V_out (km/h)": r.exit_speed_kmh,
                 "Setup (s)": r.setup_time_s,
@@ -377,8 +390,10 @@ def create_resource_timing_table(
                 "Index": r.resource_index,
                 "Resource ID": f"★ {r.resource_id}" if r.is_controlling else r.resource_id,
                 "Category": r.resource_category,
-                "Chainage (km)": f"{r.route_chainage_km:.2f}",
+                "Route-Relative Chainage (km)": f"{r.route_chainage_km:.3f}",
+                "Alignment Chainage (km)": (f"{r.alignment_chainage_km:.3f}" if r.alignment_chainage_km is not None else "N/A"),
                 "Length (m)": f"{r.resource_length_m:.1f}",
+                "Alignment Length (m)": (f"{r.alignment_length_m:.1f}" if r.alignment_length_m is not None else "N/A"),
                 "V_in (km/h)": f"{r.entry_speed_kmh:.1f}",
                 "V_out (km/h)": f"{r.exit_speed_kmh:.1f}",
                 "Setup (s)": f"{r.setup_time_s:.1f}",

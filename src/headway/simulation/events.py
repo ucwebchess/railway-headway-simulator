@@ -30,6 +30,10 @@ class CrossingEventType(str, Enum):
     TVS_FRONT_ENTER = "TVS_FRONT_ENTER"
     TVS_REAR_EXIT = "TVS_REAR_EXIT"
     SPEED_RESTRICTION_ENTER = "SPEED_RESTRICTION_ENTER"
+    # v1.11.0 / DEF-18: explicit operational warning channel. Emitted when a train
+    # approaches a stop target too fast to halt within service braking (physical
+    # overshoot permitted; retroactive speed snaps are prohibited).
+    WARNING_OVERSPEED_ARRIVAL = "WARNING_OVERSPEED_ARRIVAL"
 
 
 @dataclass(frozen=True)

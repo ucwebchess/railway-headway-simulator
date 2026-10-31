@@ -66,6 +66,7 @@ from headway.reporting.report_models import (
     ReportType,
     RollingStockSummary,
 )
+from headway.analysis.statistics import StatisticalSummary
 from headway.reporting.result_models import (
     PlatformOccupationRecord,
     SimulationResultPackage,
@@ -695,7 +696,14 @@ class ReportAssembler:
         b_type = str(getattr(c, "bottleneck_type", "CRITICAL_BLOCK"))
         res_id = c.leader_resource_id
         loc_m = getattr(c, "conflict_point_m", 0.0) or getattr(c, "physical_location_m", 0.0) or 0.0
-        slack = getattr(c, "slack_s", 0.0)
+        # v1.11.0 / Task 6: "Slack to second bottleneck" is the headway margin between the
+        # #1 and #2 ranked conflicts (conflict_ranking is sorted by required_headway_s desc),
+        # NOT the stale per-conflict slack bookkeeping.
+        ranking = list(getattr(primary_hw, "conflict_ranking", None) or primary_hw.controlling_conflicts)
+        if len(ranking) >= 2:
+            slack = float(ranking[0].required_headway_s) - float(ranking[1].required_headway_s)
+        else:
+            slack = float(getattr(c, "slack_s", 0.0))
 
         cause = f"Governing resource '{res_id}' ({b_type}) at {loc_m:.1f} m requires a minimum temporal shift of {c.required_headway_s:.1f} s."
         return BottleneckDiagnosis(
@@ -875,16 +883,18 @@ class ReportAssembler:
             t_residual = float(getattr(d, "residual_rear_time_s", 0.0) or 0.0)
             t_release = float(getattr(d, "release_time_s", 0.0) or 0.0)
 
-            t_fixed = t_setup + t_approach + t_dwell + t_release
-            t_variable = t_running + t_clearing + t_residual
-            t_total = float(ctrl_iv.duration_s) if getattr(ctrl_iv, "duration_s", None) else (t_fixed + t_variable)
-            fixed_pct = (t_fixed / t_total * 100.0) if t_total > 0 else 0.0
-            sig_overhead = t_setup + t_approach + t_release
-            dwell_str = (
-                f"{t_dwell:.1f} s station dwell and {sig_overhead:.1f} s of signalling setup/approach/release"
-                if t_dwell > 0
-                else f"{sig_overhead:.1f} s of signalling setup/approach/release"
-            )
+            # v1.11.0 / Task 8: canonical category mapping, identical to the report
+            # conclusions — Fixed Overhead = setup+approach+release; Position-Dependent
+            # Running = running time (performance-factor sensitive); Geometric Clearance
+            # = geometric clearing + residual rear; Passenger Dwell reported separately.
+            t_fixed_overhead = t_setup + t_approach + t_release
+            t_running_pos = t_running
+            t_geometric = t_clearing + t_residual
+            t_total = float(ctrl_iv.duration_s) if getattr(ctrl_iv, "duration_s", None) else (t_fixed_overhead + t_running_pos + t_geometric + t_dwell)
+            fixed_pct = (t_fixed_overhead / t_total * 100.0) if t_total > 0 else 0.0
+            variable_share = t_geometric + t_dwell
+
+            dwell_str = f"{t_dwell:.1f} s" if t_dwell > 0 else "0.0 s (no station dwell on this resource)"
 
             pf = 1.0
             if package and package.metadata and "performance_factor" in package.metadata:
@@ -894,8 +904,8 @@ class ReportAssembler:
                     pf = 1.0
 
             if pf < 0.999:
-                t_running_nom = round(t_running * pf, 1)
-                delta_run = round(t_running - t_running_nom, 1)
+                t_running_nom = round(t_running_pos * pf, 1)
+                delta_run = round(t_running_pos - t_running_nom, 1)
                 h_nom = t_total - delta_run
                 pct_inc = (delta_run / h_nom * 100.0) if h_nom > 0 else 0.0
                 impact_text = (
@@ -912,9 +922,14 @@ class ReportAssembler:
                 )
 
             paras.append(
-                f"The controlling bottleneck {ctrl_id} has a total blocking time of {t_total:.1f} s. "
-                f"Of this, {t_fixed:.1f} s ({fixed_pct:.1f}%) is fixed overhead ({dwell_str}), "
-                f"while only {t_variable:.1f} s is variable running time. {impact_text}"
+                f"The controlling bottleneck {ctrl_id} has a total blocking time of {t_total:.1f} s, decomposed as "
+                f"Fixed Overhead (setup + approach + release) = {t_fixed_overhead:.1f} s, "
+                f"Position-Dependent Running Time = {t_running_pos:.1f} s, "
+                f"Geometric Clearance (clearing + residual rear) = {t_geometric:.1f} s, "
+                f"and Passenger Dwell = {dwell_str}. "
+                f"Category checkpoint: Fixed Overhead + Position-Dependent Running ≈ {t_fixed_overhead + t_running_pos:.1f} s "
+                f"(≈ baseline headway), while the variable share is Geometric Clearance + Passenger Dwell + Residual Rear = {variable_share:.1f} s. "
+                f"{impact_text}"
             )
 
         return ReportSection(
@@ -991,14 +1006,37 @@ class ReportAssembler:
                 return str(getattr(it, "block_id", getattr(it, "resource_id", "RES")))
 
             def get_chainage(it: Any) -> float:
+                # v1.11.0 / Task 5: absolute alignment chainage (link-relative stationing
+                # accumulated through the network), never the 0-based route offset.
                 if isinstance(it, dict):
-                    return float(it.get("chainage_m", 0.0)) / 1000.0
-                return float(getattr(it, "chainage_m", 0.0)) / 1000.0
+                    al = it.get("alignment_start_m", None)
+                    if al is None:
+                        raise ReportingError(
+                            f"ERR_SEC05_GEOMETRY_MISSING: blocking interval '{it.get('resource_id', '?')}' lacks alignment_start_m for chainage display."
+                        )
+                    return float(al) / 1000.0
+                al = getattr(it, "alignment_start_m", None)
+                if al is None:
+                    raise ReportingError(
+                        f"ERR_SEC05_GEOMETRY_MISSING: blocking interval '{getattr(it, 'resource_id', '?')}' lacks alignment chainage offsets for chainage display."
+                    )
+                return float(al) / 1000.0
 
             def get_length(it: Any) -> float:
+                # v1.11.0 / Task 5: block length derived exclusively from the physical
+                # alignment span (alignment_end - alignment_start), loud failure when absent.
                 if isinstance(it, dict):
-                    return float(it.get("length_m", 0.0))
-                return float(getattr(it, "length_m", 0.0))
+                    al_s = it.get("alignment_start_m", None)
+                    al_e = it.get("alignment_end_m", None)
+                else:
+                    al_s = getattr(it, "alignment_start_m", None)
+                    al_e = getattr(it, "alignment_end_m", None)
+                if al_s is None or al_e is None:
+                    rid = it.get("resource_id", "?") if isinstance(it, dict) else getattr(it, "resource_id", "?")
+                    raise ReportingError(
+                        f"ERR_SEC05_GEOMETRY_MISSING: blocking interval '{rid}' lacks alignment offsets for true length derivation."
+                    )
+                return (float(al_e) - float(al_s)) / 1000.0
 
             sorted_intervals = sorted(intervals, key=get_dur, reverse=True)
             top3 = sorted_intervals[:3]
@@ -1848,33 +1886,51 @@ class ReportAssembler:
         )
         is_app = mc is not None or bool(summaries)
         fig_key = "fig_stochastic_histogram"
+
+        # v1.11.0 / Task 2: ALL stochastic statistics (narrative, histogram annotation,
+        # statistics table) are computed once from the stored replication sample array and
+        # published as metadata["monte_carlo_results"]. Hardcoded fallback values are
+        # prohibited: if Monte Carlo data is missing while the section is applicable,
+        # the assembly must fail loudly instead of emitting inconsistent numbers.
+        mc_payload = (package.metadata or {}).get("monte_carlo_results", None)
+        if is_app and mc_payload is None:
+            raise ReportingError(
+                "Monte Carlo statistics are required for the stochastic reliability section, "
+                "but package.metadata['monte_carlo_results'] is missing."
+            )
+
+        narrative_paras: List[str] = []
+        stoch_tables: List[EngineeringTable] = []
         if is_app:
-            hw_stat = next((s for s in summaries if "headway" in getattr(s, "metric_name", "").lower()), None)
-            sample_vals = package.metadata.get("stochastic_headway_samples", [])
+            sample_vals = [float(v) for v in mc_payload["samples_s"]]
+            mean_s = float(mc_payload["mean_s"])
+            std_s = float(mc_payload["std_dev_s"])
+            p50_s = float(mc_payload["p50_s"])
+            p90_s = float(mc_payload["p90_s"])
+            p95_s = float(mc_payload["p95_s"])
+            p99_s = float(mc_payload["p99_s"])
+            replications = int(mc_payload.get("replications") or len(sample_vals) or 1)
+            det_hw_s = float(mc_payload["deterministic_headway_s"])
+
+            hw_stat = StatisticalSummary(
+                metric_name="headway_s",
+                sample_count=replications,
+                mean=mean_s,
+                median=p50_s,
+                std_dev=std_s,
+                min_value=float(min(sample_vals)) if sample_vals else mean_s,
+                max_value=float(max(sample_vals)) if sample_vals else mean_s,
+                p5=float(min(sample_vals)) if sample_vals else mean_s,
+                p50=p50_s,
+                p90=p90_s,
+                p95=p95_s,
+                p99=p99_s,
+                unit="s",
+            )
             figures_data[fig_key] = create_stochastic_histogram_figure(
                 sample_vals, summary=hw_stat, running_direction=direction
             )
 
-        narrative_paras: List[str] = []
-        if is_app:
-            hw_stat = next((s for s in summaries if "headway" in getattr(s, "metric_name", "").lower()), None)
-            replications = (
-                package.metadata.get("monte_carlo_reps")
-                if (package.metadata and "monte_carlo_reps" in package.metadata)
-                else (getattr(mc, "total_replications", None) or len(package.metadata.get("stochastic_headway_samples", [])) if package.metadata else 100)
-            )
-            if not replications:
-                replications = 100
-
-            mean_s = float(getattr(hw_stat, "mean", 248.5)) if hw_stat else 248.5
-            std_s = float(getattr(hw_stat, "std_dev", 4.2)) if hw_stat else 4.2
-            p50_s = float(getattr(hw_stat, "p50", mean_s)) if hw_stat else mean_s
-            p90_s = float(getattr(hw_stat, "p90", mean_s + 1.28 * std_s)) if hw_stat else mean_s + 5.0
-            p95_s = float(getattr(hw_stat, "p95", mean_s + 1.65 * std_s)) if hw_stat else mean_s + 7.0
-            p99_s = float(getattr(hw_stat, "p99", mean_s + 2.33 * std_s)) if hw_stat else mean_s + 10.0
-
-            primary_hw = next(iter(package.headway_results.values())) if package.headway_results else None
-            det_hw_s = float(getattr(primary_hw, "headway_s", 244.0)) if primary_hw else 244.0
             p95_delay_s = max(0.0, p95_s - det_hw_s)
             plan_margin = float(package.metadata.get("planning_margin_s", 18.0)) if package.metadata else 18.0
 
@@ -1895,22 +1951,18 @@ class ReportAssembler:
                 f"reactionary delay propagation."
             )
             narrative_paras = [p1, p2, p3]
-        else:
-            narrative_paras = [
-                "Evaluates operational variability across multiple Monte Carlo replications under stochastic passenger dwell, "
-                "departure jitter, and tractive utilization. Computes percentile headways (P90, P95, P99) and Wilson score confidence intervals.",
-            ]
 
-        stoch_tables: List[EngineeringTable] = []
-        if is_app:
-            sample_vals = package.metadata.get("stochastic_headway_samples", []) if package.metadata else []
-            hw_stat = next((s for s in summaries if "headway" in getattr(s, "metric_name", "").lower()), None)
             stoch_tables.append(create_stochastic_headway_table(
                 samples=sample_vals,
                 summary=hw_stat,
                 running_direction=direction,
                 replications=replications,
             ))
+        else:
+            narrative_paras = [
+                "Evaluates operational variability across multiple Monte Carlo replications under stochastic passenger dwell, "
+                "departure jitter, and tractive utilization. Computes percentile headways (P90, P95, P99) and Wilson score confidence intervals.",
+            ]
 
         return ReportSection(
             section_id=ReportSectionId.STOCHASTIC_RELIABILITY,
@@ -1994,7 +2046,7 @@ class ReportAssembler:
             callout_boxes=[
                 {
                     "title": "Engineering Verification Verdict",
-                    "text": "Simulation execution satisfied all analytical consistency checks. No non-convergent numerical events detected.",
+                    "text": "Numerical trajectory solver converged successfully. Engineering verification of reporting consistency is pending.",
                 }
             ],
         )
@@ -2041,14 +2093,21 @@ class ReportAssembler:
             t_residual = float(getattr(d, "residual_rear_time_s", 0.0) or 0.0)
             t_release = float(getattr(d, "release_time_s", 0.0) or 0.0)
 
-            t_fixed = t_setup + t_approach + t_dwell + t_release
-            t_variable = t_running + t_clearing + t_residual
-            t_total = float(ctrl_iv.duration_s) if getattr(ctrl_iv, "duration_s", None) else (t_fixed + t_variable)
+            # v1.11.0 / Task 8: mandated category mapping — Fixed Overhead excludes dwell
+            # (setup + approach + release); Position-Dependent Running is the
+            # performance-factor-sensitive component; the variable residual share is
+            # Geometric Clearance (clearing + residual rear) + Passenger Dwell.
+            t_fixed = t_setup + t_approach + t_release
+            t_running_pos = t_running
+            t_geometric = t_clearing + t_residual
+            t_variable = t_geometric + t_dwell
+            t_total = float(ctrl_iv.duration_s) if getattr(ctrl_iv, "duration_s", None) else (t_fixed + t_running_pos + t_variable)
             if t_total <= 0.0:
                 t_total = kpis.technical_headway_s
 
             fixed_pct = (t_fixed / t_total * 100.0) if t_total > 0 else 0.0
-            sig_overhead = t_setup + t_approach + t_release
+            running_pct = (t_running_pos / t_total * 100.0) if t_total > 0 else 0.0
+            variable_pct = (t_variable / t_total * 100.0) if t_total > 0 else 0.0
 
             pf = 1.0
             if package and package.metadata and "performance_factor" in package.metadata:
@@ -2057,38 +2116,38 @@ class ReportAssembler:
                 except Exception:
                     pf = 1.0
 
-            if t_dwell > 0:
-                dwell_str = f"{t_dwell:.1f} s station dwell and {sig_overhead:.1f} s of signalling setup/approach/release"
-            else:
-                dwell_str = f"{sig_overhead:.1f} s of signalling setup/approach/release"
-
             if pf < 0.999:
-                t_running_nom = round(t_running * pf, 1)
-                delta_run = round(t_running - t_running_nom, 1)
+                t_running_nom = round(t_running_pos * pf, 1)
+                delta_run = round(t_running_pos - t_running_nom, 1)
                 h_nom = t_total - delta_run
                 pct_inc = (delta_run / h_nom * 100.0) if h_nom > 0 else 0.0
                 impact_text = (
-                    f"Consequently, derating the performance factor to {pf:.2f} extends the running time by {delta_run:.1f} s, "
-                    f"but only increases the technical headway by {pct_inc:.1f}% to {t_total:.1f} s."
+                    f"Consequently, derating the performance factor to {pf:.2f} extends the position-dependent running time "
+                    f"by {delta_run:.1f} s, but only increases the technical headway by {pct_inc:.1f}% to {t_total:.1f} s."
                 )
             else:
-                delta_run_95 = 5.0
+                delta_run_95 = round(t_running_pos * 0.05, 1)
                 h_95 = round(t_total + delta_run_95, 1)
-                pct_inc_95 = (delta_run_95 / t_total * 100.0) if t_total > 0 else 2.0
+                pct_inc_95 = (delta_run_95 / t_total * 100.0) if t_total > 0 else 0.0
                 impact_text = (
-                    f"Consequently, derating the performance factor to 0.95 extends the running time by {delta_run_95:.1f} s, "
-                    f"but only increases the technical headway by {pct_inc_95:.1f}% to {h_95:.1f} s."
+                    f"Consequently, derating the performance factor to 0.95 extends the position-dependent running time "
+                    f"by {delta_run_95:.1f} s, but only increases the technical headway by {pct_inc_95:.1f}% to {h_95:.1f} s."
                 )
 
             breakdown_p = (
-                f"The controlling bottleneck {kpis.controlling_bottleneck_id} has a total blocking time of {t_total:.1f} s. "
-                f"Of this, {t_fixed:.1f} s ({fixed_pct:.1f}%) is fixed overhead ({dwell_str}), "
-                f"while only {t_variable:.1f} s is variable running time. {impact_text}"
+                f"The controlling bottleneck {kpis.controlling_bottleneck_id} has a total blocking time of {t_total:.1f} s: "
+                f"Fixed Overhead (signalling setup + approach + release) = {t_fixed:.1f} s ({fixed_pct:.1f}%), "
+                f"Position-Dependent Running Time (performance-factor sensitive) = {t_running_pos:.1f} s ({running_pct:.1f}%), "
+                f"and the variable share = Geometric Clearance (clearing + residual rear, vehicle-length dependent) "
+                f"+ Passenger Dwell = {t_variable:.1f} s ({variable_pct:.1f}%). "
+                f"{impact_text}"
             )
         else:
             breakdown_p = (
                 f"The controlling bottleneck {kpis.controlling_bottleneck_id} has a total blocking time of {kpis.technical_headway_s:.1f} s. "
-                f"Headway consumption is split between fixed signalling/dwell overhead and variable train running time."
+                f"Headway consumption is split between Fixed Overhead (setup/approach/release), the "
+                f"performance-factor-sensitive position-dependent running time, and the variable "
+                f"geometric clearance + passenger dwell share."
             )
 
         p2 = (
