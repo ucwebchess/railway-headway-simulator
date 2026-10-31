@@ -133,7 +133,43 @@ class ReportAssembler:
             )
 
         # Enrich blocking interval physical geometry from provenance or project
-        prov_map = {r.resource_id: r for r in package.metadata.get("provenance_records", [])} if package.metadata else {}
+        provenance_records = list(package.metadata.get("provenance_records", [])) if package.metadata else []
+        prov_map = {r.resource_id: r for r in provenance_records}
+
+        # v1.11.1 / Task 7: loud-failure geometry consistency audit — a track block's
+        # length (sum of its link intervals) must agree with the chainage span between its
+        # entry and exit boundary signals within 1.0 m. Skipped only when a boundary signal
+        # could not be resolved (e.g. terminal buffer stop) — never silently clamped.
+        for r in provenance_records:
+            en_ch = getattr(r, "entry_signal_chainage_km", None)
+            ex_ch = getattr(r, "exit_signal_chainage_km", None)
+            blk_len_m = getattr(r, "resource_length_m", None)
+            if en_ch is None or ex_ch is None or blk_len_m is None:
+                continue
+            if getattr(r, "entry_signal_id", "N/A") == "N/A" or getattr(r, "exit_signal_id", "N/A") == "N/A":
+                continue
+            # Only enforce when both boundary chainages were DERIVED from the same link-geometry
+            # datum as the block span; explicit signal stationing may use a different network
+            # datum, in which case a naive span comparison would raise false positives.
+            if getattr(r, "geometry_source", None) != "INPUT_MODEL_ALIGNMENT":
+                continue
+            # Enforce only when both boundary signal chainages come from EXPLICIT input-model
+            # stationing (real network datums). Synthetic/inferred chainages derived from link
+            # geometry are permitted legitimate signal advances/insets relative to the block's
+            # interval coverage and are therefore not audited.
+            if getattr(r, "entry_signal_chainage_source", None) != "EXPLICIT_INPUT_CHAINAGE":
+                continue
+            if getattr(r, "exit_signal_chainage_source", None) != "EXPLICIT_INPUT_CHAINAGE":
+                continue
+            span_m = abs(float(ex_ch) - float(en_ch)) * 1000.0
+            if abs(span_m - float(blk_len_m)) > 1.0:
+                raise ReportingError(
+                    f"ERR_BLOCK_LENGTH_MISMATCH: block '{r.resource_id}' length {blk_len_m:.1f} m "
+                    f"disagrees with entry/exit signal chainage span {span_m:.1f} m "
+                    f"(entry '{r.entry_signal_id}' @ {en_ch:.3f} km, exit '{r.exit_signal_id}' @ {ex_ch:.3f} km; "
+                    f"delta {abs(span_m - float(blk_len_m)):.2f} m > 1.0 m tolerance).",
+                    error_code="ERR_BLOCK_LENGTH_MISMATCH",
+                )
         proj_geom: Dict[str, Tuple[float, float]] = {}
         if proj and getattr(proj, "signalling", None) and getattr(proj.signalling, "blocks", None):
             cum_m = 0.0
@@ -185,7 +221,22 @@ class ReportAssembler:
                 if loc_m is None:
                     loc_m = getattr(c, "physical_location_m", None) or getattr(c, "conflict_point_m", 0.0) or 0.0
                 c.physical_location_m = float(loc_m)
-                c.route_chainage_km = round(float(loc_m) / 1000.0, 6)
+                # v1.11.1 / Task 8: conflict chainage is reported in the ALIGNMENT
+                # (signal-aligned network) convention, identical to Section 10 — the
+                # route-relative convention is never shown for conflicts. Conversion via
+                # the usage interval's dual-span offsets; skips only when no alignment
+                # information exists (never fabricated).
+                _prov = prov_map.get(res_id) or (prov_map.get(c.follower_resource_id) if c.follower_resource_id else None)
+                _usage = getattr(c, "leader_usage", None) or getattr(c, "follower_usage", None)
+                _al_start = getattr(_usage, "alignment_start_m", None) if _usage is not None else None
+                _rr_start = getattr(_usage, "physical_start_offset_m", None) if _usage is not None else None
+                if _prov is not None and getattr(_prov, "physical_chainage_km", None) is not None:
+                    # Authoritative: Section 11 provenance already carries alignment-stationed chainage (v1.11.1 Task 5).
+                    c.route_chainage_km = round(float(_prov.physical_chainage_km), 6)
+                elif _al_start is not None and _rr_start is not None:
+                    c.route_chainage_km = round((_al_start + (float(loc_m) - float(_rr_start))) / 1000.0, 6)
+                else:
+                    c.route_chainage_km = round(float(loc_m) / 1000.0, 6)
                 if c.leader_usage and getattr(c.leader_usage, "physical_start_offset_m", None) is None:
                     c.leader_usage.physical_start_offset_m = float(loc_m)
                 if c.follower_usage and getattr(c.follower_usage, "physical_start_offset_m", None) is None:
@@ -411,10 +462,17 @@ class ReportAssembler:
                 return duration
 
         # 2. If platform records exist in metadata with at least 2 platforms
-        platform_recs = package.metadata.get("platform_records", [])
+        # v1.11.1 / Task 3: exclude zeroed `never_occupied` placeholder rows — they carry
+        # no chronology (arrival/departure 0.0) and must not anchor origin/destination.
+        platform_recs = [
+            r for r in package.metadata.get("platform_records", [])
+            if not getattr(r, "never_occupied", False)
+        ]
         if platform_recs and len(platform_recs) >= 2:
-            t_origin = getattr(platform_recs[0], "departure_time_s", getattr(platform_recs[0], "arrival_time_s", 0.0))
-            t_dest = getattr(platform_recs[-1], "arrival_time_s", getattr(platform_recs[-1], "departure_time_s", 0.0))
+            deps = [float(getattr(r, "departure_time_s", None) or getattr(r, "arrival_time_s", 0.0) or 0.0) for r in platform_recs]
+            arrs = [float(getattr(r, "arrival_time_s", None) or getattr(r, "departure_time_s", 0.0) or 0.0) for r in platform_recs]
+            t_origin = min(deps)
+            t_dest = max(arrs)
             duration = max(0.0, float(t_dest - t_origin))
             if duration > 0.0:
                 return duration
@@ -688,6 +746,41 @@ class ReportAssembler:
         )
 
     @classmethod
+    def _performance_factor_impact_sentence(cls, package: Optional[SimulationResultPackage], pf: float) -> str:
+        """v1.11.1 / Task 4: PF impact text from the SINGLE authoritative payload
+        metadata['performance_factor_results']. Any proxy recomputation in report
+        assembly is prohibited — Sections 3 and 18 must always agree."""
+        pf_payload = (package.metadata or {}).get("performance_factor_results", None) if package else None
+        if pf_payload is None:
+            raise ReportingError(
+                "ERR_PF_RESULT_MISSING: performance-factor impact requires "
+                "metadata['performance_factor_results']; no reporting-side proxy is permitted.",
+                error_code="ERR_PF_RESULT_MISSING",
+            )
+        ref_hw = float(pf_payload["reference_headway_s"])
+        t_run = float(pf_payload["position_dependent_running_s"])
+        scenarios = pf_payload.get("scenarios", [])
+
+        if pf >= 0.999:
+            sc = next((s for s in scenarios if abs(float(s["performance_factor"]) - 0.95) < 1e-9), None)
+            if sc is None:
+                raise ReportingError("ERR_PF_RESULT_MISSING: 0.95 PF scenario missing from performance_factor_results payload.")
+            pf_asked, delta, hw_new = 0.95, float(sc["delta_running_s"]), float(sc["headway_s"])
+        else:
+            sc = next((s for s in scenarios if abs(float(s["performance_factor"]) - pf) < 1e-9), None)
+            if sc is not None:
+                delta, hw_new = float(sc["delta_running_s"]), float(sc["headway_s"])
+            else:
+                delta = round(t_run / pf - t_run, 2) if pf > 0 else 0.0
+                hw_new = round(ref_hw + delta, 2)
+            pf_asked = pf
+        pct = (delta / ref_hw * 100.0) if ref_hw > 0 else 0.0
+        return (
+            f"Consequently, derating the performance factor to {pf_asked:.2f} extends the position-dependent "
+            f"running time by {delta:.1f} s and increases the technical headway by {pct:.1f}% to {hw_new:.1f} s."
+        )
+
+    @classmethod
     def _build_bottleneck_diagnosis(cls, primary_hw: Optional[HeadwayResult]) -> Optional[BottleneckDiagnosis]:
         """P14-EXE-005: Formulate technical diagnosis for governing bottleneck."""
         if not primary_hw or not primary_hw.controlling_conflicts:
@@ -903,23 +996,9 @@ class ReportAssembler:
                 except Exception:
                     pf = 1.0
 
-            if pf < 0.999:
-                t_running_nom = round(t_running_pos * pf, 1)
-                delta_run = round(t_running_pos - t_running_nom, 1)
-                h_nom = t_total - delta_run
-                pct_inc = (delta_run / h_nom * 100.0) if h_nom > 0 else 0.0
-                impact_text = (
-                    f"Consequently, derating the performance factor to {pf:.2f} extends the running time by {delta_run:.1f} s, "
-                    f"but only increases the technical headway by {pct_inc:.1f}% to {t_total:.1f} s."
-                )
-            else:
-                delta_run_95 = 5.0
-                h_95 = round(t_total + delta_run_95, 1)
-                pct_inc_95 = (delta_run_95 / t_total * 100.0) if t_total > 0 else 2.0
-                impact_text = (
-                    f"Consequently, derating the performance factor to 0.95 extends the running time by {delta_run_95:.1f} s, "
-                    f"but only increases the technical headway by {pct_inc_95:.1f}% to {h_95:.1f} s."
-                )
+            # v1.11.1 / Task 4: PF impact comes exclusively from the runner-published
+            # physics payload — identical wording in Section 18 (single source).
+            impact_text = cls._performance_factor_impact_sentence(package, pf)
 
             paras.append(
                 f"The controlling bottleneck {ctrl_id} has a total blocking time of {t_total:.1f} s, decomposed as "
@@ -957,9 +1036,10 @@ class ReportAssembler:
                 for c in list(primary_hw.controlling_conflicts or []) + list(primary_hw.conflict_ranking or []):
                     res_id = c.leader_resource_id or c.follower_resource_id
                     if res_id in geometry_lookup:
-                        loc_m = float(geometry_lookup[res_id])
-                        c.physical_location_m = loc_m
-                        c.route_chainage_km = round(loc_m / 1000.0, 6)
+                        # v1.11.1 / Task 8: keep physical location in the route-relative
+                        # lookup, but DO NOT overwrite chainage here — chainage was already
+                        # assigned in the ALIGNMENT convention during package enrichment.
+                        c.physical_location_m = float(geometry_lookup[res_id])
             tables.append(create_conflict_ranking_table(primary_hw, top_n=top_n, geometry_lookup=geometry_lookup))
 
         return ReportSection(
@@ -1051,18 +1131,19 @@ class ReportAssembler:
                 b_id = get_id(it)
                 b_dur = get_dur(it)
                 b_ch = get_chainage(it)
-                b_len = get_length(it)
+                b_len_km = get_length(it)
+                b_len_m = b_len_km * 1000.0  # v1.11.1 / Task 6: narrative units are metres
 
                 if "PLT" in b_id or "STN" in b_id or b_dur > 150.0:
                     cause = "inclusion of scheduled passenger dwell and terminal deceleration profile"
-                elif b_len > 2500.0:
-                    cause = f"extended physical section length ({b_len:.0f} m) combined with cruising speed traversal"
+                elif b_len_m > 2500.0:
+                    cause = f"extended physical section length ({b_len_m:.0f} m) combined with cruising speed traversal"
                 elif b_ch > 100.0 or "09" in b_id:
                     cause = "deceleration approach into corridor terminal interlocking"
                 else:
-                    cause = f"physical block geometry ({b_len:.0f} m) and turnout speed restrictions"
+                    cause = f"physical block geometry ({b_len_m:.0f} m) and turnout speed restrictions"
 
-                top_desc.append(f"{i}) Resource '{b_id}' (chainage km {b_ch:.2f}, length {b_len:.0f} m): {b_dur:.1f} s duration, attributable to {cause}")
+                top_desc.append(f"{i}) Resource '{b_id}' (chainage km {b_ch:.2f}, length {b_len_m:.0f} m): {b_dur:.1f} s duration, attributable to {cause}")
 
             p2 = (
                 f"The top {len(top3)} longest-occupied individual resources are: "
@@ -1429,6 +1510,12 @@ class ReportAssembler:
             narrative_paragraphs=[
                 "Comprehensive tabulation of all 7 blocking time components for every track and signalling resource "
                 f"traversed along the {direction.value} corridor.",
+                # v1.11.1 / Task 8: explicit coordinate-convention note.
+                "Coordinate conventions used in this report: 'Route-Relative Chainage' is the 0-based distance along the "
+                "simulated route (origin = route start). 'Alignment Chainage' is the absolute network stationing obtained by "
+                "accumulating physical track-link lengths through the infrastructure model and matches signal stationing. "
+                "Sections 4 (Conflict Ranking), 10 (this table) and 11 (Provenance) consistently use Alignment Chainage; "
+                "any route-relative value is always labelled explicitly as route-relative.",
             ],
             tables=tables,
         )
@@ -2116,23 +2203,8 @@ class ReportAssembler:
                 except Exception:
                     pf = 1.0
 
-            if pf < 0.999:
-                t_running_nom = round(t_running_pos * pf, 1)
-                delta_run = round(t_running_pos - t_running_nom, 1)
-                h_nom = t_total - delta_run
-                pct_inc = (delta_run / h_nom * 100.0) if h_nom > 0 else 0.0
-                impact_text = (
-                    f"Consequently, derating the performance factor to {pf:.2f} extends the position-dependent running time "
-                    f"by {delta_run:.1f} s, but only increases the technical headway by {pct_inc:.1f}% to {t_total:.1f} s."
-                )
-            else:
-                delta_run_95 = round(t_running_pos * 0.05, 1)
-                h_95 = round(t_total + delta_run_95, 1)
-                pct_inc_95 = (delta_run_95 / t_total * 100.0) if t_total > 0 else 0.0
-                impact_text = (
-                    f"Consequently, derating the performance factor to 0.95 extends the position-dependent running time "
-                    f"by {delta_run_95:.1f} s, but only increases the technical headway by {pct_inc_95:.1f}% to {h_95:.1f} s."
-                )
+            # v1.11.1 / Task 4: identical payload-driven text as Section 3 — no proxy.
+            impact_text = cls._performance_factor_impact_sentence(package, pf)
 
             breakdown_p = (
                 f"The controlling bottleneck {kpis.controlling_bottleneck_id} has a total blocking time of {t_total:.1f} s: "

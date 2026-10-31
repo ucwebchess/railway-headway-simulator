@@ -23,6 +23,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.1] — 2026-10-31
+
+Phase 4c sensitivity & geometry hotfix — 8-task remediation of sensitivity-curve, residual-rear,
+platform-occupation, PF-derivation, provenance-chainage, block-length audit, and coordinate-convention
+defects. Full-suite status: all tests green; 7-example live audit clean (zero loud-failure trips).
+
+### Added
+- **Physical Residual-Rear Attribution (Task 2)**: new module-level helper
+  `_compute_residual_rear_durations` in `simulation_runner.py` — residual rear is attributed only
+  while the standstill's tail physically fouls the block exit boundary, with an explicit positional
+  guard (`front(s0) − train_length < block_end`) rejecting any dwell after the tail has already
+  cleared. Covered by 5 unit tests (`tests/unit/test_v1111_hotfix.py`).
+- **Loud Block-Length Audit (Task 7)**: `ReportingError` `ERR_BLOCK_LENGTH_MISMATCH` raised in report
+  assembly when a block's link-interval length disagrees with its entry/exit signal chainage span by
+  more than 1.0 m. Enforced only on EXPLICIT input-model signal stationing (real network datums);
+  synthetic derived chainages (which permit legitimate signal advances/insets) are skipped. New
+  `ResourceProvenanceRecord` fields `entry/exit_signal_chainage_source`. Covered by 4 unit tests.
+- **Coordinate-Convention Statement (Task 8)**: Section 10 narrative now states both conventions
+  explicitly (Route-Relative vs Alignment chainage) and which sections use which.
+
+### Fixed
+- **Blocking-Journey Sensitivity Direction Wiring (Task 1)**: `block_length_sensitivity` receives the
+  correct direction-specific baseline; delta-form curve verified on 07_hsr (244.5–289.0 s over
+  25 m–2000 m block candidates).
+- **Phantom Platform Occupation (Task 3)**: platform records are now emitted only for platforms that
+  are both physically traversed AND the assigned stop (engine berthing-marker membership replicated in
+  the runner). Non-assigned platforms emit zeroed records flagged `never_occupied=True`; the legacy
+  15 s visual clearance fallback is neutralized for those records. 05_comprehensive now shows exactly
+  one occupied platform per direction (PLT_B1 FWD 153.5 s / PLT_B3 REV 152.7 s).
+- **PF Impact Single-Source (Task 4)**: runner publishes `metadata["performance_factor_results"]`
+  (reference headway, position-dependent running time, controlling bottleneck, 0.90/0.95 scenarios);
+  Sections 3 (Seven-Component callout) and 18 (Conclusions) render the identical sentence from this
+  payload, raising `ERR_PF_RESULT_MISSING` when absent.
+- **Section 11 Provenance Chainage (Task 5)**: provenance chainage now uses signal-aligned network
+  stationing (`block_align_offsets`, `geometry_source="INPUT_MODEL_ALIGNMENT"`) matching Section 10;
+  route-relative fallback explicitly marked `FALLBACK_ROUTE_RELATIVE`.
+- **Section 5 Narrative Units (Task 6)**: block lengths in the longest-occupation narrative were
+  printed as km values labelled "m" (e.g. "length 2 m"); now correctly rendered in metres
+  (1654 m / 1252 m / 1565 m on 07_hsr).
+- **Section 4 Conflict Chainage Convention (Task 8)**: conflict-ranking chainage column renamed to
+  `Alignment Chainage (km)` and values sourced from the aligned provenance/usage offsets (identical
+  convention to Sections 10/11); e.g. 05_comprehensive BLK_DN_03 now reports 22.0 km (was 28.0 km,
+  route-relative).
+
+---
+
 ## [1.11.0] — 2026-10-31
 
 Phase 4c physics & reporting integrity release — 12-task defect remediation programme.

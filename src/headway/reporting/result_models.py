@@ -54,9 +54,15 @@ class PlatformOccupationRecord:
     upstream_infringing_resource_ids: Tuple[str, ...] = ()
     reservation_start_s: Optional[float] = None
     final_release_s: Optional[float] = None
+    # v1.11.1 / Task 3: explicit marker for platforms that never host an assigned stop.
+    # When True, ALL occupation components are exactly 0.0 s — the legacy 15 s visual
+    # clearance fallback is neutralised so unused platforms cannot show phantom time.
+    never_occupied: bool = False
 
     @property
     def dwell_duration_s(self) -> float:
+        if self.never_occupied:
+            return 0.0
         return max(0.0, self.dwell_end_time_s - self.dwell_start_time_s)
 
     @property
@@ -65,6 +71,8 @@ class PlatformOccupationRecord:
 
     @property
     def arrival_approach_s(self) -> float:
+        if self.never_occupied:
+            return 0.0
         res_s = self.reservation_start_s if self.reservation_start_s is not None else max(0.0, self.arrival_time_s - 15.0)
         return max(0.0, self.arrival_time_s - res_s)
 
@@ -77,6 +85,8 @@ class PlatformOccupationRecord:
 
     @property
     def departure_clearance_s(self) -> float:
+        if self.never_occupied:
+            return 0.0
         fin_s = self.final_release_s if self.final_release_s is not None else self.clearance_time_s
         clr = fin_s - self.departure_time_s
         if clr <= 0.0:
@@ -170,6 +180,12 @@ class ResourceProvenanceRecord:
     entry_signal_chainage_km: Optional[float] = None
     exit_signal_id: str = "N/A"
     exit_signal_chainage_km: Optional[float] = None
+    # v1.11.1 / Task 7: provenance of each boundary signal's chainage value — the
+    # geometry-mismatch audit (ERR_BLOCK_LENGTH_MISMATCH) only enforces when the chainage
+    # shares the block's datum (DERIVED_ALIGNMENT), since explicit signal stationing may
+    # legitimately use a different network datum.
+    entry_signal_chainage_source: Optional[str] = None
+    exit_signal_chainage_source: Optional[str] = None
 
 
 @dataclass

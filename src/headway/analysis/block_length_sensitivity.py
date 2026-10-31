@@ -86,6 +86,19 @@ def calculate_block_length_sensitivity(
     k_base_kernel = _kinematic_kernel_s(float(baseline_block_length_m))
     residual_r0_s = max(0.0, baseline_headway_s - k_base_kernel)
 
+    # v1.11.1 / Task 1: every candidate MUST be expressed as a DELTA against the
+    # measured baseline headway — hw_candidate = hw_baseline + (K(cand) − K(base)).
+    # Sanitise degenerate inputs: the kernel train-length argument is a vehicle
+    # length; if a caller accidentally pipes in a corridor/route length, any kernel
+    # blow-up would otherwise silently contaminate the whole curve.
+    if train_length_m > float(baseline_block_length_m) * 50.0:
+        raise ValueError(
+            "ERR_SENSITIVITY_LENGTH_ARGUMENT: train_length_m argument "
+            f"({train_length_m:.1f}) is implausibly large vs. baseline block length "
+            f"({baseline_block_length_m:.1f}) — a corridor/route length appears to have "
+            "been passed instead of a vehicle length."
+        )
+
     floor_hw = min_headway_floor_s if min_headway_floor_s is not None else max(45.0, baseline_headway_s * 0.5)
 
     points: List[SensitivityPointResult] = []
@@ -105,12 +118,12 @@ def calculate_block_length_sensitivity(
         )
     )
 
-    # Candidate lengths (e.g. 25m to 2000m)
+    # Candidate lengths (e.g. 25m to 2000m): headway = baseline + KERNEL DELTA only.
     for bl in candidate_lengths:
         n_blocks_train = max(1, math.ceil(train_length_m / bl))
         k_cand = _kinematic_kernel_s(float(bl))
 
-        hw = max(floor_hw, round(residual_r0_s + k_cand, 1))
+        hw = max(floor_hw, round(baseline_headway_s + (k_cand - k_base_kernel), 1))
         cap = round(3600.0 / hw, 1)
         delta_cap = round(cap - base_cap, 1)
         pct_gain = round((delta_cap / max(1.0, base_cap)) * 100.0, 1)

@@ -327,6 +327,19 @@ def _create_synthetic_full_package(
                 "replications": 30,
                 "deterministic_headway_s": headway_s,
             },
+            # v1.11.1 / Task 4: single-source PF payload consumed identically by
+            # Sections 3 and 18 narratives; assembly raises ERR_PF_RESULT_MISSING without it.
+            "performance_factor_results": {
+                "reference_headway_s": headway_s,
+                "position_dependent_running_s": 40.0,
+                "controlling_bottleneck_id": "BLK_03",
+                "scenarios": [
+                    {"performance_factor": 0.90, "delta_running_s": round(40.0 / 0.90 - 40.0, 2),
+                     "headway_s": round(headway_s + (40.0 / 0.90 - 40.0), 2)},
+                    {"performance_factor": 0.95, "delta_running_s": round(40.0 / 0.95 - 40.0, 2),
+                     "headway_s": round(headway_s + (40.0 / 0.95 - 40.0), 2)},
+                ],
+            },
         },
     )
 
@@ -654,24 +667,27 @@ class TestReportIntegration:
         raw_df = conflict_table.raw_dataframe
         assert len(raw_df) > 0
         assert "Physical Location (m)" in raw_df.columns
-        assert "Route Chainage (km)" in raw_df.columns
+        # v1.11.1 / Task 8: conflict chainage is reported in the ALIGNMENT convention
+        # (identical to Sections 10/11) — the column was renamed accordingly.
+        assert "Alignment Chainage (km)" in raw_df.columns
         assert "Time Gap (s)" in raw_df.columns
 
         # Rank 1 conflict is the controlling bottleneck BLK_UP_092
         r1 = raw_df.iloc[0]
         assert r1["Leader Resource"] == "BLK_UP_092"
         assert r1["Physical Location (m)"] > 100_000.0
-        assert r1["Route Chainage (km)"] > 100.0
-        assert pytest.approx(138.346, abs=0.1) == r1["Route Chainage (km)"]
+        assert r1["Alignment Chainage (km)"] > 100.0
+        assert pytest.approx(138.346, abs=0.1) == r1["Alignment Chainage (km)"]
         assert pytest.approx(138346.0, abs=100.0) == r1["Physical Location (m)"]
         assert r1["Classification"] == "CONTROLLING"
 
-        # Assert non-zero physical location and route chainage exist across table rows
+        # Assert non-zero physical location and alignment chainage exist across table rows
         assert (raw_df["Physical Location (m)"] > 0.0).any()
-        assert (raw_df["Route Chainage (km)"] > 0.0).any()
+        assert (raw_df["Alignment Chainage (km)"] > 0.0).any()
 
-        # Chainage km equals Location m / 1000 within tolerance
-        chainage_check = (raw_df["Route Chainage (km)"] - (raw_df["Physical Location (m)"] / 1000.0)).abs()
+        # On a contiguous 0-based corridor (07_hsr) alignment equals route-relative,
+        # so chainage km equals Location m / 1000 within tolerance.
+        chainage_check = (raw_df["Alignment Chainage (km)"] - (raw_df["Physical Location (m)"] / 1000.0)).abs()
         assert (chainage_check < 1e-4).all()
 
         # Time gap equals Leader Release minus Follower Start
@@ -683,7 +699,7 @@ class TestReportIntegration:
         fmt_r1 = fmt_df.iloc[0]
         assert fmt_r1["Leader Resource"] == "BLK_UP_092"
         assert fmt_r1["Physical Location (m)"] == "138346.0"
-        assert fmt_r1["Route Chainage (km)"] == "138.35"
+        assert fmt_r1["Alignment Chainage (km)"] == "138.35"
         assert "CONTROLLING" in fmt_r1["Classification"]
 
     def test_reporting_tvs_assessment_hsr_corridor(self) -> None:
