@@ -5,7 +5,8 @@ Covers:
   (windowed overlap + positional guard at block exit boundary).
 - Task 7: ERR_BLOCK_LENGTH_MISMATCH loud failure when a block's length disagrees
   with its entry/exit signal chainage span by more than 1.0 m — for ANY chainage
-  source — gated by `ReportConfig.validate_block_geometry` (ships OFF in v1.11.1).
+  source — gated by `ReportConfig.validate_block_geometry` in v1.11.1 (shipped OFF); the
+  audit is mandatory since v1.11.2 and the flag was removed.
 - Q2: canonical `metadata["journey_time_s"]` published from the leader trajectory.
 - Q4: Task 5 alignment of blocks on links running against increasing chainage.
 """
@@ -17,7 +18,7 @@ import pytest
 
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.report_assembly import ReportAssembler, ReportingError
-from headway.reporting.report_config import VALIDATE_BLOCK_GEOMETRY_DEFAULT, ReportConfig
+from headway.reporting.report_config import ReportConfig
 from headway.ui.file_manager import FileManager
 from headway.ui.simulation_runner import SimulationRunner, _compute_residual_rear_durations
 from tests.block_geometry_expectations import (
@@ -103,12 +104,17 @@ class TestBlockLengthMismatch:
         assert provenance, "expected provenance records in metadata"
         pkg.metadata["provenance_records"] = [dataclasses.replace(provenance[0], **changes)] + provenance[1:]
 
-    _ON = staticmethod(lambda: ReportConfig(validate_block_geometry=True))
+    _ON = staticmethod(lambda: ReportConfig())  # v1.11.2: the audit is mandatory
 
-    def test_flag_ships_on_in_v1112(self):
-        """v1.11.2 (strict): the report-level audit is ON by default (v1.11.1 shipped it OFF)."""
-        assert VALIDATE_BLOCK_GEOMETRY_DEFAULT is True
-        assert ReportConfig().validate_block_geometry is True
+    def test_audit_is_mandatory_flag_removed_in_v1112(self):
+        """v1.11.2 (literal strict): the v1.11.1 opt-in flag is gone — no config can disable
+        the report-level audit, and the old keyword fails loudly instead of being ignored."""
+        import headway.reporting.report_config as rc
+
+        assert "validate_block_geometry" not in ReportConfig.__dataclass_fields__
+        assert not hasattr(rc, "VALIDATE_BLOCK_GEOMETRY_DEFAULT")
+        with pytest.raises(TypeError):
+            ReportConfig(validate_block_geometry=False)
 
     def test_default_config_audits_and_raises(self):
         """Default config (no flag passed) raises on a mismatching package."""
@@ -118,12 +124,15 @@ class TestBlockLengthMismatch:
             ReportAssembler.assemble_report(pkg, project=project)
         assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
 
-    def test_flag_off_does_not_audit(self):
-        """Explicit ``validate_block_geometry=False`` skips the report-level audit."""
+    def test_stray_opt_out_attribute_raises_named_error(self):
+        """Setting the removed attribute after construction must not silently disable (or be
+        silently ignored by) the audit."""
         project, pkg = self._baseline_package()
-        self._mutate_first(pkg, entry_signal_chainage_km=10.0, exit_signal_chainage_km=10.5, resource_length_m=1000.0)
-        doc = ReportAssembler.assemble_report(pkg, config=ReportConfig(validate_block_geometry=False), project=project)
-        assert doc is not None
+        cfg = ReportConfig()
+        cfg.validate_block_geometry = False
+        with pytest.raises(ReportingError) as excinfo:
+            ReportAssembler.assemble_report(pkg, config=cfg, project=project)
+        assert excinfo.value.error_code == "ERR_REPORT_GEOMETRY_AUDIT_MANDATORY"
 
     def test_flag_on_explicit_long_mismatch_raises(self):
         project, pkg = self._baseline_package()

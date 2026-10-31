@@ -100,12 +100,11 @@ TEMPLATE_FRIENDLY_NAMES: Dict[str, ReportType] = {
 }
 
 
-# Report-level block-geometry audit (v1.11.1 Task 7). ON by default since v1.11.2 (strict):
-# SimulationRunner already validates every project before simulation, and this audit makes
-# ReportAssembler raise for any OTHER package that reaches it — externally built or modified
-# packages via the public API, or re-assembled stored packages — instead of silently
-# rendering a report on invalid block geometry. See report_assembly._audit_block_geometry.
-VALIDATE_BLOCK_GEOMETRY_DEFAULT: bool = True
+# Report-level block-geometry audit: MANDATORY since v1.11.2 (literal strict). The v1.11.1
+# opt-in flag ``ReportConfig.validate_block_geometry`` / ``VALIDATE_BLOCK_GEOMETRY_DEFAULT`` was
+# removed: ``ReportAssembler.assemble_report`` always audits (see
+# report_assembly._audit_block_geometry). Passing the old keyword raises ``TypeError``; setting
+# the attribute afterwards raises ERR_REPORT_GEOMETRY_AUDIT_MANDATORY.
 
 
 @dataclass
@@ -132,7 +131,6 @@ class ReportConfig:
     top_n_conflicts: int = 10
     top_n_occupations: int = 10
     custom_metadata: Dict[str, Any] = field(default_factory=dict)
-    validate_block_geometry: bool = VALIDATE_BLOCK_GEOMETRY_DEFAULT
 
     def __post_init__(self) -> None:
         if isinstance(self.report_type, str):

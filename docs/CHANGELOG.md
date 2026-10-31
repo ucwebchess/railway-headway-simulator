@@ -48,15 +48,17 @@ example data was modified.** Full suite: 1022/1022 passed.
   01/04/05/07 keep their original bodies and run on corrected **in-memory** variants
   (`tests/corrected_variants.py`; the shipped files are not modified), so no feature coverage
   is lost.
-- **Report-level block-geometry audit on by default** (`VALIDATE_BLOCK_GEOMETRY_DEFAULT = True`).
-  `ReportAssembler.assemble_report` validates every package it assembles:
+- **Report-level block-geometry audit is mandatory.** The v1.11.1 opt-in flag
+  `ReportConfig.validate_block_geometry` and `VALIDATE_BLOCK_GEOMETRY_DEFAULT` are **removed**:
+  passing the old keyword raises `TypeError`, and setting the attribute afterwards raises
+  `ERR_REPORT_GEOMETRY_AUDIT_MANDATORY`. `ReportAssembler.assemble_report` validates every package
+  it assembles:
   - a project bound to the call (`project=` or `package.metadata["project"]`) is validated with
     exactly the pipeline rules (`BlockGeometryValidationError`); the UI session-state fallback
     project is *not* audited (it is global state unrelated to the package);
   - the package's own TRACK_BLOCK provenance is always audited: no recorded exit boundary ->
     `ERR_BLOCK_NO_EXIT_SIGNAL`; |entry->exit span - length| > 1.0 m -> `ERR_BLOCK_LENGTH_MISMATCH`
     (turnaround blocks use the recorded along-track path span, `signal_path_span_m`).
-  The explicit opt-out `ReportConfig(validate_block_geometry=False)` still exists.
 
 ### Added
 - **`headway.signalling.block_geometry_validation`** (Tasks 1, 2, 3, 5): `BlockGeometryValidationError`
@@ -116,8 +118,8 @@ example data was modified.** Full suite: 1022/1022 passed.
   previously printed the unlabelled route-relative value.
 
 ### Changed
-- `VALIDATE_BLOCK_GEOMETRY_DEFAULT` is now `True` (see Breaking). Benchmark fixture BLK_02 and the
-  DEF-09 report test were corrected accordingly (both carried inconsistent block geometry).
+- Report-level audit mandatory (see Breaking). Benchmark fixture BLK_02 and the DEF-09 report test
+  were corrected accordingly (both carried inconsistent block geometry).
 - Test `test_reporting_blocking_intervals_hsr_corridor` pinned the defective 07 signal chainages
   (0.989 / 2.554 km: a 1565 m signal span for a 1252 m block); it now asserts 0.000 / 1.252 km on
   the corrected 07 variant, span = length, and terminal exit `ND_0448`.

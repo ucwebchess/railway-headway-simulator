@@ -117,7 +117,7 @@ def _largest_remainder_percentages(values: Sequence[float], decimals: int = 1) -
     return [f / scale for f in floors]
 
 def _audit_block_geometry(provenance_records: List[Any], project: Any = None) -> None:
-    """Strict report-level block-geometry audit (v1.11.2; ``validate_block_geometry``).
+    """Mandatory report-level block-geometry audit (v1.11.2; runs for every assembled report).
 
     1. If the input ``project`` is supplied, it is validated with exactly the pipeline rules
        (``enforce_block_geometry``: ERR_BLOCK_NO_EXIT_SIGNAL / ERR_BLOCK_GEOMETRY_MISMATCH /
@@ -240,13 +240,21 @@ class ReportAssembler:
         provenance_records = list(package.metadata.get("provenance_records", [])) if package.metadata else []
         prov_map = {r.resource_id: r for r in provenance_records}
 
-        # Block-geometry audit at report level (v1.11.1 Task 7; strict and ON by default since
-        # v1.11.2). Packages produced by SimulationRunner were already validated before
-        # simulation; this guards every OTHER way a package reaches the assembler (the public
+        # Block-geometry audit at report level (v1.11.1 Task 7; mandatory since v1.11.2).
+        # Packages produced by SimulationRunner were already validated before simulation;
+        # this guards every OTHER way a package reaches the assembler (the public
         # ``headway.reporting.ReportAssembler`` API with an externally built or modified
         # package, and re-assembly of a stored package from the Results / Reports tabs).
-        if cfg.validate_block_geometry:
-            _audit_block_geometry(provenance_records, audit_proj)
+        if hasattr(cfg, "validate_block_geometry"):
+            # The v1.11.1 opt-in flag was removed in v1.11.2; never let a stray attribute
+            # look like it disabled the audit.
+            raise ReportingError(
+                "ERR_REPORT_GEOMETRY_AUDIT_MANDATORY: ReportConfig.validate_block_geometry was "
+                "removed in v1.11.2; the report-level block-geometry audit is mandatory and "
+                "cannot be disabled.",
+                error_code="ERR_REPORT_GEOMETRY_AUDIT_MANDATORY",
+            )
+        _audit_block_geometry(provenance_records, audit_proj)
         proj_geom: Dict[str, Tuple[float, float]] = {}
         if proj and getattr(proj, "signalling", None) and getattr(proj.signalling, "blocks", None):
             cum_m = 0.0
