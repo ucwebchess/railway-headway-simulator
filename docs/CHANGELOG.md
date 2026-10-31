@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Phase 4c sensitivity & geometry hotfix — 8-task remediation of sensitivity-curve, residual-rear,
 platform-occupation, PF-derivation, provenance-chainage, block-length audit, and coordinate-convention
-defects. Full-suite status: all tests green; 7-example live audit clean (zero loud-failure trips).
+defects, plus a pre-merge review follow-up (journey-time publication, reversed-link alignment, Section 4
+zero-chainage fallback, feature-flagged block-geometry audit). Full suite: 935/935 passed.
 
 ### Added
 - **Physical Residual-Rear Attribution (Task 2)**: new module-level helper
@@ -35,11 +36,17 @@ defects. Full-suite status: all tests green; 7-example live audit clean (zero lo
   while the standstill's tail physically fouls the block exit boundary, with an explicit positional
   guard (`front(s0) − train_length < block_end`) rejecting any dwell after the tail has already
   cleared. Covered by 5 unit tests (`tests/unit/test_v1111_hotfix.py`).
-- **Loud Block-Length Audit (Task 7)**: `ReportingError` `ERR_BLOCK_LENGTH_MISMATCH` raised in report
+- **Block-Length Audit (Task 7)**: `ReportingError` `ERR_BLOCK_LENGTH_MISMATCH` raised in report
   assembly when a block's link-interval length disagrees with its entry/exit signal chainage span by
-  more than 1.0 m. Enforced only on EXPLICIT input-model signal stationing (real network datums);
-  synthetic derived chainages (which permit legitimate signal advances/insets) are skipped. New
-  `ResourceProvenanceRecord` fields `entry/exit_signal_chainage_source`. Covered by 4 unit tests.
+  more than 1.0 m, for ANY signal-chainage source (explicit or derived). Gated by the new feature flag
+  `ReportConfig.validate_block_geometry` (module default `VALIDATE_BLOCK_GEOMETRY_DEFAULT`), which
+  **ships OFF in 1.11.1**: with the flag on, bundled examples 01 (BLK_01, +100 m), 04 (BLK_T01,
+  +150 m) and 07 (20 blocks, ±313 m; `generate.py` rounding drift) raise because their example data
+  is defective, and 05 raises on BLK_UP_10 (turnaround: chainage difference 900 m vs 1000 m path
+  length) — corrections and the default flip follow in 1.11.2. New `ResourceProvenanceRecord`
+  fields `entry/exit_signal_chainage_source`. Covered by 10 unit tests.
+- **Canonical Journey Time (review Q2)**: `metadata["journey_time_s"]` published from the leader
+  trajectory (07_hsr FORWARD @ 100 % PF: 2969.0 s; test asserts [2900, 3100] s).
 - **Coordinate-Convention Statement (Task 8)**: Section 10 narrative now states both conventions
   explicitly (Route-Relative vs Alignment chainage) and which sections use which.
 
@@ -64,8 +71,27 @@ defects. Full-suite status: all tests green; 7-example live audit clean (zero lo
   (1654 m / 1252 m / 1565 m on 07_hsr).
 - **Section 4 Conflict Chainage Convention (Task 8)**: conflict-ranking chainage column renamed to
   `Alignment Chainage (km)` and values sourced from the aligned provenance/usage offsets (identical
-  convention to Sections 10/11); e.g. 05_comprehensive BLK_DN_03 now reports 22.0 km (was 28.0 km,
-  route-relative).
+  convention to Sections 10/11).
+- **Reversed-Link Alignment (review Q4)**: links whose end node lies at a lower alignment chainage
+  than their start node (e.g. the 05_comprehensive DN line, `LNK_13` ND_09 @ 22.0 km → ND_08 @
+  17.0 km) were projected forward from their start node, placing every DN block one block-length
+  the wrong way (BLK_DN_03 reported 22.0–27.0 km) and every derived DN signal 100 m off. Link
+  orientation is now derived from node chainage: BLK_DN_03 = 17.0–22.0 km, SIG_DN_03 @ 21.95 km →
+  SIG_DN_04 @ 16.95 km. Only 05 geometry labels change; headways, journey times and all blocking
+  timestamps are unchanged across all 7 examples × 2 directions.
+- **Section 4 Zero-Chainage Fallback (review Q4)**: the conflict table treated a legitimate 0.0 km
+  alignment chainage as missing and substituted the route-relative location (05 REV BLK_UP_01
+  49.0 km and 07 REV BLK_UP_001 138.748 km; would have shown 46.0 km for 05 FWD BLK_DN_07 after the
+  reversed-link fix). Only a missing value now falls back.
+
+
+### Known Issues (deferred to 1.11.2)
+- **Exit-signal fallback is track- and direction-blind**: blocks with no `EXIT_SIGNAL_ID` resolve the
+  nearest signal to the block's high-chainage end within 0.5 km on any track. 05 BLK_DN_07 therefore
+  shows `SIG_UP_03` @ 4.05 km (an UP-line signal; previously `SIG_UP_04` @ 8.05 km). Pre-existing.
+- **Span audit at route turnarounds**: the Task 7 check compares |Δchainage| with block length, which is
+  invalid where the path reverses direction inside a block (05 BLK_UP_10: path 1000 m, |Δchainage|
+  900 m). Must be resolved before the flag default flips.
 
 ---
 

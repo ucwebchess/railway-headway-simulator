@@ -100,6 +100,13 @@ TEMPLATE_FRIENDLY_NAMES: Dict[str, ReportType] = {
 }
 
 
+# v1.11.1 / Task 7: block-geometry consistency audit (ERR_BLOCK_LENGTH_MISMATCH).
+# Ships OFF in v1.11.1 because the bundled examples 01, 04 and 07 contain known
+# block/signal stationing defects (corrected in v1.11.2 / PR #64, which flips this
+# default to True). The check itself is unconditional on chainage source when enabled.
+VALIDATE_BLOCK_GEOMETRY_DEFAULT: bool = False
+
+
 @dataclass
 class ReportConfig:
     """P14-UI-002: User and programmatic configuration for engineering report generation."""
@@ -124,6 +131,7 @@ class ReportConfig:
     top_n_conflicts: int = 10
     top_n_occupations: int = 10
     custom_metadata: Dict[str, Any] = field(default_factory=dict)
+    validate_block_geometry: bool = VALIDATE_BLOCK_GEOMETRY_DEFAULT
 
     def __post_init__(self) -> None:
         if isinstance(self.report_type, str):

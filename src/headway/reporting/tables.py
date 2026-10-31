@@ -160,7 +160,10 @@ def create_conflict_ranking_table(
         loc_m = float(loc_m)
 
         chainage_km = getattr(c, "route_chainage_km", None)
-        if chainage_km is None or (chainage_km == 0.0 and loc_m > 0.0):
+        # v1.11.1 / Q4: 0.0 km is a legitimate ALIGNMENT chainage (e.g. 05 BLK_DN_07 starts
+        # at ND_01). Only a genuinely missing value may fall back; substituting the
+        # route-relative location for 0.0 mixed conventions (reported 46.0 km on a 25 km line).
+        if chainage_km is None:
             chainage_km = loc_m / 1000.0
         chainage_km = float(chainage_km)
 

@@ -613,13 +613,21 @@ class SimulationRunner:
         if not roots and track_links:
             roots = {track_links[0].start_node_id}
 
+        # v1.11.1 / Q4: record the alignment chainage at which each node is FIRST reached
+        # (identical traversal to the original link-start BFS) so that links whose end node
+        # lies at a LOWER chainage than their start node (e.g. the DN line of a double-track
+        # loop: LNK_13 ND_09 @ 22.0 km -> ND_08 @ 17.0 km) are recognised as running against
+        # increasing chainage instead of being projected forward from their start node.
+        node_pos_m: Dict[str, float] = {}
         for root in sorted(roots):
+            node_pos_m.setdefault(root, 0.0)
             queue = [(root, 0.0)]
             while queue:
                 curr_node, curr_m = queue.pop(0)
                 for l in next_links.get(curr_node, []):
                     if l.link_id not in link_start_m:
                         link_start_m[l.link_id] = curr_m
+                        node_pos_m.setdefault(l.end_node_id, curr_m + l.length_m)
                         queue.append((l.end_node_id, curr_m + l.length_m))
 
         cum_m = 0.0
@@ -627,6 +635,23 @@ class SimulationRunner:
             if l.link_id not in link_start_m:
                 link_start_m[l.link_id] = cum_m
             cum_m = max(cum_m, link_start_m[l.link_id] + l.length_m)
+
+        # Orientation of each link relative to increasing alignment chainage (+1 / -1).
+        link_align_dir: Dict[str, float] = {}
+        for l in track_links:
+            s_pos = node_pos_m.get(l.start_node_id)
+            e_pos = node_pos_m.get(l.end_node_id)
+            reversed_link = (
+                s_pos is not None
+                and e_pos is not None
+                and abs(link_start_m[l.link_id] - s_pos) < 1e-6
+                and e_pos < s_pos - 1e-6
+            )
+            link_align_dir[l.link_id] = -1.0 if reversed_link else 1.0
+
+        def _align_m(link_id: str, offset_m: float) -> float:
+            """Absolute alignment chainage (m) of a point at `offset_m` along `link_id`."""
+            return link_start_m[link_id] + link_align_dir.get(link_id, 1.0) * float(offset_m)
 
         # v1.11.0 / Tasks 5+10: Physical coordinate spans per resource.
         #   physical_start/end_offset_m : ROUTE-relative span (simulated route, 0 at origin)
@@ -648,8 +673,8 @@ class SimulationRunner:
                     except Exception:
                         pass
                 if inv.link_id in link_start_m:
-                    align_spans_b.append(link_start_m[inv.link_id] + float(inv.start_offset_m))
-                    align_spans_b.append(link_start_m[inv.link_id] + float(inv.end_offset_m))
+                    align_spans_b.append(_align_m(inv.link_id, inv.start_offset_m))
+                    align_spans_b.append(_align_m(inv.link_id, inv.end_offset_m))
             if route_spans_b:
                 block_route_offsets[blk.block_id] = (min(route_spans_b), max(route_spans_b))
             if align_spans_b:
@@ -1202,7 +1227,7 @@ class SimulationRunner:
                 sig_chainage_map[s.signal_id] = round(float(s.chainage_m) / 1000.0, 3)
                 sig_chainage_src[s.signal_id] = "EXPLICIT_INPUT_CHAINAGE"
             elif s.link_id in link_start_m:
-                sig_chainage_map[s.signal_id] = round((link_start_m[s.link_id] + float(s.offset_m)) / 1000.0, 3)
+                sig_chainage_map[s.signal_id] = round(_align_m(s.link_id, s.offset_m) / 1000.0, 3)
                 sig_chainage_src[s.signal_id] = "DERIVED_ALIGNMENT"
 
         sig_candidates = [
@@ -1398,6 +1423,9 @@ class SimulationRunner:
                 "train_type_id": primary_tt.train_type_id if primary_tt else None,
                 "train_id": str(traj_leader.train_id),
                 "service_duration_s": traj_leader.journey_time_s,
+                # v1.11.1 / Q2: canonical end-to-end journey time of the primary (leader)
+                # trajectory — single source for any consumer needing the journey duration.
+                "journey_time_s": float(traj_leader.journey_time_s),
                 "station_stops": station_stop_records,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,

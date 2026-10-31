@@ -138,38 +138,29 @@ class ReportAssembler:
 
         # v1.11.1 / Task 7: loud-failure geometry consistency audit — a track block's
         # length (sum of its link intervals) must agree with the chainage span between its
-        # entry and exit boundary signals within 1.0 m. Skipped only when a boundary signal
-        # could not be resolved (e.g. terminal buffer stop) — never silently clamped.
-        for r in provenance_records:
-            en_ch = getattr(r, "entry_signal_chainage_km", None)
-            ex_ch = getattr(r, "exit_signal_chainage_km", None)
-            blk_len_m = getattr(r, "resource_length_m", None)
-            if en_ch is None or ex_ch is None or blk_len_m is None:
-                continue
-            if getattr(r, "entry_signal_id", "N/A") == "N/A" or getattr(r, "exit_signal_id", "N/A") == "N/A":
-                continue
-            # Only enforce when both boundary chainages were DERIVED from the same link-geometry
-            # datum as the block span; explicit signal stationing may use a different network
-            # datum, in which case a naive span comparison would raise false positives.
-            if getattr(r, "geometry_source", None) != "INPUT_MODEL_ALIGNMENT":
-                continue
-            # Enforce only when both boundary signal chainages come from EXPLICIT input-model
-            # stationing (real network datums). Synthetic/inferred chainages derived from link
-            # geometry are permitted legitimate signal advances/insets relative to the block's
-            # interval coverage and are therefore not audited.
-            if getattr(r, "entry_signal_chainage_source", None) != "EXPLICIT_INPUT_CHAINAGE":
-                continue
-            if getattr(r, "exit_signal_chainage_source", None) != "EXPLICIT_INPUT_CHAINAGE":
-                continue
-            span_m = abs(float(ex_ch) - float(en_ch)) * 1000.0
-            if abs(span_m - float(blk_len_m)) > 1.0:
-                raise ReportingError(
-                    f"ERR_BLOCK_LENGTH_MISMATCH: block '{r.resource_id}' length {blk_len_m:.1f} m "
-                    f"disagrees with entry/exit signal chainage span {span_m:.1f} m "
-                    f"(entry '{r.entry_signal_id}' @ {en_ch:.3f} km, exit '{r.exit_signal_id}' @ {ex_ch:.3f} km; "
-                    f"delta {abs(span_m - float(blk_len_m)):.2f} m > 1.0 m tolerance).",
-                    error_code="ERR_BLOCK_LENGTH_MISMATCH",
-                )
+        # entry and exit boundary signals within 1.0 m, REGARDLESS of how the signal
+        # chainages were obtained (explicit or derived). Gated by the
+        # `validate_block_geometry` feature flag (ships OFF in v1.11.1 pending corrected
+        # example data in v1.11.2). Records are skipped only when a boundary signal does
+        # not exist (e.g. terminal buffer stop) — there is no span to compare.
+        if cfg.validate_block_geometry:
+            for r in provenance_records:
+                en_ch = getattr(r, "entry_signal_chainage_km", None)
+                ex_ch = getattr(r, "exit_signal_chainage_km", None)
+                blk_len_m = getattr(r, "resource_length_m", None)
+                if en_ch is None or ex_ch is None or blk_len_m is None:
+                    continue
+                if getattr(r, "entry_signal_id", "N/A") == "N/A" or getattr(r, "exit_signal_id", "N/A") == "N/A":
+                    continue
+                span_m = abs(float(ex_ch) - float(en_ch)) * 1000.0
+                if abs(span_m - float(blk_len_m)) > 1.0:
+                    raise ReportingError(
+                        f"ERR_BLOCK_LENGTH_MISMATCH: block '{r.resource_id}' length {blk_len_m:.1f} m "
+                        f"disagrees with entry/exit signal chainage span {span_m:.1f} m "
+                        f"(entry '{r.entry_signal_id}' @ {en_ch:.3f} km, exit '{r.exit_signal_id}' @ {ex_ch:.3f} km; "
+                        f"delta {abs(span_m - float(blk_len_m)):.2f} m > 1.0 m tolerance).",
+                        error_code="ERR_BLOCK_LENGTH_MISMATCH",
+                    )
         proj_geom: Dict[str, Tuple[float, float]] = {}
         if proj and getattr(proj, "signalling", None) and getattr(proj.signalling, "blocks", None):
             cum_m = 0.0
