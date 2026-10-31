@@ -178,7 +178,7 @@ def create_conflict_ranking_table(
                 "Leader Resource": c.leader_resource_id,
                 "Follower Resource": c.follower_resource_id,
                 "Conflict Type": getattr(c, "bottleneck_type", "RESOURCE_CONFLICT") or "RESOURCE_CONFLICT",
-                "Physical Location (m)": loc_m,
+                "Route-Relative Location (m)": loc_m,
                 "Alignment Chainage (km)": chainage_km,
                 "Leader Release (s)": rel_time,
                 "Follower Start (s)": fol_start,
@@ -195,7 +195,7 @@ def create_conflict_ranking_table(
                 "Leader Resource": c.leader_resource_id,
                 "Follower Resource": c.follower_resource_id,
                 "Conflict Type": getattr(c, "bottleneck_type", "RESOURCE_CONFLICT") or "RESOURCE_CONFLICT",
-                "Physical Location (m)": f"{loc_m:.1f}",
+                "Route-Relative Location (m)": f"{loc_m:.1f}",
                 "Alignment Chainage (km)": f"{chainage_km:.2f}",
                 "Leader Release (s)": f"{rel_time:.1f}",
                 "Follower Start (s)": f"{fol_start:.1f}",
@@ -246,8 +246,10 @@ def create_longest_occupation_table(
         # v1.11.0 / Task 5: true physical block length and alignment chainage from the
         # absolute network stationing offsets populated by the runner.
         al_s = getattr(bi, "alignment_start_m", None)
-        al_e = getattr(bi, "alignment_end_m", None)
-        blk_len_km = ((al_e - al_s) / 1000.0) if (al_s is not None and al_e is not None) else None
+        # v1.11.2 / Task 9: same length source as Section 10 (resource_span_length_m).
+        from headway.reporting.visualization_adapters import resource_span_length_m
+        _len_m = resource_span_length_m(bi)
+        blk_len_km = (_len_m / 1000.0) if _len_m is not None else None
         align_start_km = (al_s / 1000.0) if al_s is not None else None
 
         raw_rows.append(

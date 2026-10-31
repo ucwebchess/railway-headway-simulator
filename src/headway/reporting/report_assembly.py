@@ -13,6 +13,7 @@ Coordinates:
 """
 
 from datetime import datetime, timezone
+import math
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from headway.analysis.blocking_time import ResourceBlockingInterval
@@ -92,6 +93,29 @@ if not hasattr(ReportSectionId, "DETAILED_RESOURCE_OCCUPATION_TABLE"):
     setattr(ReportSectionId, "DETAILED_RESOURCE_OCCUPATION_TABLE", ReportSectionId.DETAILED_RESOURCE_TIMING)
 
 
+
+#: v1.11.2 / Task 11: mandatory Section 15 disclaimer (exact wording).
+MC_REACTIONARY_DISCLAIMER = (
+    "Reactionary delay propagation under mixed traffic is not evaluated and requires a multi-train simulation."
+)
+
+def _largest_remainder_percentages(values: Sequence[float], decimals: int = 1) -> List[float]:
+    """v1.11.2 / Task 7: percentages of ``sum(values)`` rounded to ``decimals`` places
+    by the largest-remainder (Hamilton) method, so they sum to exactly 100."""
+    vals = [max(0.0, float(v)) for v in values]
+    total = sum(vals)
+    if total <= 0.0:
+        return [0.0 for _ in vals]
+    scale = 10 ** decimals
+    units = 100 * scale
+    raw = [v / total * units for v in vals]
+    floors = [int(math.floor(r)) for r in raw]
+    short = units - sum(floors)
+    order = sorted(range(len(vals)), key=lambda k: (raw[k] - floors[k], vals[k]), reverse=True)
+    for k in order[:short]:
+        floors[k] += 1
+    return [f / scale for f in floors]
+
 class ReportAssembler:
     """Assembles standardized simulation results into a structured ReportDocument."""
 
@@ -140,9 +164,10 @@ class ReportAssembler:
         # length (sum of its link intervals) must agree with the chainage span between its
         # entry and exit boundary signals within 1.0 m, REGARDLESS of how the signal
         # chainages were obtained (explicit or derived). Gated by the
-        # `validate_block_geometry` feature flag (ships OFF in v1.11.1 pending corrected
-        # example data in v1.11.2). Records are skipped only when a boundary signal does
-        # not exist (e.g. terminal buffer stop) — there is no span to compare.
+        # `validate_block_geometry` feature flag (default OFF). v1.11.2: runner-produced
+        # packages are already validated pre-simulation (block_geometry_validation), so
+        # this is only a safety net for externally supplied packages. Records are skipped
+        # only when a boundary signal does not exist (e.g. terminal buffer stop).
         if cfg.validate_block_geometry:
             for r in provenance_records:
                 en_ch = getattr(r, "entry_signal_chainage_km", None)
@@ -975,10 +1000,16 @@ class ReportAssembler:
             t_running_pos = t_running
             t_geometric = t_clearing + t_residual
             t_total = float(ctrl_iv.duration_s) if getattr(ctrl_iv, "duration_s", None) else (t_fixed_overhead + t_running_pos + t_geometric + t_dwell)
-            fixed_pct = (t_fixed_overhead / t_total * 100.0) if t_total > 0 else 0.0
-            variable_share = t_geometric + t_dwell
 
             dwell_str = f"{t_dwell:.1f} s" if t_dwell > 0 else "0.0 s (no station dwell on this resource)"
+
+            # v1.11.2 / Task 7: the four categories are reported as shares of the
+            # controlling resource's blocking time (no "≈ baseline headway" claim — a
+            # single resource's blocking time is not the headway). Largest-remainder
+            # rounding to 0.1 % so the published shares sum to exactly 100.0 %.
+            _pcts = _largest_remainder_percentages(
+                [t_fixed_overhead, t_running_pos, t_geometric, t_dwell], decimals=1
+            )
 
             pf = 1.0
             if package and package.metadata and "performance_factor" in package.metadata:
@@ -997,8 +1028,9 @@ class ReportAssembler:
                 f"Position-Dependent Running Time = {t_running_pos:.1f} s, "
                 f"Geometric Clearance (clearing + residual rear) = {t_geometric:.1f} s, "
                 f"and Passenger Dwell = {dwell_str}. "
-                f"Category checkpoint: Fixed Overhead + Position-Dependent Running ≈ {t_fixed_overhead + t_running_pos:.1f} s "
-                f"(≈ baseline headway), while the variable share is Geometric Clearance + Passenger Dwell + Residual Rear = {variable_share:.1f} s. "
+                f"Share of the {t_total:.1f} s total blocking time: "
+                f"Fixed Overhead {_pcts[0]:.1f}%, Position-Dependent Running {_pcts[1]:.1f}%, "
+                f"Geometric Clearance {_pcts[2]:.1f}%, Passenger Dwell {_pcts[3]:.1f}% (Σ = 100.0%). "
                 f"{impact_text}"
             )
 
@@ -1094,20 +1126,17 @@ class ReportAssembler:
                 return float(al) / 1000.0
 
             def get_length(it: Any) -> float:
-                # v1.11.0 / Task 5: block length derived exclusively from the physical
-                # alignment span (alignment_end - alignment_start), loud failure when absent.
-                if isinstance(it, dict):
-                    al_s = it.get("alignment_start_m", None)
-                    al_e = it.get("alignment_end_m", None)
-                else:
-                    al_s = getattr(it, "alignment_start_m", None)
-                    al_e = getattr(it, "alignment_end_m", None)
-                if al_s is None or al_e is None:
+                # v1.11.2 / Task 9: identical length source as the Section 5 table and the
+                # Section 10 "Length (m)" column (resource_span_length_m); loud failure
+                # when no geometry is available.
+                from headway.reporting.visualization_adapters import resource_span_length_m
+                _len_m = resource_span_length_m(it)
+                if _len_m is None:
                     rid = it.get("resource_id", "?") if isinstance(it, dict) else getattr(it, "resource_id", "?")
                     raise ReportingError(
-                        f"ERR_SEC05_GEOMETRY_MISSING: blocking interval '{rid}' lacks alignment offsets for true length derivation."
+                        f"ERR_SEC05_GEOMETRY_MISSING: blocking interval '{rid}' lacks route and alignment offsets for length derivation."
                     )
-                return (float(al_e) - float(al_s)) / 1000.0
+                return _len_m / 1000.0
 
             sorted_intervals = sorted(intervals, key=get_dur, reverse=True)
             top3 = sorted_intervals[:3]
@@ -1505,8 +1534,19 @@ class ReportAssembler:
                 "Coordinate conventions used in this report: 'Route-Relative Chainage' is the 0-based distance along the "
                 "simulated route (origin = route start). 'Alignment Chainage' is the absolute network stationing obtained by "
                 "accumulating physical track-link lengths through the infrastructure model and matches signal stationing. "
-                "Sections 4 (Conflict Ranking), 10 (this table) and 11 (Provenance) consistently use Alignment Chainage; "
-                "any route-relative value is always labelled explicitly as route-relative.",
+                "Sections 10 (this table) and 11 (Provenance) use Alignment Chainage; Section 4 (Conflict Ranking) "
+                "reports both, as 'Route-Relative Location (m)' and 'Alignment Chainage (km)'; any route-relative value "
+                "is always labelled explicitly as route-relative.",
+                # v1.11.2 / Task 10: direction-specific relation between the two conventions.
+                (
+                    "Note (REVERSE run): route-relative distance is measured from the REVERSE route origin — the "
+                    "physical end of the alignment — and increases in the direction of travel, while alignment "
+                    "chainage decreases in the direction of travel. A block therefore appears with low route-relative "
+                    "values but high alignment chainage near the REVERSE origin, and vice versa."
+                    if direction == RunningDirection.REVERSE
+                    else "Note (FORWARD run): route-relative distance and alignment chainage both increase in the "
+                    "direction of travel."
+                ),
             ],
             tables=tables,
         )
@@ -1596,6 +1636,25 @@ class ReportAssembler:
             except Exception:
                 pass
 
+        # v1.11.2 / Task 6: the exported REVERSE trajectory is in the FORWARD route axis
+        # (front decreasing). TVS spans below are route-relative (run origin), so convert
+        # samples to run-origin coordinates (s_run = total − s_fwd; tail = front − L) before
+        # the increasing-coordinate crossing scan. FORWARD samples are used unchanged.
+        from types import SimpleNamespace as _NS
+        _is_rev = (
+            len(samples) >= 2
+            and float(samples[-1].front_distance_m) < float(samples[0].front_distance_m) - 1e-6
+        )
+        if _is_rev:
+            _total = max(float(x.front_distance_m) for x in samples)
+            run_samples = [
+                _NS(time_s=x.time_s, front_distance_m=_total - float(x.front_distance_m),
+                    rear_distance_m=_total - float(x.rear_distance_m))
+                for x in samples
+            ]
+        else:
+            run_samples = samples
+
         train_len = 200.0
         if project and getattr(project, "rolling_stock", None):
             types = getattr(project.rolling_stock, "train_types", [])
@@ -1643,10 +1702,10 @@ class ReportAssembler:
             exit_time_s = None
             target_front_exit = s_exit + train_len
 
-            for idx, s in enumerate(samples):
+            for idx, s in enumerate(run_samples):
                 if s.front_distance_m >= s_entry and entry_time_s is None:
                     if idx > 0:
-                        prev_s = samples[idx - 1]
+                        prev_s = run_samples[idx - 1]
                         d_diff = s.front_distance_m - prev_s.front_distance_m
                         frac = (s_entry - prev_s.front_distance_m) / d_diff if d_diff > 1e-4 else 0.0
                         frac = max(0.0, min(1.0, frac))
@@ -1656,7 +1715,7 @@ class ReportAssembler:
 
                 if (s.rear_distance_m >= s_exit or s.front_distance_m >= target_front_exit) and exit_time_s is None:
                     if idx > 0:
-                        prev_s = samples[idx - 1]
+                        prev_s = run_samples[idx - 1]
                         d_diff = s.front_distance_m - prev_s.front_distance_m
                         frac = (target_front_exit - prev_s.front_distance_m) / d_diff if d_diff > 1e-4 else 0.0
                         frac = max(0.0, min(1.0, frac))
@@ -2022,11 +2081,15 @@ class ReportAssembler:
                 f"of {std_s:.2f} s. Key percentile headways are P50 = {p50_s:.1f} s, P90 = {p90_s:.1f} s, P95 = {p95_s:.1f} s, "
                 f"and P99 = {p99_s:.1f} s."
             )
+            # v1.11.2 / Task 11: distribution statistics only — no robustness or
+            # reactionary-delay conclusion can be drawn from single-train replications.
+            _margin_rel = (
+                "within" if p95_delay_s <= plan_margin + 1e-9 else "larger than"
+            )
             p3 = (
-                f"The 95th percentile operational headway exceeds the deterministic technical headway ({det_hw_s:.1f} s) "
-                f"by {p95_delay_s:.1f} s. Because this operational delay expansion is fully contained within the recommended "
-                f"{plan_margin:.1f} s planning buffer margin (Margin: {plan_margin:.0f} s), the timetable exhibits high operational robustness with minimal risk of "
-                f"reactionary delay propagation."
+                f"The 95th percentile headway exceeds the deterministic technical headway ({det_hw_s:.1f} s) "
+                f"by {p95_delay_s:.1f} s, which is {_margin_rel} the {plan_margin:.1f} s planning buffer margin. "
+                f"{MC_REACTIONARY_DISCLAIMER}"
             )
             narrative_paras = [p1, p2, p3]
 
@@ -2130,6 +2193,35 @@ class ReportAssembler:
         )
 
     @classmethod
+    def _bottleneck_location_text(cls, kpis: ExecutiveKpis, package: Optional[SimulationResultPackage]) -> str:
+        """v1.11.2 / Task 10: Section 18 bottleneck location with an explicit convention.
+
+        ``kpis.controlling_bottleneck_chainage_km`` is route-relative (it is measured from
+        the REVERSE origin in REVERSE runs), so it must never be printed as bare
+        "chainage". Prefer the alignment chainage of the controlling resource (same
+        source as Sections 10/11) and label the route-relative value explicitly.
+        """
+        route_km = float(kpis.controlling_bottleneck_chainage_km or 0.0)
+        intervals: Sequence[Any] = []
+        if package is not None:
+            if package.metadata and package.metadata.get("blocking_intervals"):
+                intervals = package.metadata["blocking_intervals"]
+            elif getattr(package, "blocking_intervals", None):
+                intervals = package.blocking_intervals
+        align_m = None
+        for iv in intervals or []:
+            rid = iv.get("resource_id") if isinstance(iv, dict) else getattr(iv, "resource_id", None)
+            if rid == kpis.controlling_bottleneck_id:
+                align_m = iv.get("alignment_start_m") if isinstance(iv, dict) else getattr(iv, "alignment_start_m", None)
+                break
+        if align_m is not None:
+            return (
+                f"alignment chainage {float(align_m) / 1000.0:.3f} km "
+                f"(route-relative {route_km:.2f} km)"
+            )
+        return f"route-relative chainage {route_km:.2f} km"
+
+    @classmethod
     def _build_section_conclusions(
         cls,
         kpis: ExecutiveKpis,
@@ -2142,9 +2234,10 @@ class ReportAssembler:
             f"{kpis.technical_headway_s:.1f} s ({kpis.technical_headway_min:.2f} min), corresponding to a theoretical "
             f"homogeneous line capacity of {kpis.theoretical_capacity_tph:.1f} trains/hour/direction (zero buffer). "
             f"Under an operational planning buffer margin of {kpis.planning_margin_s:.1f} s (Margin: {kpis.planning_margin_s:.0f} s) per UIC 406 standards, "
-            f"the robust operational planning capacity is {kpis.planning_capacity_tph:.1f} trains/hour/direction. "
+            f"the operational planning capacity is {kpis.planning_capacity_tph:.1f} trains/hour/direction. "
             f"The line throughput is governed by critical resource '{kpis.controlling_bottleneck_id}' "
-            f"({kpis.controlling_bottleneck_type}) located at chainage {kpis.controlling_bottleneck_chainage_km:.2f} km."
+            f"({kpis.controlling_bottleneck_type}) located at "
+            f"{cls._bottleneck_location_text(kpis, package)}."
         )
 
         # Dynamic Fixed vs. Variable Blocking Time Breakdown (DEF-11 / Task C)
@@ -2183,9 +2276,11 @@ class ReportAssembler:
             if t_total <= 0.0:
                 t_total = kpis.technical_headway_s
 
-            fixed_pct = (t_fixed / t_total * 100.0) if t_total > 0 else 0.0
-            running_pct = (t_running_pos / t_total * 100.0) if t_total > 0 else 0.0
-            variable_pct = (t_variable / t_total * 100.0) if t_total > 0 else 0.0
+            # v1.11.2 / Task 7: identical largest-remainder shares as Section 3, so both
+            # sections publish the same percentages and they sum to exactly 100 %.
+            _p4 = _largest_remainder_percentages([t_fixed, t_running_pos, t_geometric, t_dwell], decimals=1)
+            fixed_pct, running_pct = _p4[0], _p4[1]
+            variable_pct = round(_p4[2] + _p4[3], 1)
 
             pf = 1.0
             if package and package.metadata and "performance_factor" in package.metadata:
@@ -2231,7 +2326,7 @@ class ReportAssembler:
             "• Station Berth and Dwell Management: Implement active platform dwell management and automated passenger boarding protocols to minimize platform occupation variances at high-density stations.",
             "• Rolling Stock Tractive and Braking Utilization: Ensure fleet braking deceleration profiles match design aspect spacing, and evaluate optimized traction curves during acceleration departures from terminal stations.",
             "• TVS Tunnel Zone Coordination: Maintain alignment between emergency tunnel ventilation zone boundaries and fixed-block signalling sections, ensuring single-train ventilation rules remain non-governing under nominal headways.",
-            "• Timetable Planning Buffer Calibration: Maintain an operational recovery margin of at least 15–20 s per UIC 406 standards to absorb secondary dwell perturbations and prevent reactionary delay propagation.",
+            "• Timetable Planning Buffer Calibration: Maintain an operational recovery margin of at least 15–20 s per UIC 406 standards to absorb secondary dwell perturbations. Reactionary delay propagation under mixed traffic is not evaluated by this analysis.",
             "• Advanced Signalling Transition: For long-term capacity expansion beyond theoretical limits, evaluate migration to CBTC or ETCS Level 2/3 moving-block architecture to eliminate fixed-block overlap constraints.",
         ]
 

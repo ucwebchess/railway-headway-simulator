@@ -16,7 +16,6 @@ import gradio as gr
 import pytest
 
 from headway.core.configuration import AppConfig
-from headway.infrastructure.direction import RunningDirection
 from headway.reporting.html_renderer import HtmlReportRenderer
 from headway.reporting.report_assembly import ReportAssembler, ReportSectionId, ReportType
 from headway.reporting.report_config import ReportConfig
@@ -247,30 +246,18 @@ def test_audit_03_and_04_cross_tab_and_direction_propagation():
 
     fns = {fn_obj.fn.__name__: fn_obj.fn for fn_obj in app.fns.values() if hasattr(fn_obj.fn, "__name__")}
 
-    # Test reverse running direction
-    sim_res = fns["handle_run_simulation"]("REVERSE", "DETERMINISTIC", 0.1, 1800.0, 180.0, 10)
-    assert sim_res[0] == 100.0
-    assert session_state.latest_result_package is not None
-    assert session_state.latest_result_package.running_direction == RunningDirection.REVERSE
+    # v1.11.2 (literal strict): 01_single_track fails pre-simulation block-geometry
+    # validation (BLK_01: length 1900 m vs entry->exit span 2000 m). The simulation tab
+    # must surface the named error for BOTH directions instead of producing results.
+    for direction in ("REVERSE", "FORWARD"):
+        session_state.latest_result_package = None
+        sim_res = fns["handle_run_simulation"](direction, "DETERMINISTIC", 0.1, 1800.0, 180.0, 10)
+        assert sim_res[0] == 0.0
+        assert sim_res[1] == "Failed"
+        assert "ERR_BLOCK_GEOMETRY_MISMATCH" in sim_res[3]
+        assert "BLK_01" in sim_res[3]
+        assert session_state.latest_result_package is None
 
-    # Results tab export handlers work with latest results
-    xlsx_res = fns["export_excel_results"]()
-    x_val = xlsx_res["value"] if isinstance(xlsx_res, dict) else xlsx_res.value
-    if "base64," in str(x_val):
-        m_x = re.search(r'download="([^"]+)"', str(x_val))
-        xlsx_path = Path(session_state.reports_dir) / m_x.group(1) if m_x else Path(x_val)
-    else:
-        xlsx_path = Path(x_val)
-    assert xlsx_path.exists() and xlsx_path.stat().st_size > 0
-
-    json_res = fns["export_json_results"]()
-    j_val = json_res["value"] if isinstance(json_res, dict) else json_res.value
-    if "base64," in str(j_val):
-        m_j = re.search(r'download="([^"]+)"', str(j_val))
-        json_path = Path(session_state.reports_dir) / m_j.group(1) if m_j else Path(j_val)
-    else:
-        json_path = Path(j_val)
-    assert json_path.exists() and json_path.stat().st_size > 0
 
 
 @pytest.mark.regression

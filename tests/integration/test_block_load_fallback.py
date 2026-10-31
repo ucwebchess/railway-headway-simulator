@@ -14,6 +14,7 @@ from headway.data.converter import convert_raw_to_canonical
 from headway.data.importer import ExcelImporter
 from headway.data.validation import ValidationReport
 from headway.infrastructure.direction import RunningDirection
+from headway.signalling.block_geometry_validation import BlockGeometryValidationError
 from headway.ui.simulation_runner import SimulationRunner
 
 
@@ -135,18 +136,22 @@ def test_three_user_blocks_over_three_links_runtime_resources(tmp_path: Path):
 
     project = convert_raw_to_canonical({"SIGNALLING": raw_sig, "INFRASTRUCTURE": raw_inf, "ROLLING_STOCK": raw_rs})
 
-    # Run analysis pipeline
-    pkg, doc = SimulationRunner.run_simulation_pipeline(project=project, running_direction=RunningDirection.FORWARD)
+    # The 3 user-defined blocks are loaded verbatim — no BLK_LNK_* synthesis.
+    assert [b.block_id for b in project.signalling.blocks] == user_block_ids
+    assert not any(b.block_id.startswith("BLK_LNK") for b in project.signalling.blocks)
 
-    # Assert runtime resource list contains exactly the 3 user-defined block IDs
-    resource_ids = [b.resource_id for b in pkg.blocking_intervals]
-    assert resource_ids == user_block_ids
-    assert len(resource_ids) == 3
-
-    # Assert that no resource has an ID matching the pattern BLK_LNK_*
-    assert not any("BLK_LNK_" in rid for rid in resource_ids)
-    assert not any(rid.startswith("BLK_LNK") for rid in resource_ids)
-    assert not any("BLK_LNK_" in rec.resource_id for rec in pkg.metadata.get("provenance_records", []))
+    # v1.11.2 (literal strict): this fixture's last block is geometrically inconsistent —
+    # its entry signal SIG_03 sits 100 m into LNK_03 and its exit resolves to the terminal
+    # buffer stop at the end of LNK_03, i.e. an entry->exit span of 900 m for a 1000 m
+    # block. Pre-simulation validation now rejects it in both directions.
+    # The fixture corridor is NOMINAL (forward-only): REVERSE is rejected earlier by
+    # direction validation, so only FORWARD can reach block-geometry validation.
+    for direction in (RunningDirection.FORWARD,):
+        with pytest.raises(BlockGeometryValidationError) as exc_info:
+            SimulationRunner.run_simulation_pipeline(project=project, running_direction=direction)
+        assert exc_info.value.error_code == "ERR_BLOCK_GEOMETRY_MISMATCH"
+        assert {(f.code, f.block_id) for f in exc_info.value.findings} == {("ERR_BLOCK_GEOMETRY_MISMATCH", "BLK_USER_03")}
+        assert "difference -100.0 m" in str(exc_info.value)
 
 
 def test_zero_blocks_raises_err_sig_blocks_missing(tmp_path: Path):
@@ -254,18 +259,27 @@ def test_user_data_shape_447_links_92_blocks(tmp_path: Path):
 
     project = convert_raw_to_canonical({"SIGNALLING": raw_sig, "INFRASTRUCTURE": raw_inf, "ROLLING_STOCK": raw_rs})
 
-    pkg, doc = SimulationRunner.run_simulation_pipeline(project=project, running_direction=RunningDirection.FORWARD)
+    # Confirm 92 user blocks loaded verbatim (no BLK_LNK_* synthesis)
+    block_ids = [b.block_id for b in project.signalling.blocks]
+    assert len(block_ids) == 92
+    assert block_ids[:5] == ["BLK_UP_001", "BLK_UP_002", "BLK_UP_003", "BLK_UP_004", "BLK_UP_005"]
+    assert block_ids[-5:] == ["BLK_UP_088", "BLK_UP_089", "BLK_UP_090", "BLK_UP_091", "BLK_UP_092"]
+    assert not any("BLK_LNK_" in bid for bid in block_ids)
 
-    # Confirm 92 blocks loaded
-    assert len(project.signalling.blocks) == 92
-    resource_ids = [b.resource_id for b in pkg.blocking_intervals]
-    assert len(resource_ids) == 92
-
-    # First 5 block IDs
-    assert resource_ids[:5] == ["BLK_UP_001", "BLK_UP_002", "BLK_UP_003", "BLK_UP_004", "BLK_UP_005"]
-    # Last 5 block IDs
-    assert resource_ids[-5:] == ["BLK_UP_088", "BLK_UP_089", "BLK_UP_090", "BLK_UP_091", "BLK_UP_092"]
-
-    # No synthetic IDs
-    assert not any("BLK_LNK_" in rid for rid in resource_ids)
-    assert not any("BLK_LNK_" in rec.resource_id for rec in pkg.metadata.get("provenance_records", []))
+    # v1.11.2 (literal strict): the fixture's blocks cover 4 x 100 m (400 m) of 1000 m links
+    # while consecutive signals are 4 km apart, and BLK_UP_091/092 end mid-link with no
+    # exit signal. Pre-simulation validation rejects the model in both directions and
+    # reports every block (no auto-correction).
+    # The fixture corridor is NOMINAL (forward-only): REVERSE is rejected earlier by
+    # direction validation, so only FORWARD can reach block-geometry validation.
+    for direction in (RunningDirection.FORWARD,):
+        with pytest.raises(BlockGeometryValidationError) as exc_info:
+            SimulationRunner.run_simulation_pipeline(project=project, running_direction=direction)
+        err = exc_info.value
+        assert err.error_code == "ERR_BLOCK_NO_EXIT_SIGNAL"
+        by_code = {}
+        for f in err.findings:
+            by_code.setdefault(f.code, set()).add(f.block_id)
+        assert by_code["ERR_BLOCK_NO_EXIT_SIGNAL"] == {"BLK_UP_091", "BLK_UP_092"}
+        assert by_code["ERR_BLOCK_GEOMETRY_MISMATCH"] == {f"BLK_UP_{i:03d}" for i in range(1, 91)}
+        assert not any("BLK_LNK_" in f.block_id for f in err.findings)

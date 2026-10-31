@@ -23,6 +23,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.2] — 2026-10-31
+
+Phase 4c bidirectional-integrity patch: 12-task remediation of block-geometry, exit-signal,
+turnaround, boundary-speed, block-overlap, REVERSE residual-rear and report-narrative defects.
+Every fix is direction-symmetric and verified in FORWARD and REVERSE. Code fixes only: **no
+example data was modified.** Full suite: 1022/1022 passed.
+
+### Breaking / behaviour change
+- **Literal-strict block-geometry validation.** `SimulationRunner` now validates block geometry
+  *before* any simulation and always raises (no opt-out, no auto-correction). Four shipped
+  examples carry genuine geometry defects and now fail identically in FORWARD and REVERSE:
+
+  | Example | Error code | Blocks |
+  |---|---|---|
+  | `01_single_track` | `ERR_BLOCK_GEOMETRY_MISMATCH` | BLK_01 (length 1900 m, signal span 2000 m) |
+  | `04_tunnel_tvs` | `ERR_BLOCK_GEOMETRY_MISMATCH` | BLK_T01 (length 2300 m, signal span 2450 m) |
+  | `05_comprehensive_line` | `ERR_BLOCK_NO_EXIT_SIGNAL` | BLK_UP_10, BLK_DN_07 (only cross-track signals in range) |
+  | `07_hsr_140km` | `ERR_BLOCK_NO_EXIT_SIGNAL` | BLK_UP_091 (+ 20 `ERR_BLOCK_GEOMETRY_MISMATCH`, ±313 m) |
+
+  `02_double_track`, `03_station_platform` and `06_multilink_blocks` validate cleanly. Tests that
+  ran 01/04/05/07 now assert the documented error (`tests/block_geometry_expectations.py`).
+
+### Added
+- **`headway.signalling.block_geometry_validation`** (Tasks 1, 2, 3, 5): `BlockGeometryValidationError`
+  (`SignallingError`; `.error_code`, `.findings` — every finding is listed, the code is the highest
+  priority present: NO_EXIT > MISMATCH > OVERLAP), `validate_block_geometry`, `enforce_block_geometry`,
+  `build_alignment_frame`, `along_track_distance`, `resolve_exit_boundary`.
+  - `ERR_BLOCK_GEOMETRY_MISMATCH` — |entry→exit along-track path distance − reported block length|
+    > 1.0 m; reports block, length, span and difference (Task 1).
+  - `ERR_BLOCK_NO_EXIT_SIGNAL` — the exit-signal fallback is track-aware; a cross-track signal is
+    never borrowed. Only a true terminal (ENDPOINT/BUFFER_STOP node with no onward link) is a
+    valid signal-less exit. An explicit exit signal is honoured on any track; an unknown one raises
+    (Task 2).
+  - `ERR_BLOCK_OVERLAP` — two blocks claiming the same metres of the same link; reports both block
+    IDs and the overlap distance (Task 5).
+  - Turnaround spans use along-track **path** distance, not chainage difference (Task 3).
+- `tests/unit/test_v1112_bidirectional_integrity.py` — per-task evidence (Tasks 1–11, FWD and REV).
+- `TestBidirectionalSymmetry` (Task 12) and `TestCleanExampleErrorPaths` in
+  `tests/integration/test_simulation_runner_e2e.py`. The symmetry test covers all 7 examples plus a
+  05 turnaround variant built in memory (only the two turnaround exit signals made explicit).
+- `ERR_RESIDUAL_COORDINATE_FRAME` guard on the residual-rear coordinate contract.
+
+### Fixed
+- **Boundary speed continuity (Task 4)**: `v_out` of block *n* and `v_in` of block *n+1* are now
+  sampled at the same boundary route position (`_speed_at_route_position`). This eliminates the
+  01 BLK_01↔BLK_02 1.27 km/h discrepancy; 0 discrepancies > 0.1 km/h in either direction.
+- **REVERSE residual-rear / station attribution (Task 6)**: the physical footprint is converted
+  from the exported forward-axis REVERSE trajectory (front = total − s, rear = front + L) before
+  comparing against block bounds. Example: 06 REV STN_01 rear was −20 m, now 4400–4560 m. FORWARD
+  is unchanged.
+- **Section 3 (Task 7)**: removed the "≈ baseline headway" claim. Headway components are shown as
+  percentages that sum to exactly 100 % (largest-remainder rounding to 0.1 %). The old share
+  double-counted Residual Rear.
+- **Section 4 (Task 8)**: column renamed to "Route-Relative Location (m)"; "Alignment Chainage (km)"
+  added.
+- **Section 5 (Task 9)**: block lengths come from the same `blocking_intervals` source as Section 10
+  (route-relative span, falling back to the alignment span).
+- **Section 10 (Task 10)**: both coordinate conventions defined, with a REVERSE-run footnote.
+- **Monte Carlo narrative (Task 11)**: states statistics only (no robustness claim) and adds:
+  "Reactionary delay propagation under mixed traffic is not evaluated and requires a multi-train
+  simulation."
+- **Section 18**: bottleneck location reads "alignment chainage X km (route-relative Y km)". REVERSE
+  previously printed the unlabelled route-relative value.
+
+### Changed
+- `VALIDATE_BLOCK_GEOMETRY_DEFAULT` stays `False`. The report-level `ERR_BLOCK_LENGTH_MISMATCH` audit
+  is kept only as a safety net for externally supplied packages, because runner-produced packages
+  are validated before simulation.
+
+### Known limitations
+- Corridors declared NOMINAL (forward-only) reject REVERSE in direction validation, which runs before
+  geometry validation. Such corridors are therefore geometry-validated in FORWARD only.
+- Lost coverage, accepted under literal-strict: feature tests that depended on running
+  01/04/05/07 now assert the error instead. This includes the post-release XLSX/JSON export-handler
+  coverage with results. The 05 reversed-link assertions are kept by running them unchanged on the
+  05 turnaround variant in both directions.
+
+---
+
 ## [1.11.1] — 2026-10-31
 
 Phase 4c sensitivity & geometry hotfix — 8-task remediation of sensitivity-curve, residual-rear,

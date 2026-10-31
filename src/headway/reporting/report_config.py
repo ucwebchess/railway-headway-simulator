@@ -100,10 +100,12 @@ TEMPLATE_FRIENDLY_NAMES: Dict[str, ReportType] = {
 }
 
 
-# v1.11.1 / Task 7: block-geometry consistency audit (ERR_BLOCK_LENGTH_MISMATCH).
-# Ships OFF in v1.11.1 because the bundled examples 01, 04 and 07 contain known
-# block/signal stationing defects (corrected in v1.11.2 / PR #64, which flips this
-# default to True). The check itself is unconditional on chainage source when enabled.
+# v1.11.1 / Task 7: report-level block-geometry consistency audit (ERR_BLOCK_LENGTH_MISMATCH).
+# Unconditional on chainage source when enabled. v1.11.2: superseded for every package
+# produced by SimulationRunner, which now validates block geometry BEFORE simulation and
+# always raises (ERR_BLOCK_GEOMETRY_MISMATCH / ERR_BLOCK_NO_EXIT_SIGNAL / ERR_BLOCK_OVERLAP,
+# see headway.signalling.block_geometry_validation). This flag remains a report-assembly
+# safety net for externally supplied packages and stays OFF by default.
 VALIDATE_BLOCK_GEOMETRY_DEFAULT: bool = False
 
 
