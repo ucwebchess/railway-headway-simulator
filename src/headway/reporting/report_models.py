@@ -222,6 +222,50 @@ class InfrastructureSummary:
     total_stations: int = 0
     total_platforms: int = 0
     total_tvs_sections: int = 0
+    # v1.11.3: signalling timing actually applied to the blocking-time decomposition
+    # (SimulationResultPackage.metadata["signalling_timing"]). resource_release_delay_s
+    # remains the SignallingSystem (workbook) value; per-block overrides are disclosed.
+    driver_reaction_time_s: Optional[float] = None
+    block_release_overrides: Tuple[Tuple[float, int], ...] = ()  # (release_s, block count) != system
+    timed_block_count: int = 0
+
+    @property
+    def approach_time_s(self) -> Optional[float]:
+        """Approach allowance applied to every non-origin block: Sighting + Driver Reaction."""
+        if self.driver_reaction_time_s is None:
+            return None
+        return round(self.sighting_time_s + self.driver_reaction_time_s, 6)
+
+    @property
+    def approach_footnote(self) -> Optional[str]:
+        """Executive Summary footnote explaining the Approach column of the detailed tables."""
+        if self.driver_reaction_time_s is None:
+            return None
+        return (
+            f"Approach time in detailed tables = Sighting + {self.driver_reaction_time_s:.1f}s reaction "
+            f"({self.sighting_time_s:.1f} s + {self.driver_reaction_time_s:.1f} s = {self.approach_time_s:.1f} s "
+            "per non-origin block)."
+        )
+
+    @property
+    def release_override_note(self) -> Optional[str]:
+        """Disclosure of per-block RELEASE_DELAY_S values that differ from the system value."""
+        if not self.block_release_overrides:
+            return None
+        parts = ", ".join(
+            f"{val:.1f} s on {cnt} of {self.timed_block_count} blocks" for val, cnt in self.block_release_overrides
+        )
+        n_override = sum(cnt for _, cnt in self.block_release_overrides)
+        n_default = max(0, self.timed_block_count - n_override)
+        default_txt = (
+            f"no block uses the system default ({self.resource_release_delay_s:.1f} s)"
+            if n_default == 0
+            else f"the system default ({self.resource_release_delay_s:.1f} s) applies to the remaining {n_default} blocks"
+        )
+        return (
+            f"Release delay overridden per block (Blocks.RELEASE_DELAY_S): {parts}. Detailed tables and headway use "
+            f"the per-block value; {default_txt}."
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -242,6 +286,10 @@ class InfrastructureSummary:
             "total_stations": self.total_stations,
             "total_platforms": self.total_platforms,
             "total_tvs_sections": self.total_tvs_sections,
+            "driver_reaction_time_s": self.driver_reaction_time_s,
+            "approach_time_s": self.approach_time_s,
+            "block_release_overrides": [list(x) for x in self.block_release_overrides],
+            "timed_block_count": self.timed_block_count,
         }
 
 

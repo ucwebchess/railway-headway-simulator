@@ -323,6 +323,18 @@ def _build_rolling_stock_model(rs_wb: Optional[RawWorkbookData]) -> RollingStock
     )
 
 
+def _inherit_release_delay(block_value: Any, system_value: float) -> float:
+    """v1.11.3: Effective per-block release delay.
+
+    An explicit per-block value wins; a blank cell (None / empty string) inherits the
+    SignallingSystem release delay, so the blocking-time tables and the Executive Summary
+    are driven by the same workbook value.
+    """
+    if block_value is None or (isinstance(block_value, str) and not block_value.strip()):
+        return float(system_value)
+    return float(block_value)
+
+
 def _build_signalling_model(sig_wb: Optional[RawWorkbookData]) -> SignallingModel:
     if not sig_wb:
         return SignallingModel()
@@ -390,7 +402,10 @@ def _build_signalling_model(sig_wb: Optional[RawWorkbookData]) -> SignallingMode
                 exit_signal_id=r.get("exit_signal_id"),
                 link_intervals=ivs,
                 overlap_m=float(r.get("overlap_m", 50.0)),
-                release_delay_s=float(r.get("release_delay_s", 4.0)),
+                # v1.11.3: a blank per-block RELEASE_DELAY_S inherits the system-level
+                # SignallingSystem.RELEASE_DELAY_S (previously a hardcoded 4.0 s, which
+                # silently diverged from the workbook whenever the system value != 4.0).
+                release_delay_s=_inherit_release_delay(r.get("release_delay_s"), sig_sys.release_delay_s),
             )
         )
 

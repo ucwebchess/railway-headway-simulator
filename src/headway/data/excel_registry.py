@@ -280,7 +280,7 @@ SIGNALLING_WORKBOOK = WorkbookDef(
                 ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=False, deprecated=True, excel_unit="m", canonical_unit="m", description="Block start offset along link (Deprecated: use BlockGeometry)", example_value=100.0),
                 ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=False, deprecated=True, excel_unit="m", canonical_unit="m", description="Block end offset along link (Deprecated: use BlockGeometry)", example_value=1100.0),
                 ColumnDef("OVERLAP_M", "overlap_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", default_value=50.0, description="Safety overlap past exit signal", example_value=50.0),
-                ColumnDef("RELEASE_DELAY_S", "release_delay_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=4.0, description="Track circuit release delay", example_value=4.0),
+                ColumnDef("RELEASE_DELAY_S", "release_delay_s", FieldType.FLOAT, required=False, excel_unit="s", canonical_unit="s", default_value=None, description="Track circuit release delay; blank = inherit SignallingSystem.RELEASE_DELAY_S", example_value=4.0),
             ],
             required=True,
             min_rows=1,

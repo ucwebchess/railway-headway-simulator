@@ -155,13 +155,15 @@ class HtmlReportRenderer:
                 <table class='summary-table'>
                     <tr><td>Signalling Technology</td><td><b>{html.escape(infra.signalling_technology)}</b></td></tr>
                     <tr><td>Aspect Model / Overlap</td><td>{html.escape(infra.aspect_model)} &nbsp;/&nbsp; {infra.default_overlap_m:.1f} m</td></tr>
-                    <tr><td>Sighting / Setup / Release</td><td>{infra.sighting_time_s:.1f} s &nbsp;/&nbsp; {infra.route_setup_time_s:.1f} s &nbsp;/&nbsp; {infra.resource_release_delay_s:.1f} s</td></tr>
+                    <tr><td>Sighting / Setup / Release</td><td>{infra.sighting_time_s:.1f} s{"*" if infra.approach_footnote else ""} &nbsp;/&nbsp; {infra.route_setup_time_s:.1f} s &nbsp;/&nbsp; {infra.resource_release_delay_s:.1f} s{"†" if infra.release_override_note else ""}</td></tr>
                     <tr><td>Network Topology</td><td>{html.escape(infra.topology_mode)}</td></tr>
                     <tr><td>Total Links / Blocks / Signals</td><td>{infra.total_links} links &nbsp;/&nbsp; {infra.total_blocks} blocks &nbsp;/&nbsp; {infra.total_signals} signals</td></tr>
                     <tr><td>Total Stations / Platforms / TVS</td><td>{infra.total_stations} stations &nbsp;/&nbsp; {infra.total_platforms} platforms &nbsp;/&nbsp; {infra.total_tvs_sections} TVS</td></tr>
                     <tr><td>Dataset ID & Version</td><td>{html.escape(infra.dataset_id)} (v{html.escape(infra.dataset_version)})</td></tr>
                     <tr><td>Simulation Fidelity</td><td>{html.escape(infra.model_fidelity)}</td></tr>
                 </table>
+                {f"<div class='summary-footnote' style='font-size: 0.85em; color: #4A5568; margin-top: 6px;'>* {html.escape(infra.approach_footnote)}</div>" if infra.approach_footnote else ""}
+                {f"<div class='summary-footnote' style='font-size: 0.85em; color: #C05621; margin-top: 4px;'>† {html.escape(infra.release_override_note)}</div>" if infra.release_override_note else ""}
             </div>
             """)
         html_parts.append("</div>")
@@ -239,6 +241,12 @@ class HtmlReportRenderer:
                 html_parts.append("<div class='table-wrapper'>")
                 html_parts.append(f"<div class='table-title'>{html.escape(tbl.title)}</div>")
                 html_parts.append(tbl.to_html(formatted=True))
+                # v1.11.3: table footnote (e.g. Approach = Sighting + Driver Reaction).
+                if (tbl.metadata or {}).get("footnote"):
+                    html_parts.append(
+                        f"<div class='table-footnote' style='font-size: 0.85em; color: #4A5568; margin-top: 4px;'>"
+                        f"{html.escape(str(tbl.metadata['footnote']))}</div>"
+                    )
                 html_parts.append("</div>")
 
             # Recommendations (for Section 18)

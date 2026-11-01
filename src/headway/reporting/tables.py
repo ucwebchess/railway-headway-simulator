@@ -345,8 +345,14 @@ def create_resource_timing_table(
     running_direction: RunningDirection = RunningDirection.FORWARD,
     controlling_resource_ids: Optional[Sequence[str]] = None,
     geometry_lookup: Optional[Dict[str, Tuple[float, float]]] = None,
+    footnote: Optional[str] = None,
 ) -> EngineeringTable:
-    """P13-OCC-001: Detailed resource blocking breakdown table."""
+    """P13-OCC-001: Detailed resource blocking breakdown table.
+
+    v1.11.3: ``footnote`` documents how the timing columns are derived (Approach =
+    Sighting + Driver Reaction, Setup, Release source); it is stored in the table
+    metadata and rendered directly beneath the table.
+    """
     if records and isinstance(records[0], ResourceBlockingInterval):
         cum_chainage_m = 0.0
         for bi in records:
@@ -419,6 +425,7 @@ def create_resource_timing_table(
         raw_dataframe=pd.DataFrame(raw_rows),
         formatted_dataframe=pd.DataFrame(formatted_rows),
         running_direction=running_direction,
+        metadata={"footnote": footnote} if footnote else None,
     )
 
 

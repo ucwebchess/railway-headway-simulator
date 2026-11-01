@@ -14,6 +14,7 @@ Generates publication-quality formal PDF engineering reports matching the visual
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional, Sequence, Union
+from xml.sax.saxutils import escape as xml_escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A3, A4, landscape
@@ -195,6 +196,9 @@ class PdfReportRenderer:
                 # Render tables
                 for tbl in s.tables:
                     story.append(cls._build_table_flowable(tbl, styles))
+                    # v1.11.3: table footnote (e.g. Approach = Sighting + Driver Reaction).
+                    if (tbl.metadata or {}).get("footnote"):
+                        story.append(Paragraph(xml_escape(str(tbl.metadata["footnote"])), styles["MutedText"]))
                     story.append(Spacer(1, 8))
 
                 # Recommendations
@@ -443,7 +447,7 @@ class PdfReportRenderer:
                 [Paragraph("<b>Infrastructure & Signalling</b>", styles["TableCellBold"]), Paragraph("", styles["TableCell"])],
                 [Paragraph("Signalling Technology", styles["TableCell"]), Paragraph(f"<b>{infra.signalling_technology}</b>", styles["TableCell"])],
                 [Paragraph("Aspect Model / Overlap", styles["TableCell"]), Paragraph(f"{infra.aspect_model} / {infra.default_overlap_m:.0f} m", styles["TableCell"])],
-                [Paragraph("Sighting / Setup / Rel", styles["TableCell"]), Paragraph(f"{infra.sighting_time_s:.1f}s / {infra.route_setup_time_s:.1f}s / {infra.resource_release_delay_s:.1f}s", styles["TableCell"])],
+                [Paragraph("Sighting / Setup / Rel", styles["TableCell"]), Paragraph(f"{infra.sighting_time_s:.1f}s{'*' if infra.approach_footnote else ''} / {infra.route_setup_time_s:.1f}s / {infra.resource_release_delay_s:.1f}s{'†' if infra.release_override_note else ''}", styles["TableCell"])],
                 [Paragraph("Links / Blocks / Signals", styles["TableCell"]), Paragraph(f"{infra.total_links} / {infra.total_blocks} / {infra.total_signals}", styles["TableCell"])],
                 [Paragraph("Stations / Plts / TVS", styles["TableCell"]), Paragraph(f"{infra.total_stations} / {infra.total_platforms} / {infra.total_tvs_sections}", styles["TableCell"])],
             ]
@@ -474,6 +478,11 @@ class PdfReportRenderer:
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
             ]))
             flowables.append(summary_table)
+            # v1.11.3: footnotes reconciling the card with the 7-component tables.
+            if infra.approach_footnote:
+                flowables.append(Paragraph(f"* {xml_escape(infra.approach_footnote)}", styles["MutedText"]))
+            if infra.release_override_note:
+                flowables.append(Paragraph(f"† {xml_escape(infra.release_override_note)}", styles["MutedText"]))
             flowables.append(Spacer(1, 6))
 
         # Bottleneck diagnosis callout

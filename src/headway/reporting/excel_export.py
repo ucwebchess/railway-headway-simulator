@@ -157,6 +157,13 @@ class ExcelReportExporter:
             ws.append(["Dataset ID", infra.dataset_id, ""])
             ws.append(["Dataset Version", infra.dataset_version, ""])
             ws.append(["Model Fidelity", infra.model_fidelity, ""])
+            # v1.11.3: timing reconciliation with the 7-component detailed tables.
+            if getattr(infra, "driver_reaction_time_s", None) is not None:
+                ws.append(["Driver Reaction Time", infra.driver_reaction_time_s, "s"])
+                ws.append(["Approach Time (detailed tables)", infra.approach_time_s, "s"])
+                ws.append(["Note", infra.approach_footnote, ""])
+            if getattr(infra, "release_override_note", None):
+                ws.append(["Release Override", infra.release_override_note, ""])
             ws.append([])
 
         cls._auto_fit_columns(ws)
