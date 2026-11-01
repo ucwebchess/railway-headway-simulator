@@ -6,6 +6,7 @@ and directional integrity using full simulation packages per RHS-P14-001 § 35.
 
 from io import BytesIO
 from pathlib import Path
+import shutil as _shutil
 import tempfile
 import zipfile
 import json
@@ -1529,3 +1530,146 @@ class TestReportLevelBlockGeometryAuditV1112:
             ReportAssembler.assemble_report(package=pkg)
         assert excinfo.value.error_code == "ERR_BLOCK_LENGTH_MISMATCH"
         assert "BLK_UP_03" in str(excinfo.value)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v1.11.3 — Signalling parameter reconciliation (Summary card vs 7-component table)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _signalling_variant_dir(dst: Path, sighting, setup, sys_release, block_release) -> Path:
+    """Copy example 06 workbooks, set SignallingSystem timing and per-block RELEASE_DELAY_S.
+
+    ``block_release=None`` blanks every Blocks.RELEASE_DELAY_S cell (inherit system value).
+    Shipped example files are never modified.
+    """
+    src = Path(__file__).resolve().parents[2] / "examples" / "06_multilink_blocks"
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in src.glob("*.xlsx"):
+        _shutil.copy(f, dst / f.name)
+    sig = dst / "02_Signalling.xlsx"
+    wb = openpyxl.load_workbook(sig)
+    ss = wb["SignallingSystem"]
+    hdr = [c.value for c in ss[1]]
+    data_row = next(r for r in range(2, ss.max_row + 1) if isinstance(ss.cell(r, 1).value, str) and not str(ss.cell(r, 1).value).startswith(("(", "[")))
+    for col, val in (("SIGHTING_TIME_S", sighting), ("ROUTE_SETUP_TIME_S", setup), ("RELEASE_DELAY_S", sys_release)):
+        ss.cell(data_row, hdr.index(col) + 1).value = val
+    bl = wb["Blocks"]
+    bhdr = [c.value for c in bl[1]]
+    j = bhdr.index("RELEASE_DELAY_S") + 1
+    for r in range(2, bl.max_row + 1):
+        bid = bl.cell(r, 1).value
+        if isinstance(bid, str) and bid.startswith("BLK"):
+            bl.cell(r, j).value = block_release
+    wb.save(sig)
+    return dst
+
+
+def _run_variant(variant_dir: Path, direction: RunningDirection):
+    from headway.ui.file_manager import FileManager
+    from headway.ui.simulation_runner import SimulationRunner
+
+    project, _report, _files = FileManager.import_excel_files([str(p) for p in sorted(variant_dir.glob("*.xlsx"))])
+    assert project is not None
+    pkg, doc = SimulationRunner.run_simulation_pipeline(project, running_direction=direction)
+    return project, pkg, doc
+
+
+_DIRECTIONS = [RunningDirection.FORWARD, RunningDirection.REVERSE]
+
+
+class TestSignallingParameterReconciliationV1113:
+    """v1.11.3: the Executive Summary card and the 7-component table are driven by the same values."""
+
+    @pytest.fixture(scope="class")
+    def audit_values_dir(self, tmp_path_factory):
+        # Forensic-audit values: Sighting 1.0 s, Setup 5.0 s, Release 4.0 s; blocks inherit.
+        return _signalling_variant_dir(tmp_path_factory.mktemp("audit_vals"), 1.0, 5.0, 4.0, None)
+
+    @pytest.fixture(scope="class")
+    def override_dir(self, tmp_path_factory):
+        # Project-8000 situation: system release 4.0 s, every block overrides with 5.0 s.
+        return _signalling_variant_dir(tmp_path_factory.mktemp("override"), 1.0, 5.0, 4.0, 5.0)
+
+    @pytest.mark.parametrize("direction", _DIRECTIONS, ids=lambda d: d.name)
+    def test_signalling_parameters_consistent_across_sections(self, audit_values_dir, direction):
+        _project, pkg, doc = _run_variant(audit_values_dir, direction)
+        summary = doc.infrastructure
+        assert summary is not None
+        # Summary card shows the workbook values.
+        assert (summary.sighting_time_s, summary.route_setup_time_s, summary.resource_release_delay_s) == (1.0, 5.0, 4.0)
+        assert summary.driver_reaction_time_s == 4.0
+
+        origin = pkg.metadata["signalling_timing"]["origin_block_id"]
+        non_origin = [iv for iv in pkg.metadata["blocking_intervals"] if iv.resource_id != origin]
+        assert non_origin, "need at least one non-origin block"
+        for iv in non_origin:
+            decomposition = iv.decomposition
+            assert decomposition.setup_time_s == summary.route_setup_time_s
+            assert decomposition.release_time_s == summary.resource_release_delay_s
+            assert decomposition.approach_time_s == summary.sighting_time_s + 4.0
+            assert decomposition.approach_time_s == summary.approach_time_s
+
+        # The rendered Section 10 table carries the same numbers.
+        tbl = doc.sections[ReportSectionId.DETAILED_RESOURCE_TIMING].tables[0]
+        rows = tbl.raw_dataframe[tbl.raw_dataframe["Resource ID"] != origin]
+        assert set(rows["Setup (s)"]) == {5.0}
+        assert set(rows["Approach (s)"]) == {5.0}
+        assert set(rows["Release (s)"]) == {4.0}
+        assert summary.release_override_note is None
+
+    @pytest.mark.parametrize("direction", _DIRECTIONS, ids=lambda d: d.name)
+    def test_approach_footnote_in_card_and_table(self, audit_values_dir, direction):
+        _project, pkg, doc = _run_variant(audit_values_dir, direction)
+        summary = doc.infrastructure
+        assert summary.approach_footnote.startswith("Approach time in detailed tables = Sighting + 4.0s reaction")
+        sec10 = doc.sections[ReportSectionId.DETAILED_RESOURCE_TIMING]
+        note = sec10.tables[0].metadata["footnote"]
+        assert note.startswith("Approach = Sighting (1.0s) + Driver Reaction (4.0s)")
+        assert pkg.metadata["signalling_timing"]["origin_block_id"] in note
+        assert note in sec10.narrative_paragraphs
+        html = HtmlReportRenderer.render(doc, embed_interactive_plotly=False)
+        assert "Approach time in detailed tables = Sighting + 4.0s reaction" in html
+        assert "Approach = Sighting (1.0s) + Driver Reaction (4.0s)" in html
+        assert "Sighting / Setup / Release" in html
+
+    @pytest.mark.parametrize("direction", _DIRECTIONS, ids=lambda d: d.name)
+    def test_per_block_release_override_is_disclosed(self, override_dir, direction):
+        _project, pkg, doc = _run_variant(override_dir, direction)
+        summary = doc.infrastructure
+        n_blocks = len(pkg.metadata["signalling_timing"]["block_release_delay_s"])
+        assert summary.resource_release_delay_s == 4.0  # system value
+        assert summary.block_release_overrides == ((5.0, n_blocks),)
+        assert f"5.0 s on {n_blocks} of {n_blocks} blocks" in summary.release_override_note
+        assert "no block uses the system default (4.0 s)" in summary.release_override_note
+        for iv in pkg.metadata["blocking_intervals"]:
+            assert iv.decomposition.release_time_s == 5.0  # table == disclosed per-block value
+        note = doc.sections[ReportSectionId.DETAILED_RESOURCE_TIMING].tables[0].metadata["footnote"]
+        assert f"per-block override 5.0 s on {n_blocks} of {n_blocks} blocks" in note
+
+    def test_blank_block_release_inherits_system_value(self, tmp_path):
+        from headway.ui.file_manager import FileManager
+
+        d = _signalling_variant_dir(tmp_path / "inherit", 8.0, 3.0, 6.0, None)
+        project, _r, _f = FileManager.import_excel_files([str(p) for p in sorted(d.glob("*.xlsx"))])
+        assert project.signalling.system.release_delay_s == 6.0
+        assert {b.release_delay_s for b in project.signalling.blocks} == {6.0}
+
+    def test_explicit_block_release_wins_over_system_value(self, tmp_path):
+        from headway.ui.file_manager import FileManager
+
+        d = _signalling_variant_dir(tmp_path / "explicit", 8.0, 3.0, 6.0, 2.5)
+        project, _r, _f = FileManager.import_excel_files([str(p) for p in sorted(d.glob("*.xlsx"))])
+        assert {b.release_delay_s for b in project.signalling.blocks} == {2.5}
+
+    def test_package_without_signalling_timing_has_no_footnotes(self):
+        pkg = _create_synthetic_full_package()
+        pkg.metadata.pop("signalling_timing", None)
+        doc = ReportAssembler.assemble_report(pkg, config=ReportConfig())
+        if doc.infrastructure is not None:
+            assert doc.infrastructure.approach_footnote is None
+            assert doc.infrastructure.release_override_note is None
+        sec10 = doc.sections.get(ReportSectionId.DETAILED_RESOURCE_TIMING)
+        if sec10 is not None:
+            for t in sec10.tables:
+                assert "footnote" not in (t.metadata or {})

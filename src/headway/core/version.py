@@ -5,9 +5,9 @@ This module provides the single authoritative source of truth for the applicatio
 
 from typing import Any, Dict, Tuple
 
-__version__: str = "1.11.2"
+__version__: str = "1.11.3"
 
-VERSION_INFO: Tuple[int, int, int] = (1, 11, 2)
+VERSION_INFO: Tuple[int, int, int] = (1, 11, 3)
 
 APP_NAME: str = "Railway Headway & Capacity Simulator"
 APP_DESCRIPTION: str = (

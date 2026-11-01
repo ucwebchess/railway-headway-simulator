@@ -616,6 +616,29 @@ class SimulationRunner:
         sys_release_delay_s = float(getattr(sig_sys, "release_delay_s", 4.0)) if sig_sys else 4.0
         block_lookup = {b.block_id: b for b in blocks}
 
+        def _effective_release_s(blk_obj: Any) -> float:
+            """Per-block RELEASE_DELAY_S when defined, else SignallingSystem.RELEASE_DELAY_S."""
+            if blk_obj is not None and getattr(blk_obj, "release_delay_s", None) is not None:
+                return float(blk_obj.release_delay_s)
+            return sys_release_delay_s
+
+        # v1.11.3: single record of the signalling timing parameters ACTUALLY applied to the
+        # blocking-time decomposition. The Executive Summary card and the Section 10 footnote
+        # read this record, so they reconcile with the 7-component table by construction.
+        _block_release_applied: Dict[str, float] = {}
+        for _iv in blocking_intervals:
+            if _iv.resource_id in block_lookup:
+                _block_release_applied[_iv.resource_id] = _effective_release_s(block_lookup[_iv.resource_id])
+        signalling_timing: Dict[str, Any] = {
+            "sighting_time_s": sighting_s,
+            "route_setup_time_s": route_setup_s,
+            "system_release_delay_s": sys_release_delay_s,
+            "driver_reaction_time_s": DRIVER_REACTION_TIME_S,
+            "approach_time_s": sighting_s + DRIVER_REACTION_TIME_S,
+            "origin_block_id": origin_block_id,
+            "block_release_delay_s": dict(_block_release_applied),
+        }
+
         # Enrich blocking intervals with setup, approach, and release times (DEF-06)
         for iv in blocking_intervals:
             is_origin = (iv.resource_id == origin_block_id)
@@ -623,11 +646,7 @@ class SimulationRunner:
 
             t_setup = route_setup_s
             t_approach = 0.0 if is_origin else (sighting_s + DRIVER_REACTION_TIME_S)
-            t_release = (
-                float(getattr(blk_obj, "release_delay_s", sys_release_delay_s))
-                if blk_obj is not None and getattr(blk_obj, "release_delay_s", None) is not None
-                else sys_release_delay_s
-            )
+            t_release = _effective_release_s(blk_obj)
 
             decomp = iv.decomposition
             if decomp is not None:
@@ -1454,6 +1473,8 @@ class SimulationRunner:
                 "theoretical_capacity_tph": round(3600.0 / required_hw_s, 1),
                 "planning_capacity_tph": round(3600.0 / (required_hw_s + planning_margin_s), 1),
                 "blocking_intervals": blocking_intervals,
+                # v1.11.3: signalling timing parameters applied to blocking_intervals.
+                "signalling_timing": signalling_timing,
                 "dt_s": dt_s,
                 "max_duration_s": max_duration_s,
                 "planning_margin_s": planning_margin_s,

@@ -723,6 +723,30 @@ class ReportAssembler:
             train_types=tuple(meta.get("train_types", ())),
         )
 
+    @staticmethod
+    def _applied_signalling_timing(package: SimulationResultPackage) -> Optional[Dict[str, Any]]:
+        """v1.11.3: signalling timing actually applied to the blocking intervals (or None)."""
+        timing = (package.metadata or {}).get("signalling_timing")
+        return timing if isinstance(timing, dict) and timing else None
+
+    @staticmethod
+    def _timing_disclosure_fields(timing: Optional[Dict[str, Any]], system_release_s: float) -> Dict[str, Any]:
+        """v1.11.3: Executive Summary fields reconciling the card with the 7-component table."""
+        if not timing:
+            return {}
+        per_block = {str(k): float(v) for k, v in (timing.get("block_release_delay_s") or {}).items()}
+        overrides: Dict[float, int] = {}
+        for val in per_block.values():
+            if abs(val - float(system_release_s)) > 1e-9:
+                overrides[val] = overrides.get(val, 0) + 1
+        return {
+            "driver_reaction_time_s": float(timing["driver_reaction_time_s"])
+            if timing.get("driver_reaction_time_s") is not None
+            else None,
+            "block_release_overrides": tuple(sorted(overrides.items())),
+            "timed_block_count": len(per_block),
+        }
+
     @classmethod
     def _build_infrastructure_summary(
         cls, package: SimulationResultPackage, project: Optional[Any] = None
@@ -771,6 +795,14 @@ class ReportAssembler:
                 route_setup = meta.get("route_setup_time_s", 3.0)
                 rel_delay = meta.get("resource_release_delay_s", 4.0)
 
+            # v1.11.3: the parameters ACTUALLY applied to the blocking-time decomposition win
+            # over a (possibly different, e.g. UI-session) project object.
+            _timing = cls._applied_signalling_timing(package)
+            if _timing is not None:
+                sight_time = float(_timing.get("sighting_time_s", sight_time))
+                route_setup = float(_timing.get("route_setup_time_s", route_setup))
+                rel_delay = float(_timing.get("system_release_delay_s", rel_delay))
+
             total_links = len(getattr(infra, "track_links", [])) or len(getattr(infra, "links", []))
             total_blocks = len(getattr(sig, "blocks", [])) if sig else 0
             total_signals = len(getattr(sig, "signals", [])) if sig else 0
@@ -800,6 +832,7 @@ class ReportAssembler:
                 total_stations=total_stations,
                 total_platforms=total_platforms,
                 total_tvs_sections=total_tvs,
+                **cls._timing_disclosure_fields(_timing, rel_delay),
             )
 
         meta = package.metadata or {}
@@ -809,6 +842,8 @@ class ReportAssembler:
             else package.blocking_intervals
         )
         total_blocks_count = meta.get("total_blocks", len(intervals)) if intervals else 0
+        _timing = cls._applied_signalling_timing(package)
+        _sys_rel = float(_timing["system_release_delay_s"]) if _timing else meta.get("resource_release_delay_s", 4.0)
 
         return InfrastructureSummary(
             signalling_technology=meta.get("signalling_technology", "FIXED_BLOCK_3ASPECT"),
@@ -816,18 +851,19 @@ class ReportAssembler:
             dataset_id=meta.get("dataset_id", "CANONICAL_DS_01"),
             dataset_version=meta.get("dataset_version", "1.0.0"),
             dataset_hash=package.effective_config_hash[:16],
-            route_setup_time_s=meta.get("route_setup_time_s", 3.0),
-            resource_release_delay_s=meta.get("resource_release_delay_s", 4.0),
+            route_setup_time_s=float(_timing["route_setup_time_s"]) if _timing else meta.get("route_setup_time_s", 3.0),
+            resource_release_delay_s=_sys_rel,
             model_fidelity="MICROSCOPIC_HIGH_FIDELITY",
             aspect_model=meta.get("aspect_model", "THREE_ASPECT"),
             default_overlap_m=meta.get("default_overlap_m", 0.0),
-            sighting_time_s=meta.get("sighting_time_s", 8.0),
+            sighting_time_s=float(_timing["sighting_time_s"]) if _timing else meta.get("sighting_time_s", 8.0),
             total_links=meta.get("total_links", len(package.metadata.get("track_links", []))) if package.metadata else 0,
             total_blocks=total_blocks_count,
             total_signals=meta.get("total_signals", 0),
             total_stations=meta.get("total_stations", 0),
             total_platforms=meta.get("total_platforms", len(package.metadata.get("platform_records", []))),
             total_tvs_sections=meta.get("total_tvs_sections", len(package.metadata.get("tvs_events", []))),
+            **cls._timing_disclosure_fields(_timing, _sys_rel),
         )
 
     @classmethod
@@ -1580,6 +1616,7 @@ class ReportAssembler:
             else package.blocking_intervals
         )
         is_app = bool(intervals)
+        timing_note = cls._timing_columns_footnote(package)
         tables: List[EngineeringTable] = []
         if is_app:
             tables.append(
@@ -1587,6 +1624,7 @@ class ReportAssembler:
                     intervals,
                     running_direction=direction,
                     controlling_resource_ids=controlling_resource_ids,
+                    footnote=timing_note,
                 )
             )
 
@@ -1616,8 +1654,38 @@ class ReportAssembler:
                     else "Note (FORWARD run): route-relative distance and alignment chainage both increase in the "
                     "direction of travel."
                 ),
-            ],
+            ] + ([timing_note] if timing_note else []),
             tables=tables,
+        )
+
+    @classmethod
+    def _timing_columns_footnote(cls, package: SimulationResultPackage) -> Optional[str]:
+        """v1.11.3: footnote deriving the Setup / Approach / Release columns from applied parameters."""
+        timing = cls._applied_signalling_timing(package)
+        if timing is None:
+            return None
+        sight = float(timing["sighting_time_s"])
+        react = float(timing["driver_reaction_time_s"])
+        setup = float(timing["route_setup_time_s"])
+        sys_rel = float(timing["system_release_delay_s"])
+        origin = timing.get("origin_block_id")
+        per_block = {str(k): float(v) for k, v in (timing.get("block_release_delay_s") or {}).items()}
+        overrides: Dict[float, int] = {}
+        for val in per_block.values():
+            if abs(val - sys_rel) > 1e-9:
+                overrides[val] = overrides.get(val, 0) + 1
+        release_txt = f"Release = block release delay (system default {sys_rel:.1f} s"
+        if overrides:
+            release_txt += "; per-block override " + ", ".join(
+                f"{v:.1f} s on {n} of {len(per_block)} blocks" for v, n in sorted(overrides.items())
+            )
+        release_txt += ")."
+        origin_txt = f" ({origin})" if origin else ""
+        return (
+            f"Approach = Sighting ({sight:.1f}s) + Driver Reaction ({react:.1f}s) = {sight + react:.1f} s for every "
+            f"non-origin block; the origin block{origin_txt} carries no approach allowance, so its Approach column "
+            f"is the physical pre-entry time from departure to front entry. Setup = Route Setup ({setup:.1f} s). "
+            + release_txt
         )
 
     @classmethod

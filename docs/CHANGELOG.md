@@ -23,6 +23,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.3] — 2026-11-01
+
+Phase 4c signalling-parameter reconciliation patch (reporting consistency). The Executive
+Summary card and the 7-component blocking tables are now driven by the same signalling timing
+values. Data-binding and reporting only: **no physics-engine change**, no example-data change.
+
+### Fixed
+- **Per-block release inheritance:** a blank `Blocks.RELEASE_DELAY_S` cell now inherits
+  `SignallingSystem.RELEASE_DELAY_S`. Previously it became a hardcoded 4.0 s, so whenever the
+  system value differed from 4.0 s the detailed table (4.0 s) silently diverged from the Summary
+  card (system value). Explicit per-block values still take precedence.
+- **Summary card / table reconciliation:** the card now reads the timing parameters actually
+  applied to the blocking-time decomposition (`metadata["signalling_timing"]`), not a possibly
+  different (e.g. UI-session) project object.
+
+### Added
+- `SimulationResultPackage.metadata["signalling_timing"]`: sighting, route setup, system release,
+  driver reaction, approach allowance, origin block and the per-block release delay applied.
+- `InfrastructureSummary.driver_reaction_time_s`, `block_release_overrides`, `timed_block_count`,
+  plus the derived `approach_time_s`, `approach_footnote` and `release_override_note`.
+- Executive Summary footnote (HTML, PDF, XLSX): "Approach time in detailed tables = Sighting +
+  4.0s reaction" with the project's actual values; label "Sighting / Setup / Release" unchanged.
+- Per-block release overrides are disclosed on the card (†) and in the Section 10 footnote, e.g.
+  "5.0 s on 34 of 34 blocks".
+- Section 10 table footnote: "Approach = Sighting (x s) + Driver Reaction (4.0s) = … for every
+  non-origin block"; the origin block shows the physical pre-entry time; Setup and Release sources.
+- `TestSignallingParameterReconciliationV1113` (9 tests, FORWARD and REVERSE).
+
+### Changed
+- `excel_registry`: `Blocks.RELEASE_DELAY_S` default is now *inherit* (was 4.0 s).
+
+---
+
 ## [1.11.2] — 2026-10-31
 
 Phase 4c bidirectional-integrity patch: 12-task remediation of block-geometry, exit-signal,
