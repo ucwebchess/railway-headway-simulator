@@ -23,6 +23,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.12.0] — 2026-11-02
+
+Route scoping: the simulation, the permissible-speed envelope and the speed–distance chart now
+honour the active service pattern's `ROUTE_LINK_SEQUENCE`, and the run direction is validated
+against the route's track directionality. Runner link selection only — **the
+physics engine is unchanged**; no example-data change. Minor version because simulated results
+change for any project whose route is not the whole network.
+
+### Fixed
+- **Route ignored by the simulation:** the runner simulated every TrackLink of the network,
+  concatenated in sheet order, whatever `ROUTE_LINK_SEQUENCE` said. A route trimmed to
+  `LNK_21..LNK_148` (27 335.6 m) on a 178-link network was simulated, charted and headway-assessed
+  over all 36 251.8 m. Now the trajectory, blocking intervals, TVS events, envelope, chart and
+  headway cover the route only: FORWARD traverses the sequence as listed, REVERSE traverses it
+  backwards (unchanged convention). Absolute alignment chainage still uses the full network.
+- **Speed chart / CSV:** x axis = route distance 0 … route length in both directions (REVERSE
+  keeps the inverted axis); the envelope's REVERSE mapping uses the route length, not the sum of
+  all links; the hidden fallback that built the envelope from the UI session's full network was
+  removed.
+- **Infrastructure summary (metadata-only reports):** "Total links" still counts the network.
+
+### Added
+- Named validations (loud, no auto-correction): `ERR_ROUTE_LINK_UNKNOWN` (route references a
+  link not in TrackLinks), `ERR_ROUTE_NOT_CONTIGUOUS` (consecutive route links do not chain
+  end node → start node; list routes in nominal order), `ERR_ROUTE_STOP_OFF_ROUTE` (a stop's
+  platform link is not on the route). Without an Operations workbook the full network is used,
+  as before.
+- `ERR_ROUTE_DIRECTION_FORBIDDEN` (runner level, before any simulation): a REVERSE run whose
+  route uses a track with `DIRECTIONALITY = NOMINAL` (forward-only), or a FORWARD run whose route
+  uses a `REVERSE` (reverse-only) track. `BIDIRECTIONAL` tracks allow both. Only the tracks of
+  the simulated route are checked. The message names each offending track and its links.
+- Metadata: `route_link_ids`, `route_length_m`, `network_track_link_count`; `track_links` now
+  holds the route links.
+
+### Changed (simulated results)
+- `02_double_track` (route `LNK_UP_01`, 3 000 m): previously 6 000 m (UP + DN concatenated).
+- `05_comprehensive_line` corrected test variant: the HSR UP/DN services are given the explicit
+  turnback route `LNK_01..LNK_17` (50 000 m) so the turnaround blocks stay covered; previously
+  52 000 m including the disconnected siding `LNK_18`.
+- Projects whose route is the whole network (01, 03, 04, 06, 07 and full-route user projects)
+  are numerically unchanged.
+- `02_double_track` and `05_comprehensive_line` now **raise `ERR_ROUTE_DIRECTION_FORBIDDEN` on
+  REVERSE**: their service routes lie on one-way `NOMINAL` tracks. Previously REVERSE silently
+  ran these routes the wrong way (02 REV headway 153 s vs 89 s FWD after route scoping). FORWARD
+  is unaffected. (Shipped 05 still reports its v1.11.2 block-geometry errors first.)
+- The `05` corrected test variant additionally declares `TRK_UP` / `TRK_DN` `BIDIRECTIONAL`, so
+  its REVERSE coverage is kept.
+
+### Known Issues
+- **02 and 05 cannot be run in REVERSE** until their track directionality is corrected: set
+  `Tracks.DIRECTIONALITY` to `BIDIRECTIONAL` (02: `TRK_UP`; 05: `TRK_UP`, `TRK_DN`) if REVERSE
+  runs are intended. Otherwise REVERSE on those examples is a validation error by design.
+  Shipped example data is not modified in this release.
+
+---
+
 ## [1.11.3] — 2026-11-01
 
 Phase 4c signalling-parameter reconciliation patch (reporting consistency). The Executive

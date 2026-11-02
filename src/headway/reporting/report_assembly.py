@@ -857,7 +857,12 @@ class ReportAssembler:
             aspect_model=meta.get("aspect_model", "THREE_ASPECT"),
             default_overlap_m=meta.get("default_overlap_m", 0.0),
             sighting_time_s=float(_timing["sighting_time_s"]) if _timing else meta.get("sighting_time_s", 8.0),
-            total_links=meta.get("total_links", len(package.metadata.get("track_links", []))) if package.metadata else 0,
+            # v1.12.0: metadata "track_links" holds the simulated ROUTE links; the infrastructure
+            # summary counts the network (same as the project-bound path above).
+            total_links=meta.get(
+                "total_links",
+                package.metadata.get("network_track_link_count", len(package.metadata.get("track_links", []))),
+            ) if package.metadata else 0,
             total_blocks=total_blocks_count,
             total_signals=meta.get("total_signals", 0),
             total_stations=meta.get("total_stations", 0),

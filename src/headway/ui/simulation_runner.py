@@ -7,6 +7,7 @@ P13 (visualization), and P14 (reports) without introducing new calculations.
 """
 
 from datetime import datetime, timezone
+import itertools
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -47,7 +48,7 @@ from headway.data.canonical import (
     TrainType,
     TVSSection,
 )
-from headway.infrastructure.direction import RunningDirection
+from headway.infrastructure.direction import DirectionPolicy, RunningDirection
 from headway.infrastructure.route import LinkTraversal, Route
 from headway.reporting.charts_speed import compute_permissible_speed_envelope
 from headway.reporting.report_assembly import ReportAssembler
@@ -455,6 +456,34 @@ class SimulationRunner:
                     f"ERR_STATION_STOP_FIELD_MISSING: Platform ID '{plt_id}' cannot be resolved in project platforms."
                 )
 
+        # v1.12.0: ROUTE SCOPE — the simulation, envelope, charts and tables follow the
+        # active service pattern's ROUTE_LINK_SEQUENCE, not every TrackLink in the workbook.
+        # Previously the full infrastructure (e.g. UP + DN tracks concatenated) was simulated
+        # and ROUTE_LINK_SEQUENCE was ignored. FORWARD traverses the sequence as listed
+        # (nominal link order); REVERSE traverses the same sequence backwards. Alignment
+        # chainage (absolute stationing) is still computed on the full network.
+        track_links = cls._resolve_route_links(list(infra.track_links), active_pattern)
+        # v1.12.0: route-level direction check BEFORE any simulation — REVERSE may not run
+        # against NOMINAL (forward-only) tracks, FORWARD may not run against REVERSE tracks.
+        cls._validate_route_direction(track_links, list(infra.tracks or []), running_direction, active_pattern)
+        route_link_ids = {lnk.link_id for lnk in track_links}
+        for st_stop in service_stops:
+            plt = plat_map_check.get(getattr(st_stop, "platform_id", None))
+            if plt is not None and plt.link_id not in route_link_ids:
+                raise SimulationRunnerError(
+                    "ERR_ROUTE_STOP_OFF_ROUTE",
+                    f"Stop at platform '{plt.platform_id}' (link '{plt.link_id}') is not on the route of service "
+                    f"pattern '{service_label}' (ROUTE_LINK_SEQUENCE {track_links[0].link_id}..{track_links[-1].link_id}). "
+                    "Remove the stop or extend the route.",
+                    error_code="ERR_ROUTE_STOP_OFF_ROUTE",
+                )
+        total_length_m = sum(lnk.length_m for lnk in track_links)
+        speed_limit_ms = min(lnk.max_speed_ms for lnk in track_links)
+        if not train_types:
+            # Default train type (no rolling stock): its top speed follows the ROUTE limit.
+            primary_tt = primary_tt.model_copy(update={"max_speed_ms": speed_limit_ms})
+        max_speed_ms = min(speed_limit_ms, primary_tt.max_speed_ms)
+
         # 2. Pass 1: Leader-only microscopic simulation & Technical Headway Solving (DEF-05)
         traj_leader_p1, _, simulated_route, train_leader_p1, coord_p1 = cls._run_multitrain_simulation(
             track_links=track_links,
@@ -508,6 +537,10 @@ class SimulationRunner:
         for blk in blocks:
             s_coords = []
             for inv in (blk.link_intervals or []):
+                # v1.12.0: blocks (or block intervals) off the simulated route have no route
+                # coordinates; they are not traversed and produce no blocking interval.
+                if inv.link_id not in route_link_ids:
+                    continue
                 s1 = simulated_route.physical_to_route_distance(inv.link_id, inv.start_offset_m)
                 s2 = simulated_route.physical_to_route_distance(inv.link_id, inv.end_offset_m)
                 if s1 is not None:
@@ -695,7 +728,8 @@ class SimulationRunner:
 
         # Build physical link start chainage mapping (v1.11.2: shared alignment frame —
         # identical algorithm, now also used by pre-simulation block validation).
-        _align_frame = build_alignment_frame(track_links)
+        # v1.12.0: absolute alignment chainage is a property of the whole network, not the route.
+        _align_frame = build_alignment_frame(list(infra.track_links))
         link_start_m: Dict[str, float] = _align_frame.link_start_m
         _align_m = _align_frame.align_m
 
@@ -1183,8 +1217,11 @@ class SimulationRunner:
                     pass
 
             if not s_coords:
+                # v1.12.0: route links only — a TVS section off the simulated route has no
+                # route coordinates and produces no event (previously phantom coordinates
+                # were fabricated from the full network).
                 cum_link_dist = 0.0
-                for lnk in infra.track_links:
+                for lnk in track_links:
                     for inv in (tvs.link_intervals or []):
                         if lnk.link_id == inv.link_id:
                             s_coords.append(cum_link_dist + inv.start_offset_m)
@@ -1392,7 +1429,8 @@ class SimulationRunner:
 
         # Permissible speed envelope (Change B: piecewise from TrackLinks)
         speed_envelope = cls._build_permissible_speed_envelope(
-            track_links=infra.track_links,
+            # v1.12.0: route links (ROUTE_LINK_SEQUENCE), not the full infrastructure.
+            track_links=track_links,
             running_direction=running_direction,
         )
 
@@ -1460,7 +1498,11 @@ class SimulationRunner:
                 },
                 "tvs_events": tvs_events,
                 "permissible_speed_envelope": speed_envelope,
-                "track_links": list(infra.track_links),
+                # v1.12.0: links of the SIMULATED ROUTE (ROUTE_LINK_SEQUENCE, nominal order).
+                "track_links": list(track_links),
+                "route_link_ids": [lnk.link_id for lnk in track_links],
+                "route_length_m": float(total_length_m),
+                "network_track_link_count": len(infra.track_links),
                 "performance_factor": eff_pf,
                 "performance_factor_source": eff_pf_src,
                 # v1.11.0 / Task 10: per-block absolute alignment chainage (km) tuples
@@ -1755,6 +1797,91 @@ class SimulationRunner:
         records.sort(key=lambda r: r.arrival_time_s)
         return records
 
+    @staticmethod
+    def _resolve_route_links(network_links: list[TrackLink], active_pattern: Any) -> list[TrackLink]:
+        """v1.12.0: TrackLinks of the active service pattern's ROUTE_LINK_SEQUENCE, in that order.
+
+        Raises (loud, never auto-corrected):
+          ERR_ROUTE_LINK_UNKNOWN    — a sequence entry is not a TrackLink of the network.
+          ERR_ROUTE_NOT_CONTIGUOUS  — consecutive links do not share a node (end -> start).
+        Without an active service pattern (no Operations workbook) the full network is used,
+        as before v1.12.0.
+        """
+        seq = list(getattr(active_pattern, "route_link_sequence", None) or []) if active_pattern else []
+        if not seq:
+            return list(network_links)
+        by_id = {lnk.link_id: lnk for lnk in network_links}
+        unknown = [lid for lid in seq if lid not in by_id]
+        if unknown:
+            raise SimulationRunnerError(
+                "ERR_ROUTE_LINK_UNKNOWN",
+                f"ROUTE_LINK_SEQUENCE of service pattern '{getattr(active_pattern, 'service_pattern_id', '?')}' "
+                f"references unknown track link(s): {unknown}.",
+                error_code="ERR_ROUTE_LINK_UNKNOWN",
+            )
+        route = [by_id[lid] for lid in seq]
+        breaks = [
+            f"{a.link_id}->{b.link_id}"
+            for a, b in itertools.pairwise(route)
+            if a.end_node_id and b.start_node_id and a.end_node_id != b.start_node_id
+        ]
+        if breaks:
+            raise SimulationRunnerError(
+                "ERR_ROUTE_NOT_CONTIGUOUS",
+                f"ROUTE_LINK_SEQUENCE of service pattern '{getattr(active_pattern, 'service_pattern_id', '?')}' is not "
+                f"contiguous in nominal link order (end node != next start node) at: {breaks}. List the links in "
+                "nominal (FORWARD) order; REVERSE runs traverse the sequence backwards.",
+                error_code="ERR_ROUTE_NOT_CONTIGUOUS",
+            )
+        return route
+
+    @staticmethod
+    def _validate_route_direction(
+        route_links: Sequence[TrackLink],
+        tracks: Sequence[Any],
+        running_direction: RunningDirection,
+        active_pattern: Any = None,
+    ) -> None:
+        """v1.12.0: ERR_ROUTE_DIRECTION_FORBIDDEN — the run direction must be permitted on every
+        track the simulated route uses.
+
+          REVERSE run  -> forbidden on tracks with DIRECTIONALITY = NOMINAL (forward-only)
+          FORWARD run  -> forbidden on tracks with DIRECTIONALITY = REVERSE (reverse-only)
+          BIDIRECTIONAL tracks (and links whose track has no declared directionality) allow both.
+
+        Loud, never auto-corrected: the fix is either the track DIRECTIONALITY in the
+        Infrastructure workbook (Tracks sheet) or the selected running direction.
+        """
+        reverse = running_direction == RunningDirection.REVERSE
+        forbidden = TrackDirectionality.NOMINAL if reverse else TrackDirectionality.REVERSE
+        dir_by_track = {t.track_id: getattr(t, "directionality", None) for t in tracks}
+        offending: dict[str, list[str]] = {}
+        for lnk in route_links:
+            track_dir = dir_by_track.get(lnk.track_id)
+            if track_dir is None:
+                continue
+            # Single source of truth for the permission matrix (P02-DIR-004).
+            if not DirectionPolicy.is_traversal_permitted(TrackDirectionality(track_dir), running_direction):
+                offending.setdefault(lnk.track_id, []).append(lnk.link_id)
+        if not offending:
+            return
+        run = "REVERSE" if reverse else "FORWARD"
+        allowed = "FORWARD" if reverse else "REVERSE"
+        pattern_id = getattr(active_pattern, "service_pattern_id", None) if active_pattern else None
+        scope = f"route of service pattern '{pattern_id}'" if pattern_id else "simulated network (no service pattern)"
+        detail = "; ".join(
+            f"{tid} ({len(ids)} link(s): {ids[0]}" + (f"..{ids[-1]}" if len(ids) > 1 else "") + ")"
+            for tid, ids in offending.items()
+        )
+        raise SimulationRunnerError(
+            "ERR_ROUTE_DIRECTION_FORBIDDEN",
+            f"{run} run is not permitted on the {scope}: track(s) configured DIRECTIONALITY = "
+            f"{forbidden.value} ({allowed} running only): {detail}. Set the track DIRECTIONALITY to "
+            f"BIDIRECTIONAL in the Infrastructure workbook (Tracks sheet) to permit {run} running, "
+            f"or run {allowed}.",
+            error_code="ERR_ROUTE_DIRECTION_FORBIDDEN",
+        )
+
     @classmethod
     def _build_permissible_speed_envelope(
         cls,
@@ -1821,7 +1948,7 @@ class SimulationRunner:
         max_duration_s: float = 7200.0,
         service_id: Optional[str] = None,
     ) -> Tuple[TrainTrajectory, Optional[TrainTrajectory], Route, TrainServiceInstance, SignallingCoordinator]:
-        """Execute microscopic multi-train simulation along all track links with MultiTrainSimulator."""
+        """Execute microscopic multi-train simulation along the given (route) track links with MultiTrainSimulator."""
         traversals: List[LinkTraversal] = []
         cum_s = 0.0
 

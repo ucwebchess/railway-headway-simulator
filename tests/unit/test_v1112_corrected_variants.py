@@ -53,6 +53,25 @@ EXPECTED_CHANGES = {
 }
 
 
+# v1.12.0: the simulation honours ROUTE_LINK_SEQUENCE, so the 05 variant also routes the two
+# services the runner selects for TRN_HSR over the turnback circuit (keeps the turnaround
+# blocks covered). Nothing else in Operations may change.
+EXPECTED_ROUTE_CHANGES = {
+    "05_comprehensive_line": {
+        "SVC_HSR_EXP_UP": [f"LNK_{k:02d}" for k in range(1, 18)],
+        "SVC_HSR_EXP_DN": [f"LNK_{k:02d}" for k in range(1, 18)],
+    },
+}
+
+
+# v1.12.0 (ERR_ROUTE_DIRECTION_FORBIDDEN): shipped 05 TRK_UP / TRK_DN are NOMINAL (one-way);
+# the variant declares them BIDIRECTIONAL so its REVERSE runs stay covered. Nothing else in
+# Infrastructure may change.
+EXPECTED_DIRECTIONALITY_CHANGES = {
+    "05_comprehensive_line": {"TRK_UP": "BIDIRECTIONAL", "TRK_DN": "BIDIRECTIONAL"},
+}
+
+
 def test_variant_registry_covers_exactly_the_defective_examples():
     assert set(CORRECTED_VARIANTS) == set(EXPECTED_BLOCK_GEOMETRY_ERRORS) == set(EXPECTED_CHANGES)
     assert not set(CORRECTED_VARIANTS) & set(CLEAN_EXAMPLES)
@@ -74,7 +93,34 @@ def test_variant_validates_and_shipped_raises_documented_codes(example):
 def test_variant_changes_only_the_named_blocks_and_signals(example):
     shipped = _REAL_LOAD_EXAMPLE(example)[0].model_dump()
     variant = CORRECTED_VARIANTS[example]().model_dump()
-    assert [k for k in shipped if shipped[k] != variant[k]] == ["signalling"]
+    route_changes = EXPECTED_ROUTE_CHANGES.get(example, {})
+    dir_changes = EXPECTED_DIRECTIONALITY_CHANGES.get(example, {})
+    expected_top = sorted(
+        ["signalling"] + (["operations"] if route_changes else []) + (["infrastructure"] if dir_changes else [])
+    )
+    assert sorted(k for k in shipped if shipped[k] != variant[k]) == expected_top
+    if dir_changes:
+        inf_s, inf_v = shipped["infrastructure"], variant["infrastructure"]
+        assert {k for k in inf_s if inf_s[k] != inf_v[k]} == {"tracks"}
+        trk_s = {t["track_id"]: t for t in inf_s["tracks"]}
+        trk_v = {t["track_id"]: t for t in inf_v["tracks"]}
+        assert list(trk_s) == list(trk_v), "no track may be added, removed or reordered"
+        assert {k for k in trk_v if trk_s[k] != trk_v[k]} == set(dir_changes)
+        for tid, value in dir_changes.items():
+            assert trk_s[tid]["directionality"] == "NOMINAL"
+            assert {k for k in trk_v[tid] if trk_s[tid][k] != trk_v[tid][k]} == {"directionality"}
+            assert trk_v[tid]["directionality"] == value
+    if route_changes:
+        ops_s, ops_v = shipped["operations"], variant["operations"]
+        assert {k for k in ops_s if ops_s[k] != ops_v[k]} == {"service_patterns"}
+        sps_s = {sp["service_pattern_id"]: sp for sp in ops_s["service_patterns"]}
+        sps_v = {sp["service_pattern_id"]: sp for sp in ops_v["service_patterns"]}
+        assert list(sps_s) == list(sps_v), "no service pattern may be added, removed or reordered"
+        changed = {k for k in sps_v if sps_s[k] != sps_v[k]}
+        assert changed == set(route_changes)
+        for sp_id, route in route_changes.items():
+            assert {k for k in sps_v[sp_id] if sps_s[sp_id][k] != sps_v[sp_id][k]} == {"route_link_sequence"}
+            assert sps_v[sp_id]["route_link_sequence"] == route
     sig_s, sig_v = shipped["signalling"], variant["signalling"]
     assert {k for k in sig_s if sig_s[k] != sig_v[k]} <= {"blocks", "signals"}
 

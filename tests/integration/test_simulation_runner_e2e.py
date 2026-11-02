@@ -39,7 +39,7 @@ from tests.block_geometry_expectations import (
     comprehensive_line_with_explicit_turnaround_exits,
     findings_by_code,
 )
-from tests.corrected_variants import load_corrected_variant
+from tests.corrected_variants import double_track_bidirectional_up, load_corrected_variant
 
 ALL_EXAMPLES = sorted(set(EXPECTED_BLOCK_GEOMETRY_ERRORS) | set(CLEAN_EXAMPLES))
 assert len(ALL_EXAMPLES) == 7
@@ -84,6 +84,14 @@ def hsr_rev_sim_results(hsr_project):
     )
 
 
+def _service_route_links(project, service_pattern_id):
+    """v1.12.0: TrackLinks of a service pattern's ROUTE_LINK_SEQUENCE, in sequence order
+    (the simulation is scoped to the route, not to every TrackLink of the network)."""
+    by_id = {lnk.link_id: lnk for lnk in project.infrastructure.track_links}
+    sp = next(s for s in project.operations.service_patterns if s.service_pattern_id == service_pattern_id)
+    return [by_id[lid] for lid in sp.route_link_sequence]
+
+
 class TestSimulationRunnerE2E:
     """Comprehensive end-to-end validation suite for SimulationRunner microscopic engine."""
 
@@ -108,7 +116,7 @@ class TestSimulationRunnerE2E:
         assert len(traj_leader.samples) > 1000, f"Expected >1000 samples, got {len(traj_leader.samples)}"
         assert len(traj_follower.samples) > 1000, f"Expected >1000 samples, got {len(traj_follower.samples)}"
 
-        # Verify journey duration bounds for 52 km corridor (900s - 1800s) replacing 68s stub
+        # Verify journey duration bounds for the 50 km turnback route (900s - 1800s) replacing 68s stub
         journey_time_s = traj_leader.journey_time_s
         assert 900.0 <= journey_time_s <= 1800.0, (
             f"Expected journey time between 900s and 1800s, got {journey_time_s:.1f}s"
@@ -121,8 +129,12 @@ class TestSimulationRunnerE2E:
             f"Expected total service duration between 600s and 1800s, got {total_duration:.1f}s"
         )
 
-        # Physical corridor traversal (0m to total_corridor_m)
-        total_corridor_m = sum(lnk.length_m for lnk in comprehensive_project.infrastructure.track_links)
+        # Physical route traversal (0 m to the length of the active service's ROUTE_LINK_SEQUENCE).
+        # v1.12.0: 05T FORWARD = SVC_HSR_EXP_UP over the turnback route LNK_01..LNK_17 (50 000 m);
+        # previously every TrackLink incl. the disconnected siding LNK_18 (52 000 m).
+        assert pkg.metadata["active_service_pattern_id"] == "SVC_HSR_EXP_UP"
+        total_corridor_m = sum(lnk.length_m for lnk in _service_route_links(comprehensive_project, "SVC_HSR_EXP_UP"))
+        assert total_corridor_m == pytest.approx(50000.0)
         assert traj_leader.samples[0].front_distance_m <= 1.0
         assert abs(traj_leader.samples[-1].front_distance_m - total_corridor_m) < 100.0
 
@@ -185,8 +197,11 @@ class TestSimulationRunnerE2E:
             f"Directional asymmetry: FWD {t_fwd:.1f}s vs REV {t_rev:.1f}s"
         )
 
-        # Monotonicity check: REVERSE trajectory distances must decrease from corridor end to 0
-        total_corridor_m = sum(lnk.length_m for lnk in comprehensive_project.infrastructure.track_links)
+        # Monotonicity check: REVERSE trajectory distances must decrease from route end to 0
+        # v1.12.0: 05T REVERSE = SVC_HSR_EXP_DN over the turnback route, traversed backwards.
+        assert pkg_rev.metadata["active_service_pattern_id"] == "SVC_HSR_EXP_DN"
+        total_corridor_m = sum(lnk.length_m for lnk in _service_route_links(comprehensive_project, "SVC_HSR_EXP_DN"))
+        assert total_corridor_m == pytest.approx(50000.0)
         assert abs(traj_rev.samples[0].front_distance_m - total_corridor_m) < 100.0
         assert traj_rev.samples[-1].front_distance_m == 0.0
 
@@ -308,7 +323,8 @@ class TestSimulationRunnerE2E:
         for i in range(len(env_comp) - 1):
             assert env_comp[i + 1]["route_distance_m"] >= env_comp[i]["route_distance_m"]
 
-        total_route_comp = sum(lnk.length_m for lnk in comprehensive_project.infrastructure.track_links)
+        # v1.12.0: envelope spans the active service's route (05T FORWARD: SVC_HSR_EXP_UP, 50 000 m).
+        total_route_comp = sum(lnk.length_m for lnk in _service_route_links(comprehensive_project, "SVC_HSR_EXP_UP"))
         assert env_comp[-1]["route_distance_m"] == pytest.approx(total_route_comp, abs=1.0)
 
         # Multi-speed corridor must reflect at least two distinct speed limits
@@ -332,8 +348,11 @@ class TestSimulationRunnerE2E:
             running_direction=RunningDirection.FORWARD,
         )
         envelope = pkg.metadata.get("permissible_speed_envelope", [])
+        # v1.12.0: every link of the active service's ROUTE_LINK_SEQUENCE, in route order.
+        route_links = _service_route_links(comprehensive_project, "SVC_HSR_EXP_UP")
+        assert [lnk.link_id for lnk in pkg.metadata["track_links"]] == [lnk.link_id for lnk in route_links]
         cum_m = 0.0
-        for lnk in comprehensive_project.infrastructure.track_links:
+        for lnk in route_links:
             lnk_start = cum_m
             lnk_end = cum_m + float(lnk.length_m)
             cum_m = lnk_end
@@ -860,7 +879,17 @@ def _run_both_directions(project_factory):
             )
         except BlockGeometryValidationError as exc:
             out[d] = exc
+        except SimulationRunnerError as exc:
+            # v1.12.0: direction permission is direction-dependent by design.
+            if exc.error_code != "ERR_ROUTE_DIRECTION_FORBIDDEN":
+                raise
+            out[d] = exc
     return out
+
+
+# v1.12.0: shipped examples whose service route lies on one-way tracks — the listed direction
+# is a validation error (ERR_ROUTE_DIRECTION_FORBIDDEN), the other direction runs.
+EXPECTED_DIRECTION_FORBIDDEN = {"02_double_track": RunningDirection.REVERSE}
 
 
 def _route_ordered(pkg):
@@ -879,7 +908,9 @@ def _speed_discontinuities(pkg, tol_kmh=0.1):
 
 
 _SYMMETRY_CASES = [pytest.param(ex, id=ex) for ex in ALL_EXAMPLES] + [
-    pytest.param("05_comprehensive_line+explicit_turnaround_exits", id="05_turnaround_variant")
+    pytest.param("05_comprehensive_line+explicit_turnaround_exits", id="05_turnaround_variant"),
+    # v1.12.0: keeps the 02 FWD/REV symmetry coverage (TRK_UP declared BIDIRECTIONAL).
+    pytest.param("02_double_track+bidirectional_up", id="02_bidirectional_variant"),
 ]
 
 
@@ -898,11 +929,23 @@ class TestBidirectionalSymmetry:
     def test_forward_reverse_symmetry(self, case):
         if case.endswith("+explicit_turnaround_exits"):
             factory = comprehensive_line_with_explicit_turnaround_exits
+        elif case.endswith("+bidirectional_up"):
+            factory = double_track_bidirectional_up
         else:
             factory = lambda: FileManager.load_example_project(case)[0]  # noqa: E731
 
         res = _run_both_directions(factory)
         fwd, rev = res[RunningDirection.FORWARD], res[RunningDirection.REVERSE]
+
+        if case in EXPECTED_DIRECTION_FORBIDDEN:
+            forbidden = EXPECTED_DIRECTION_FORBIDDEN[case]
+            for d, r in res.items():
+                if d == forbidden:
+                    assert isinstance(r, SimulationRunnerError), f"{case} {d.value} was expected to raise"
+                    assert r.error_code == "ERR_ROUTE_DIRECTION_FORBIDDEN"
+                else:
+                    assert not isinstance(r, Exception), f"{case} {d.value} must run: {r}"
+            return
 
         if isinstance(fwd, Exception) or isinstance(rev, Exception):
             assert isinstance(fwd, BlockGeometryValidationError), f"FORWARD ran but REVERSE raised: {rev}"

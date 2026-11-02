@@ -42,6 +42,7 @@ from tests.block_geometry_expectations import (
     comprehensive_line_with_explicit_turnaround_exits,
     load_and_assert_pipeline_raises,
 )
+from tests.corrected_variants import make_tracks_bidirectional
 
 FWD, REV = RunningDirection.FORWARD, RunningDirection.REVERSE
 DIRS = pytest.mark.parametrize("direction", BOTH_DIRECTIONS, ids=["FORWARD", "REVERSE"])
@@ -164,6 +165,9 @@ class TestTask2ExitFallback:
     @DIRS
     def test_same_track_fallback_is_used_and_published(self, direction):
         p = _load("02_double_track")
+        # v1.12.0: shipped TRK_UP is NOMINAL (one-way) -> REVERSE would raise ERR_ROUTE_DIRECTION_FORBIDDEN;
+        # the subject here is block fallback provenance, so declare TRK_UP BIDIRECTIONAL (documented fix).
+        make_tracks_bidirectional(p, ["TRK_UP"])
         _replace_block(p, "BLK_U2", exit_signal_id=None)
         report = validate_block_geometry(p)
         assert report.ok
@@ -189,6 +193,9 @@ class TestTask2ExitFallback:
     @DIRS
     def test_true_terminal_resolves_to_buffer_stop_edge(self, direction):
         p = _load("02_double_track")
+        # v1.12.0: shipped TRK_UP is NOMINAL (one-way) -> REVERSE would raise ERR_ROUTE_DIRECTION_FORBIDDEN;
+        # the subject here is block fallback provenance, so declare TRK_UP BIDIRECTIONAL (documented fix).
+        make_tracks_bidirectional(p, ["TRK_UP"])
         p.signalling.signals = [s for s in p.signalling.signals if s.signal_id != "SIG_U3"]
         _replace_block(p, "BLK_U2", exit_signal_id=None,
                        link_intervals=_interval(p, "BLK_U2", "LNK_UP_01", 1500.0, 3000.0))
@@ -225,6 +232,9 @@ class TestEntryFallbackTrackAware:
     @DIRS
     def test_same_track_entry_fallback_used_and_published(self, direction):
         p = _load("02_double_track")
+        # v1.12.0: shipped TRK_UP is NOMINAL (one-way) -> REVERSE would raise ERR_ROUTE_DIRECTION_FORBIDDEN;
+        # the subject here is block fallback provenance, so declare TRK_UP BIDIRECTIONAL (documented fix).
+        make_tracks_bidirectional(p, ["TRK_UP"])
         _replace_block(p, "BLK_U2", entry_signal_id=None)
         # An other-track signal at distance 0 that wins the id tie-break if tracks were ignored.
         _add_signal(p, "SIG_DX", "LNK_DN_01", 1500.0)
@@ -239,6 +249,9 @@ class TestEntryFallbackTrackAware:
     @DIRS
     def test_other_track_signal_is_never_borrowed_for_entry(self, direction):
         p = _load("02_double_track")
+        # v1.12.0: shipped TRK_UP is NOMINAL (one-way) -> REVERSE would raise ERR_ROUTE_DIRECTION_FORBIDDEN;
+        # the subject here is block fallback provenance, so declare TRK_UP BIDIRECTIONAL (documented fix).
+        make_tracks_bidirectional(p, ["TRK_UP"])
         _replace_block(p, "BLK_U1", entry_signal_id=None)
         p.signalling.signals = [s for s in p.signalling.signals if s.signal_id != "SIG_U1"]
         _add_signal(p, "SIG_DX", "LNK_DN_01", 100.0)
@@ -596,8 +609,12 @@ class TestTask10Conventions:
         m = re.search(r"located at alignment chainage ([\d.]+) km \(route-relative ([\d.]+) km\)", t18)
         assert m, t18
         if direction == REV:
-            # 05 REV bottleneck BLK_DN_05: alignment 10.0 km, route-relative 12.00 km
-            assert (float(m.group(1)), float(m.group(2))) == (10.0, 12.0)
+            # 05 REV bottleneck BLK_DN_05: alignment 10.0 km, route-relative 10.00 km.
+            # v1.12.0: the REVERSE route is the 05T turnback route traversed backwards from ND_01:
+            # LNK_17 (4000 m) + LNK_16 (6000 m) precede BLK_DN_05's entry on LNK_15 -> 10.0 km.
+            # (Pre-v1.12.0: 12.0 km, because the disconnected siding LNK_18 (2000 m) was simulated
+            # first in REVERSE by concatenating every TrackLink.)
+            assert (float(m.group(1)), float(m.group(2))) == (10.0, 10.0)
 
 
 class TestTask11MonteCarlo:
