@@ -1673,3 +1673,70 @@ class TestSignallingParameterReconciliationV1113:
         if sec10 is not None:
             for t in sec10.tables:
                 assert "footnote" not in (t.metadata or {})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v1.12.0 — simulation, envelope and speed chart are scoped to ROUTE_LINK_SEQUENCE
+# ─────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("direction", [RunningDirection.FORWARD, RunningDirection.REVERSE])
+def test_speed_chart_respects_route_link_sequence(direction, tmp_path):
+    from headway.ui.simulation_runner import SimulationRunner
+    from tests import route_scope_project as rsp
+
+    project = rsp.load_route_scope_project(tmp_path / "proj")
+    assert len(project.infrastructure.track_links) == 100
+    assert list(project.operations.service_patterns[0].route_link_sequence) == rsp.ROUTE
+
+    pkg, doc = SimulationRunner.run_simulation_pipeline(project, running_direction=direction)
+    route_m = rsp.ROUTE_LENGTH_M  # 9050 m (network 90500 m)
+
+    # Envelope: built from the 10 route links only — first point 0, last point route length,
+    # one constant-speed step (2 points) per link, speeds = route limits only (no 60 km/h).
+    env = pkg.metadata["permissible_speed_envelope"]
+    assert env[0]["route_distance_m"] == pytest.approx(0.0, abs=1e-6)
+    assert env[-1]["route_distance_m"] == pytest.approx(route_m, abs=1.0)
+    assert len(env) == 2 * len(rsp.ROUTE) == 20
+    assert {p["max_speed_kmh"] for p in env} == {80.0, 120.0}
+    assert [lnk.link_id for lnk in pkg.metadata["track_links"]] == rsp.ROUTE
+    assert pkg.metadata["route_link_ids"] == rsp.ROUTE
+    assert pkg.metadata["route_length_m"] == pytest.approx(route_m, abs=1e-6)
+    assert pkg.metadata["network_track_link_count"] == 100
+    assert doc.infrastructure.total_links == 100  # summary still counts the network, not the route
+
+    # Trajectory spans exactly the route (forward route axis; REVERSE decreases).
+    samples = next(iter(pkg.trajectories.values())).samples
+    xs_traj = [s.front_distance_m for s in samples]
+    assert min(xs_traj) == pytest.approx(0.0, abs=1.0)
+    assert max(xs_traj) == pytest.approx(route_m, abs=1.0)
+    if direction == RunningDirection.REVERSE:
+        assert xs_traj[0] > xs_traj[-1]
+    else:
+        assert xs_traj[0] < xs_traj[-1]
+
+    # Only the 10 route blocks are occupied.
+    assert {iv.resource_id for iv in pkg.metadata["blocking_intervals"]} == {
+        f"BLK_{k:03d}" for k in range(rsp.ROUTE_FIRST, rsp.ROUTE_LAST + 1)
+    }
+
+    # Chart: x in km over 0 .. route length; envelope y = route limits; REVERSE axis inverted.
+    fig = doc.figures_data["fig_speed_alignment"]
+    env_tr = next(t for t in fig.data if t.name == "Permissible Speed Envelope")
+    spd_tr = next(t for t in fig.data if str(t.name).startswith("Simulated Speed"))
+    env_x = [x for x in env_tr.x if x is not None]
+    spd_x = [x for x in spd_tr.x if x is not None]
+    assert min(env_x) == pytest.approx(0.0, abs=1e-3)
+    assert max(env_x) == pytest.approx(route_m / 1000.0, abs=1e-3)
+    assert len(env_x) == 20
+    assert min(spd_x) == pytest.approx(0.0, abs=1e-3)
+    assert max(spd_x) == pytest.approx(route_m / 1000.0, abs=1e-3)
+    assert set(env_tr.y) == {80.0, 120.0}
+    assert max(spd_tr.y) <= 120.0 + 1e-6
+    assert fig.layout.xaxis.autorange == ("reversed" if direction == RunningDirection.REVERSE else None)
+
+    # Axis consistency: on the forward route axis the first route link (LNK_046, 120 km/h)
+    # sits at x = 0 and the last (LNK_055, 80 km/h) at x = route length, in BOTH directions.
+    pts = sorted(zip(env_x, env_tr.y))
+    first_len_km = rsp.link_len(rsp.ROUTE_FIRST) / 1000.0
+    last_len_km = rsp.link_len(rsp.ROUTE_LAST) / 1000.0
+    assert {y for x, y in pts if x < first_len_km - 1e-6} == {120.0}
+    assert {y for x, y in pts if x > route_m / 1000.0 - last_len_km + 1e-6} == {80.0}

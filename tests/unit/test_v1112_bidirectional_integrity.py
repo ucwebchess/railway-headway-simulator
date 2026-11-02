@@ -596,8 +596,12 @@ class TestTask10Conventions:
         m = re.search(r"located at alignment chainage ([\d.]+) km \(route-relative ([\d.]+) km\)", t18)
         assert m, t18
         if direction == REV:
-            # 05 REV bottleneck BLK_DN_05: alignment 10.0 km, route-relative 12.00 km
-            assert (float(m.group(1)), float(m.group(2))) == (10.0, 12.0)
+            # 05 REV bottleneck BLK_DN_05: alignment 10.0 km, route-relative 10.00 km.
+            # v1.12.0: the REVERSE route is the 05T turnback route traversed backwards from ND_01:
+            # LNK_17 (4000 m) + LNK_16 (6000 m) precede BLK_DN_05's entry on LNK_15 -> 10.0 km.
+            # (Pre-v1.12.0: 12.0 km, because the disconnected siding LNK_18 (2000 m) was simulated
+            # first in REVERSE by concatenating every TrackLink.)
+            assert (float(m.group(1)), float(m.group(2))) == (10.0, 10.0)
 
 
 class TestTask11MonteCarlo:

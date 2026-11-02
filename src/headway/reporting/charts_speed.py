@@ -116,19 +116,8 @@ def create_speed_distance_figure(
                 rolling_stock_max_speed_kmh=rolling_stock_max_speed_kmh,
                 running_direction=eff_dir,
             )
-        else:
-            try:
-                from headway.ui.state import session_state
-                if session_state.project and session_state.project.infrastructure.track_links:
-                    rs = session_state.project.rolling_stock
-                    rs_max = (rs.train_types[0].max_speed_ms * 3.6) if rs.train_types else None
-                    permissible_speed_envelope = compute_permissible_speed_envelope(
-                        track_links=session_state.project.infrastructure.track_links,
-                        rolling_stock_max_speed_kmh=rs_max,
-                        running_direction=eff_dir,
-                    )
-            except Exception:
-                pass
+        # v1.12.0: no fallback to the UI session project's full infrastructure — the envelope
+        # must come from the simulated route (package metadata / route track_links) only.
 
         if permissible_speed_envelope is None and traj_list and traj_list[0].samples:
             primary_t = traj_list[0]
@@ -148,13 +137,14 @@ def create_speed_distance_figure(
             for t in traj_list
         )
         if is_reverse and traj_is_decreasing:
-            tot_d = 0.0
-            if track_links:
+            # v1.12.0: the envelope is in route distance (0 = REVERSE route origin); map it onto
+            # the trajectory's forward route axis using the ROUTE length — the envelope's own
+            # extent — never the length of the full infrastructure.
+            tot_d = max(p.get("route_distance_m", 0.0) for p in permissible_speed_envelope)
+            if tot_d <= 0.0 and track_links:
                 tot_d = sum(float(l.length_m) for l in track_links)
-            elif traj_list and traj_list[0].samples:
+            elif tot_d <= 0.0 and traj_list and traj_list[0].samples:
                 tot_d = max(s.front_distance_m for s in traj_list[0].samples)
-            elif permissible_speed_envelope:
-                tot_d = max(p.get("route_distance_m", 0.0) for p in permissible_speed_envelope)
 
             env_x = [round(max(0.0, tot_d - pt.get("route_distance_m", 0.0)) / 1000.0, 4) for pt in permissible_speed_envelope]
         else:
@@ -409,12 +399,13 @@ def create_speed_profile_dataframe(
     )
     tot_len = 0.0
     if is_reverse and traj_is_decreasing:
-        if track_links:
-            tot_len = sum(float(l.length_m) for l in track_links)
-        elif trajectory.samples:
-            tot_len = trajectory.samples[0].front_distance_m
-        elif env_pts:
+        # v1.12.0: route length = the envelope's own extent (built from the route links).
+        if env_pts:
             tot_len = max(p.get("route_distance_m", 0.0) for p in env_pts)
+        if tot_len <= 0.0 and track_links:
+            tot_len = sum(float(l.length_m) for l in track_links)
+        elif tot_len <= 0.0 and trajectory.samples:
+            tot_len = trajectory.samples[0].front_distance_m
 
     rows = []
     for s in trajectory.samples:
