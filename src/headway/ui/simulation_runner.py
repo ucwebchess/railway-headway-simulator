@@ -48,7 +48,7 @@ from headway.data.canonical import (
     TrainType,
     TVSSection,
 )
-from headway.infrastructure.direction import RunningDirection
+from headway.infrastructure.direction import DirectionPolicy, RunningDirection
 from headway.infrastructure.route import LinkTraversal, Route
 from headway.reporting.charts_speed import compute_permissible_speed_envelope
 from headway.reporting.report_assembly import ReportAssembler
@@ -463,6 +463,9 @@ class SimulationRunner:
         # (nominal link order); REVERSE traverses the same sequence backwards. Alignment
         # chainage (absolute stationing) is still computed on the full network.
         track_links = cls._resolve_route_links(list(infra.track_links), active_pattern)
+        # v1.12.0: route-level direction check BEFORE any simulation — REVERSE may not run
+        # against NOMINAL (forward-only) tracks, FORWARD may not run against REVERSE tracks.
+        cls._validate_route_direction(track_links, list(infra.tracks or []), running_direction, active_pattern)
         route_link_ids = {lnk.link_id for lnk in track_links}
         for st_stop in service_stops:
             plt = plat_map_check.get(getattr(st_stop, "platform_id", None))
@@ -1831,6 +1834,53 @@ class SimulationRunner:
                 error_code="ERR_ROUTE_NOT_CONTIGUOUS",
             )
         return route
+
+    @staticmethod
+    def _validate_route_direction(
+        route_links: Sequence[TrackLink],
+        tracks: Sequence[Any],
+        running_direction: RunningDirection,
+        active_pattern: Any = None,
+    ) -> None:
+        """v1.12.0: ERR_ROUTE_DIRECTION_FORBIDDEN — the run direction must be permitted on every
+        track the simulated route uses.
+
+          REVERSE run  -> forbidden on tracks with DIRECTIONALITY = NOMINAL (forward-only)
+          FORWARD run  -> forbidden on tracks with DIRECTIONALITY = REVERSE (reverse-only)
+          BIDIRECTIONAL tracks (and links whose track has no declared directionality) allow both.
+
+        Loud, never auto-corrected: the fix is either the track DIRECTIONALITY in the
+        Infrastructure workbook (Tracks sheet) or the selected running direction.
+        """
+        reverse = running_direction == RunningDirection.REVERSE
+        forbidden = TrackDirectionality.NOMINAL if reverse else TrackDirectionality.REVERSE
+        dir_by_track = {t.track_id: getattr(t, "directionality", None) for t in tracks}
+        offending: dict[str, list[str]] = {}
+        for lnk in route_links:
+            track_dir = dir_by_track.get(lnk.track_id)
+            if track_dir is None:
+                continue
+            # Single source of truth for the permission matrix (P02-DIR-004).
+            if not DirectionPolicy.is_traversal_permitted(TrackDirectionality(track_dir), running_direction):
+                offending.setdefault(lnk.track_id, []).append(lnk.link_id)
+        if not offending:
+            return
+        run = "REVERSE" if reverse else "FORWARD"
+        allowed = "FORWARD" if reverse else "REVERSE"
+        pattern_id = getattr(active_pattern, "service_pattern_id", None) if active_pattern else None
+        scope = f"route of service pattern '{pattern_id}'" if pattern_id else "simulated network (no service pattern)"
+        detail = "; ".join(
+            f"{tid} ({len(ids)} link(s): {ids[0]}" + (f"..{ids[-1]}" if len(ids) > 1 else "") + ")"
+            for tid, ids in offending.items()
+        )
+        raise SimulationRunnerError(
+            "ERR_ROUTE_DIRECTION_FORBIDDEN",
+            f"{run} run is not permitted on the {scope}: track(s) configured DIRECTIONALITY = "
+            f"{forbidden.value} ({allowed} running only): {detail}. Set the track DIRECTIONALITY to "
+            f"BIDIRECTIONAL in the Infrastructure workbook (Tracks sheet) to permit {run} running, "
+            f"or run {allowed}.",
+            error_code="ERR_ROUTE_DIRECTION_FORBIDDEN",
+        )
 
     @classmethod
     def _build_permissible_speed_envelope(

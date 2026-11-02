@@ -41,10 +41,48 @@ def comprehensive_line_with_explicit_turnaround_exits():
     pre-v1.12.0 runner simulated implicitly by concatenating every TrackLink (it also
     appended the disconnected siding LNK_18, which is not contiguous and is now dropped).
     Both services keep their stops (PLT_B1 on LNK_06, PLT_B3 on LNK_15) on the route.
+
+    v1.12.0 (ERR_ROUTE_DIRECTION_FORBIDDEN): shipped TRK_UP / TRK_DN are NOMINAL (one-way), so
+    a REVERSE run of shipped 05 is a validation error. To keep the REVERSE coverage, this
+    variant applies the documented data correction: TRK_UP and TRK_DN -> BIDIRECTIONAL.
     """
     project, _, _ = _load("05_comprehensive_line")
     apply_comprehensive_line_turnaround_exits(project)
-    return apply_comprehensive_line_turnback_route(project)
+    apply_comprehensive_line_turnback_route(project)
+    return apply_comprehensive_line_bidirectional_tracks(project)
+
+
+COMPREHENSIVE_LINE_BIDIRECTIONAL_TRACKS = ("TRK_UP", "TRK_DN")
+
+
+def make_tracks_bidirectional(project, track_ids):
+    """v1.12.0: declare the given tracks BIDIRECTIONAL in place — the documented data
+    correction that permits REVERSE running on a one-way (NOMINAL) track."""
+    from headway.data.canonical import TrackDirectionality
+
+    track_ids = set(track_ids)
+    assert track_ids <= {t.track_id for t in project.infrastructure.tracks}, track_ids
+    project.infrastructure.tracks = [
+        t.model_copy(update={"directionality": TrackDirectionality.BIDIRECTIONAL}) if t.track_id in track_ids else t
+        for t in project.infrastructure.tracks
+    ]
+    return project
+
+
+def apply_comprehensive_line_bidirectional_tracks(project):
+    """v1.12.0: declare the 05 UP/DN tracks BIDIRECTIONAL (shipped: NOMINAL, one-way)."""
+    return make_tracks_bidirectional(project, COMPREHENSIVE_LINE_BIDIRECTIONAL_TRACKS)
+
+
+def double_track_bidirectional_up():
+    """v1.12.0: shipped 02_double_track with TRK_UP declared BIDIRECTIONAL (shipped: NOMINAL).
+
+    Shipped 02 raises ERR_ROUTE_DIRECTION_FORBIDDEN on REVERSE (its only service runs on the
+    one-way TRK_UP). This variant keeps the REVERSE coverage of tests whose subject is not
+    directionality. Not a geometry correction, so it is not in CORRECTED_VARIANTS.
+    """
+    project, _, _ = _load("02_double_track")
+    return make_tracks_bidirectional(project, ["TRK_UP"])
 
 
 COMPREHENSIVE_LINE_TURNBACK_ROUTE = [f"LNK_{k:02d}" for k in range(1, 18)]  # 50 000 m

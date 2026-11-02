@@ -23,10 +23,10 @@ from headway.ui.background_executor import BackgroundExecutor
 from headway.ui.direction_selector import DirectionSelector
 from headway.ui.file_manager import ProjectFileManager
 from headway.ui.progress import ProgressTracker
-from headway.ui.simulation_runner import SimulationJobConfig, SimulationRunner
+from headway.ui.simulation_runner import SimulationJobConfig, SimulationRunner, SimulationRunnerError
 from headway.ui.state import session_state
 from tests.block_geometry_expectations import load_and_assert_pipeline_raises
-from tests.corrected_variants import load_corrected_variant
+from tests.corrected_variants import double_track_bidirectional_up, load_corrected_variant
 from headway.reporting.csv_export import CsvReportExporter
 from headway.reporting.excel_export import ExcelReportExporter
 from headway.reporting.html_renderer import HtmlReportRenderer
@@ -88,9 +88,32 @@ class TestUiE2EWorkflows:
         assert "Technical Minimum Headway" in html
 
     def test_e2e_002_double_track_reverse_flow(self):
-        """P15-E2E-007 to P15-E2E-012: Double Track assessment with mandatory REVERSE running direction."""
-        # 1. Load Double Track Example
+        """P15-E2E-007 to P15-E2E-012: Double Track assessment in REVERSE running direction.
+
+        v1.12.0: shipped 02's only service runs on TRK_UP = NOMINAL (one-way), so a REVERSE run
+        is a validation error (ERR_ROUTE_DIRECTION_FORBIDDEN) raised before any simulation.
+        The REVERSE flow itself is covered on the bidirectional variant below
+        (test_e2e_002_double_track_reverse_flow_on_bidirectional_variant).
+        """
         proj, report, _ = ProjectFileManager.load_example_project("02_double_track")
+        session_state.set_project(proj, report)
+        with pytest.raises(SimulationRunnerError) as excinfo:
+            SimulationRunner.run_simulation_pipeline(
+                project=proj,
+                running_direction=RunningDirection.REVERSE,
+                simulation_mode="Full Integrated Suite",
+                tracker=ProgressTracker("double_track_reverse_forbidden"),
+            )
+        assert excinfo.value.error_code == "ERR_ROUTE_DIRECTION_FORBIDDEN"
+        assert "TRK_UP" in str(excinfo.value) and "BIDIRECTIONAL" in str(excinfo.value)
+
+    def test_e2e_002_double_track_reverse_flow_on_bidirectional_variant(self):
+        """P15-E2E-007 to P15-E2E-012: Double Track assessment with mandatory REVERSE running direction."""
+        # v1.12.0: 02 with TRK_UP declared BIDIRECTIONAL (tests/corrected_variants.py) — the
+        # documented data correction that permits REVERSE running on the shipped one-way track.
+        # 1. Load Double Track Example
+        _proj, report, _ = ProjectFileManager.load_example_project("02_double_track")
+        proj = double_track_bidirectional_up()
         session_state.set_project(proj, report)
 
         # 2. Select REVERSE Direction

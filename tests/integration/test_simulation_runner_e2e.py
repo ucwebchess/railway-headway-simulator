@@ -39,7 +39,7 @@ from tests.block_geometry_expectations import (
     comprehensive_line_with_explicit_turnaround_exits,
     findings_by_code,
 )
-from tests.corrected_variants import load_corrected_variant
+from tests.corrected_variants import double_track_bidirectional_up, load_corrected_variant
 
 ALL_EXAMPLES = sorted(set(EXPECTED_BLOCK_GEOMETRY_ERRORS) | set(CLEAN_EXAMPLES))
 assert len(ALL_EXAMPLES) == 7
@@ -879,7 +879,17 @@ def _run_both_directions(project_factory):
             )
         except BlockGeometryValidationError as exc:
             out[d] = exc
+        except SimulationRunnerError as exc:
+            # v1.12.0: direction permission is direction-dependent by design.
+            if exc.error_code != "ERR_ROUTE_DIRECTION_FORBIDDEN":
+                raise
+            out[d] = exc
     return out
+
+
+# v1.12.0: shipped examples whose service route lies on one-way tracks — the listed direction
+# is a validation error (ERR_ROUTE_DIRECTION_FORBIDDEN), the other direction runs.
+EXPECTED_DIRECTION_FORBIDDEN = {"02_double_track": RunningDirection.REVERSE}
 
 
 def _route_ordered(pkg):
@@ -898,7 +908,9 @@ def _speed_discontinuities(pkg, tol_kmh=0.1):
 
 
 _SYMMETRY_CASES = [pytest.param(ex, id=ex) for ex in ALL_EXAMPLES] + [
-    pytest.param("05_comprehensive_line+explicit_turnaround_exits", id="05_turnaround_variant")
+    pytest.param("05_comprehensive_line+explicit_turnaround_exits", id="05_turnaround_variant"),
+    # v1.12.0: keeps the 02 FWD/REV symmetry coverage (TRK_UP declared BIDIRECTIONAL).
+    pytest.param("02_double_track+bidirectional_up", id="02_bidirectional_variant"),
 ]
 
 
@@ -917,11 +929,23 @@ class TestBidirectionalSymmetry:
     def test_forward_reverse_symmetry(self, case):
         if case.endswith("+explicit_turnaround_exits"):
             factory = comprehensive_line_with_explicit_turnaround_exits
+        elif case.endswith("+bidirectional_up"):
+            factory = double_track_bidirectional_up
         else:
             factory = lambda: FileManager.load_example_project(case)[0]  # noqa: E731
 
         res = _run_both_directions(factory)
         fwd, rev = res[RunningDirection.FORWARD], res[RunningDirection.REVERSE]
+
+        if case in EXPECTED_DIRECTION_FORBIDDEN:
+            forbidden = EXPECTED_DIRECTION_FORBIDDEN[case]
+            for d, r in res.items():
+                if d == forbidden:
+                    assert isinstance(r, SimulationRunnerError), f"{case} {d.value} was expected to raise"
+                    assert r.error_code == "ERR_ROUTE_DIRECTION_FORBIDDEN"
+                else:
+                    assert not isinstance(r, Exception), f"{case} {d.value} must run: {r}"
+            return
 
         if isinstance(fwd, Exception) or isinstance(rev, Exception):
             assert isinstance(fwd, BlockGeometryValidationError), f"FORWARD ran but REVERSE raised: {rev}"
