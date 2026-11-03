@@ -1503,6 +1503,9 @@ class SimulationRunner:
                 "route_link_ids": [lnk.link_id for lnk in track_links],
                 "route_length_m": float(total_length_m),
                 "network_track_link_count": len(infra.track_links),
+                # v1.13.0: whole-network track length (all TrackLinks), disclosed next to the
+                # Total Track Length KPI when the simulated route is a subset of the network.
+                "network_track_length_m": float(sum(float(lnk.length_m) for lnk in infra.track_links)),
                 "performance_factor": eff_pf,
                 "performance_factor_source": eff_pf_src,
                 # v1.11.0 / Task 10: per-block absolute alignment chainage (km) tuples

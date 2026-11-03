@@ -404,6 +404,13 @@ class PdfReportRenderer:
                 Paragraph(kpis.total_service_duration_str, styles["KpiVal"]),
                 Paragraph("End-to-End Line Traversal", styles["KpiSub"]),
             ])
+        # v1.13.0: Total Track Length (km) — between Total Service Duration and Controlling Bottleneck.
+        if kpis.total_track_length_m is not None:
+            kpi_cells.append([
+                Paragraph("TOTAL TRACK LENGTH", styles["KpiLabel"]),
+                Paragraph(kpis.total_track_length_str, styles["KpiVal"]),
+                Paragraph(kpis.total_track_length_subtext, styles["KpiSub"]),
+            ])
         kpi_cells.append([
             Paragraph("CONTROLLING BOTTLENECK", styles["KpiLabel"]),
             Paragraph(kpis.controlling_bottleneck_id, styles["KpiValCrit"]),
