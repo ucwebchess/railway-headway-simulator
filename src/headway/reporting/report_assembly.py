@@ -14,7 +14,7 @@ Coordinates:
 
 from datetime import datetime, timezone
 import math
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from headway.analysis.blocking_time import ResourceBlockingInterval
 from headway.analysis.headway_results import HeadwayResult, MixedTrafficHeadwayMatrix
@@ -581,6 +581,37 @@ class ReportAssembler:
         return None
 
     @classmethod
+    def _compute_total_track_length(
+        cls, package: SimulationResultPackage
+    ) -> Tuple[Optional[float], Optional[int], Optional[float]]:
+        """v1.13.0: Total Track Length KPI source.
+
+        Returns ``(route_length_m, route_link_count, network_track_length_m)``. The KPI is the
+        length of the SIMULATED ROUTE (the active service pattern's ROUTE_LINK_SEQUENCE, the
+        same length the simulation, envelope and speed chart use since v1.12.0).
+
+        Source priority: ``metadata["route_length_m"]``; else the sum of
+        ``metadata["track_links"]`` lengths. Returns ``(None, None, None)`` when neither is
+        available, in which case the KPI card is omitted (like Total Service Duration).
+        """
+        meta = package.metadata or {}
+        links = meta.get("track_links") or []
+        link_ids = meta.get("route_link_ids")
+        count: Optional[int] = len(link_ids) if link_ids else (len(links) or None)
+        length_m: Optional[float] = None
+        raw = meta.get("route_length_m")
+        if raw is not None:
+            length_m = float(raw)
+        elif links:
+            lengths = [getattr(lnk, "length_m", None) for lnk in links]
+            if all(v is not None for v in lengths):
+                length_m = float(sum(lengths))
+        if length_m is None or length_m <= 0.0:
+            return None, None, None
+        net = meta.get("network_track_length_m")
+        return length_m, count, (float(net) if net is not None else None)
+
+    @classmethod
     def _build_executive_kpis(
         cls,
         package: SimulationResultPackage,
@@ -618,6 +649,7 @@ class ReportAssembler:
         theo_cap = (3600.0 / hw_s) if hw_s > 0 else 0.0
         plan_cap = (3600.0 / (hw_s + margin_s)) if (hw_s + margin_s) > 0 else 0.0
         total_service_dur = cls._compute_total_service_duration(package)
+        track_len_m, route_link_count, network_len_m = cls._compute_total_track_length(package)
         pf = getattr(primary_hw, "performance_factor", 1.0) if primary_hw else package.metadata.get("performance_factor", 1.0)
         pf_src = getattr(primary_hw, "performance_factor_source", "default") if primary_hw else package.metadata.get("performance_factor_source", "default")
 
@@ -634,6 +666,9 @@ class ReportAssembler:
             total_service_duration_s=round(total_service_dur, 1) if total_service_dur is not None else None,
             performance_factor=float(pf),
             performance_factor_source=str(pf_src),
+            total_track_length_m=round(track_len_m, 2) if track_len_m is not None else None,
+            route_link_count=route_link_count,
+            network_track_length_m=round(network_len_m, 2) if network_len_m is not None else None,
         )
 
     @classmethod
@@ -969,6 +1004,12 @@ class ReportAssembler:
             sec_kpis["total_service_duration_s"] = round(dur_s, 1)
             sec_kpis["total_service_duration_str"] = dur_str
             sec_kpis["Total Service Duration (End-to-End)"] = dur_str
+        # v1.13.0: Total Track Length (km) — follows Total Service Duration (same order as the
+        # executive KPI cards: ... Service Duration, Track Length, Controlling Bottleneck).
+        _trk_m, _, _ = cls._compute_total_track_length(package)
+        if _trk_m is not None:
+            sec_kpis["total_track_length_km"] = round(_trk_m / 1000.0, 3)
+            sec_kpis["Total Track Length (km)"] = f"{_trk_m / 1000.0:,.2f} km"
 
         callout_boxes = []
         if has_traj:

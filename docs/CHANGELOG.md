@@ -23,6 +23,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.13.0] — 2026-11-03
+
+New executive KPI: **Total Track Length (km)**. Reporting and runner metadata only — the physics
+engine is untouched and no simulated value changes.
+
+### Added
+- **Total Track Length (km)** headline KPI in the executive summary of the HTML, PDF and Excel
+  reports, placed between *Total Service Duration (End-to-End)* and *Controlling Bottleneck*.
+  - Value = length of the **simulated route** (the active service pattern's
+    `ROUTE_LINK_SEQUENCE`, i.e. `metadata["route_length_m"]` — the same length the simulation,
+    envelope and speed chart use since v1.12.0). Shown as `36.25 km`; Excel stores the number
+    in km (3 decimals) with unit `km`.
+  - Subtext: `Simulated route • <n> links • <length> m`; when the route is a subset of the
+    network the whole-network track length is disclosed, e.g. `(network 90.50 km)`.
+  - Source priority: `metadata["route_length_m"]`, else the sum of the route's
+    `metadata["track_links"]` lengths; when neither is available the card is omitted (same
+    behaviour as Total Service Duration).
+- `ExecutiveKpis.total_track_length_m`, `route_link_count`, `network_track_length_m` and the
+  `total_track_length_km` / `total_track_length_str` / `total_track_length_subtext`
+  properties; exported in `to_dict()`.
+- Section 1 KPI dict: `total_track_length_km` and `"Total Track Length (km)"`, right after the
+  Total Service Duration keys.
+- Runner metadata `network_track_length_m` (sum of all `TrackLink` lengths).
+- Tests: `tests/unit/test_total_track_length_kpi_v1130.py` (model formatting, source priority,
+  FORWARD and REVERSE pipeline value plus placement in HTML, PDF and Excel on the synthetic
+  route-subset project).
+
+### Changed
+- Version 1.12.0 → 1.13.0.
+
+---
+
 ## [1.12.0] — 2026-11-02
 
 Route scoping: the simulation, the permissible-speed envelope and the speed–distance chart now

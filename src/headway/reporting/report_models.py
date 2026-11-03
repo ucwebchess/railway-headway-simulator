@@ -114,6 +114,41 @@ class ExecutiveKpis:
     total_service_duration_s: Optional[float] = None
     performance_factor: float = 1.0
     performance_factor_source: str = "default"
+    # v1.13.0: Total Track Length KPI — length of the SIMULATED ROUTE (ROUTE_LINK_SEQUENCE),
+    # plus the whole-network track length for disclosure when the route is a subset.
+    total_track_length_m: Optional[float] = None
+    route_link_count: Optional[int] = None
+    network_track_length_m: Optional[float] = None
+
+    @property
+    def total_track_length_km(self) -> Optional[float]:
+        """Total track length of the simulated route in km (None when unavailable)."""
+        if self.total_track_length_m is None:
+            return None
+        return self.total_track_length_m / 1000.0
+
+    @property
+    def total_track_length_str(self) -> str:
+        """Formatted total track length (e.g. '36.25 km')."""
+        km = self.total_track_length_km
+        return "N/A" if km is None else f"{km:,.2f} km"
+
+    @property
+    def total_track_length_subtext(self) -> str:
+        """Basis of the Total Track Length KPI (route links; network total when it differs)."""
+        parts = ["Simulated route"]
+        if self.route_link_count:
+            parts.append(f"{self.route_link_count} link{'s' if self.route_link_count != 1 else ''}")
+        if self.total_track_length_m is not None:
+            parts.append(f"{self.total_track_length_m:,.1f} m")
+        txt = " • ".join(parts)
+        if (
+            self.network_track_length_m is not None
+            and self.total_track_length_m is not None
+            and abs(self.network_track_length_m - self.total_track_length_m) > 0.5
+        ):
+            txt += f" (network {self.network_track_length_m / 1000.0:,.2f} km)"
+        return txt
 
     @property
     def performance_factor_str(self) -> str:
@@ -155,6 +190,11 @@ class ExecutiveKpis:
             "planning_margin_str": self.planning_margin_str,
             "total_service_duration_s": self.total_service_duration_s,
             "total_service_duration_str": self.total_service_duration_str,
+            "total_track_length_m": self.total_track_length_m,
+            "total_track_length_km": self.total_track_length_km,
+            "total_track_length_str": self.total_track_length_str,
+            "route_link_count": self.route_link_count,
+            "network_track_length_m": self.network_track_length_m,
             "performance_factor": self.performance_factor,
             "performance_factor_str": self.performance_factor_str,
             "performance_factor_source": self.performance_factor_source,

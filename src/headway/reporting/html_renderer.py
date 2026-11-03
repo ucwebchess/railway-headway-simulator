@@ -82,6 +82,17 @@ class HtmlReportRenderer:
         </div>
         """ if dur_str != "N/A" else ""
 
+        # v1.13.0: Total Track Length (km) — placed between Total Service Duration and
+        # Controlling Bottleneck.
+        trk_str = getattr(kpis, "total_track_length_str", "N/A")
+        trk_card = f"""
+        <div class='kpi-card'>
+            <div class='kpi-label'>Total Track Length</div>
+            <div class='kpi-value'>{html.escape(trk_str.replace(" km", ""))} <span class='kpi-unit'>km</span></div>
+            <div class='kpi-subtext'>{html.escape(kpis.total_track_length_subtext)}</div>
+        </div>
+        """ if trk_str != "N/A" else ""
+
         html_parts.append("<div class='kpi-grid'>")
         html_parts.append(f"""
         <div class='kpi-card'>
@@ -105,6 +116,7 @@ class HtmlReportRenderer:
             <div class='kpi-subtext'>Source: {html.escape(kpis.performance_factor_source)} (Traction & Service Braking)</div>
         </div>
         {dur_card}
+        {trk_card}
         <div class='kpi-card kpi-card-critical'>
             <div class='kpi-label'>Controlling Bottleneck</div>
             <div class='kpi-value-sm'>{html.escape(kpis.controlling_bottleneck_id)}</div>

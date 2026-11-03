@@ -108,6 +108,9 @@ class ExcelReportExporter:
         ws.append(["Operational Performance Factor", kpis.performance_factor_str, "%", f"Source: {kpis.performance_factor_source} (Traction & Service Braking scaled)"])
         if kpis.total_service_duration_s is not None:
             ws.append(["Total Service Duration (End-to-End)", kpis.total_service_duration_str, "HH:MM:SS", f"{kpis.total_service_duration_s:.1f}s journey time"])
+        # v1.13.0: Total Track Length (km) — between Total Service Duration and Controlling Bottleneck.
+        if kpis.total_track_length_m is not None:
+            ws.append(["Total Track Length", round(kpis.total_track_length_km, 3), "km", kpis.total_track_length_subtext])
         ws.append(["Controlling Bottleneck Resource", kpis.controlling_bottleneck_id, "ID", f"{kpis.controlling_bottleneck_type} at km {kpis.controlling_bottleneck_chainage_km:.2f}"])
         ws.append([])
 
