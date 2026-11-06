@@ -65,6 +65,7 @@ from headway.infrastructure.stations import (
     RoutePlatformStop,
     StationGeometryError,
     StationPlatformModel,
+    TrainOverhangError,
 )
 from headway.infrastructure.switches import (
     JunctionTopology,
@@ -126,6 +127,7 @@ __all__ = [
     "StationPlatformModel",
     "RoutePlatformStop",
     "StationGeometryError",
+    "TrainOverhangError",
     # Tunnels & TVS
     "TunnelTVSModel",
     "RouteTVSSection",

@@ -3,7 +3,9 @@
 The Infrastructure workbook declares **one row per physical platform** (``PlatformSpans``)
 by per-track chainage. The tool walks the track's ``TrackLinks`` and generates one internal,
 link-level :class:`~headway.data.canonical.Platform` segment per overlapped link, plus one
-internal :class:`~headway.data.canonical.StoppingPoint` at the platform's nominal stop point.
+internal :class:`~headway.data.canonical.StoppingPoint` at the platform's segment hint point
+(``SEGMENT_HINT_OFFSET_M`` selects only which segment the train berths on, not the exact
+stop position).
 
 Chainage frame (v1.14.0 decision): **per track** — each track starts at 0 km at the start
 node of its first link (the track's root node) and runs over its links in topological order;
@@ -37,7 +39,8 @@ ERR_PLATFORM_SPAN_DUPLICATE = "ERR_PLATFORM_SPAN_DUPLICATE"
 ERR_PLATFORMS_DEPRECATED = "ERR_PLATFORMS_DEPRECATED"
 ERR_STOPPINGPOINTS_DEPRECATED = "ERR_STOPPINGPOINTS_DEPRECATED"
 ERR_STOPPING_PATTERN_REFERENCES_SEGMENT = "ERR_STOPPING_PATTERN_REFERENCES_SEGMENT"
-ERR_PLATFORM_NOMINAL_STOP_INVALID = "ERR_PLATFORM_NOMINAL_STOP_INVALID"
+ERR_PLATFORM_SEGMENT_HINT_INVALID = "ERR_PLATFORM_SEGMENT_HINT_INVALID"
+ERR_PLATFORM_SPAN_DEPRECATED_COLUMN = "ERR_PLATFORM_SPAN_DEPRECATED_COLUMN"
 
 ALL_PLATFORM_SPAN_ERROR_CODES = (
     ERR_PLATFORM_SPAN_INVALID,
@@ -46,7 +49,8 @@ ALL_PLATFORM_SPAN_ERROR_CODES = (
     ERR_PLATFORMS_DEPRECATED,
     ERR_STOPPINGPOINTS_DEPRECATED,
     ERR_STOPPING_PATTERN_REFERENCES_SEGMENT,
-    ERR_PLATFORM_NOMINAL_STOP_INVALID,
+    ERR_PLATFORM_SEGMENT_HINT_INVALID,
+    ERR_PLATFORM_SPAN_DEPRECATED_COLUMN,
 )
 
 #: Legacy worksheet name -> rejection code (Infrastructure workbook).
@@ -55,10 +59,17 @@ DEPRECATED_INFRA_SHEETS: Dict[str, str] = {
     "StoppingPoints": ERR_STOPPINGPOINTS_DEPRECATED,
 }
 
+#: v1.14.1: deprecated ``PlatformSpans`` column names -> current name. A deprecated column is refused
+#: loudly (``ERR_PLATFORM_SPAN_DEPRECATED_COLUMN``) instead of being ignored as an unknown
+#: column, which would silently fall back to the default (mid-platform) segment hint.
+DEPRECATED_PLATFORM_SPAN_COLUMNS: Dict[str, str] = {
+    "NOMINAL_STOP_OFFSET_M": "SEGMENT_HINT_OFFSET_M",
+}
+
 MIN_SPAN_LENGTH_M = 10.0
 #: Numerical tolerance (m) for chainage comparisons (float round-off of km inputs).
 CHAINAGE_TOL_M = 1e-6
-#: Bounds tolerance (m) for track coverage and nominal-stop range checks — the dataset
+#: Bounds tolerance (m) for track coverage and segment-hint range checks — the dataset
 #: validator's geometry tolerance (1 mm, ``headway.data.validator.GEOMETRY_TOLERANCE_M``).
 #: Values within tolerance are clamped onto the boundary.
 BOUNDS_TOL_M = 1e-3
@@ -95,7 +106,7 @@ def deprecated_sheet_message(sheet: str, workbook: str = "") -> str:
         )
     return (
         f"The legacy 'StoppingPoints' worksheet{wb} is no longer supported (v1.14.0 breaking schema "
-        f"change). Its offsets move to PlatformSpans.NOMINAL_STOP_OFFSET_M — run "
+        f"change). Its offsets move to PlatformSpans.SEGMENT_HINT_OFFSET_M — run "
         f"docs/migrate_platforms.py and follow {MIGRATION_GUIDE}."
     )
 
@@ -106,6 +117,25 @@ def deprecated_sheet_error(sheet: str, workbook: str = "") -> PlatformSpanError:
         deprecated_sheet_message(sheet, workbook),
         error_code=code,
         context={"worksheet": sheet, "workbook": workbook, "migration_guide": MIGRATION_GUIDE},
+    )
+
+
+def deprecated_column_message(old: str) -> str:
+    """User-facing rejection text for a deprecated ``PlatformSpans`` column.
+
+    For NOMINAL_STOP_OFFSET_M: "Column NOMINAL_STOP_OFFSET_M is deprecated. Rename it to
+    SEGMENT_HINT_OFFSET_M. See docs/MIGRATION_v1.14.0.md."
+    """
+    return f"Column {old} is deprecated. Rename it to {DEPRECATED_PLATFORM_SPAN_COLUMNS[old]}. See {MIGRATION_GUIDE}."
+
+
+def deprecated_column_error(old: str, workbook: str = "") -> PlatformSpanError:
+    return PlatformSpanError(
+        deprecated_column_message(old),
+        error_code=ERR_PLATFORM_SPAN_DEPRECATED_COLUMN,
+        context={"object_id": old, "worksheet": "PlatformSpans", "column": old,
+                 "renamed_to": DEPRECATED_PLATFORM_SPAN_COLUMNS[old], "workbook": workbook,
+                 "migration_guide": MIGRATION_GUIDE},
     )
 
 
@@ -228,10 +258,10 @@ class SpanSegmentation:
 
     platform_id: str
     segments: List[Any]          # canonical Platform objects, in track order
-    stopping_point: Any          # canonical StoppingPoint at the nominal stop
+    stopping_point: Any          # canonical StoppingPoint at the segment hint point
     stop_segment_id: str
-    nominal_stop_offset_m: float
-    nominal_stop_chainage_m: float
+    segment_hint_offset_m: float
+    segment_hint_chainage_m: float
 
 
 def validate_unique_platform_ids(platform_ids: Iterable[str]) -> None:
@@ -246,7 +276,7 @@ def validate_unique_platform_ids(platform_ids: Iterable[str]) -> None:
 
 def segment_platform_span(span: Any, frame: List[TrackLinkSpan], station_ids: Optional[set] = None,
                           track_ids: Optional[set] = None) -> SpanSegmentation:
-    """Generate link-level Platform segments and the nominal StoppingPoint for one span."""
+    """Generate link-level Platform segments and the stop-segment StoppingPoint for one span."""
     from headway.core.identifiers import normalize_identifier
     from headway.data.canonical import Platform, StoppingPoint
 
@@ -288,15 +318,15 @@ def segment_platform_span(span: Any, frame: List[TrackLinkSpan], station_ids: Op
     s_m, e_m = max(s_m, cov_start), min(e_m, cov_end)  # within-tolerance overshoot -> boundary
     length_m = e_m - s_m
 
-    raw_off = _attr(span, "nominal_stop_offset_m")
+    raw_off = _attr(span, "segment_hint_offset_m")
     if raw_off is None or (isinstance(raw_off, str) and not raw_off.strip()):
         stop_off = length_m / 2.0
     else:
         stop_off = float(raw_off)
         if stop_off < -BOUNDS_TOL_M or stop_off > length_m + BOUNDS_TOL_M:
-            raise _err(ERR_PLATFORM_NOMINAL_STOP_INVALID, pid,
-                       f"NOMINAL_STOP_OFFSET_M ({stop_off}) must lie within the platform [0, {length_m:.3f}] m "
-                       "measured from START_CHAINAGE_KM.", nominal_stop_offset_m=stop_off)
+            raise _err(ERR_PLATFORM_SEGMENT_HINT_INVALID, pid,
+                       f"SEGMENT_HINT_OFFSET_M ({stop_off}) must lie within the platform [0, {length_m:.3f}] m "
+                       "measured from START_CHAINAGE_KM.", segment_hint_offset_m=stop_off)
         stop_off = min(max(stop_off, 0.0), length_m)
     stop_m = s_m + stop_off
 
@@ -320,12 +350,12 @@ def segment_platform_span(span: Any, frame: List[TrackLinkSpan], station_ids: Op
             length_m=round(eo - so, 6),
             parent_platform_id=pid,
         ))
-        # Nominal stop: the FIRST segment (track order) whose closed interval contains it —
+        # Segment hint: the FIRST segment (track order) whose closed interval contains it —
         # on an internal link boundary this is the end of the earlier link.
         if stop_seg is None and lo - CHAINAGE_TOL_M <= stop_m <= hi + CHAINAGE_TOL_M:
             stop_seg = (seg_id, tls, round(min(max(stop_m - tls.start_m, 0.0), link_len), 6))
     if not segments or stop_seg is None:  # pragma: no cover - guarded by coverage + offset checks
-        raise _err(ERR_PLATFORM_NOMINAL_STOP_INVALID, pid, "nominal stop point could not be resolved to a segment.")
+        raise _err(ERR_PLATFORM_SEGMENT_HINT_INVALID, pid, "segment hint point could not be resolved to a segment.")
 
     seg_id_stop, tls_stop, off_stop = stop_seg
     stp = StoppingPoint(
@@ -339,8 +369,8 @@ def segment_platform_span(span: Any, frame: List[TrackLinkSpan], station_ids: Op
         segments=segments,
         stopping_point=stp,
         stop_segment_id=seg_id_stop,
-        nominal_stop_offset_m=stop_off,
-        nominal_stop_chainage_m=stop_m,
+        segment_hint_offset_m=stop_off,
+        segment_hint_chainage_m=stop_m,
     )
 
 
@@ -388,7 +418,7 @@ def project_with_stop_segments(project: Any) -> Any:
 
     StoppingPatterns reference the user-facing ``PlatformSpans.PLATFORM_ID``; the simulation
     works on the generated link-level segments. Returns a shallow copy whose service-pattern
-    stops reference the segment holding each platform's nominal stop point
+    stops reference the segment holding each platform's segment hint point
     (``<PLATFORM_ID>@s<N>``). Projects without platform spans are returned unchanged; the
     input project is never mutated. Every simulation entry point that feeds stops and
     ``infrastructure.platforms`` to the engine must use this view (the UI pipeline applies it

@@ -2,7 +2,7 @@
 
 Complements tests/unit/test_v1140_platform_spans.py (the 14 PR acceptance tests) with the
 codes not exercised there: ERR_PLATFORM_SPAN_INVALID (each cause), ERR_PLATFORM_SPAN_DUPLICATE,
-ERR_PLATFORM_NOMINAL_STOP_INVALID, plus the dataset validator's dry-run findings, the
+ERR_PLATFORM_SEGMENT_HINT_INVALID, plus the dataset validator's dry-run findings, the
 shipped template and the migrated examples.
 """
 
@@ -18,7 +18,8 @@ from headway.core.exceptions import DataValidationError
 from headway.data.importer import RawWorkbookData
 from headway.data.platform_spans import (
     ALL_PLATFORM_SPAN_ERROR_CODES,
-    ERR_PLATFORM_NOMINAL_STOP_INVALID,
+    ERR_PLATFORM_SEGMENT_HINT_INVALID,
+    ERR_PLATFORM_SPAN_DEPRECATED_COLUMN,
     ERR_PLATFORM_SPAN_DUPLICATE,
     ERR_PLATFORM_SPAN_EXCEEDS_TRACK,
     ERR_PLATFORM_SPAN_INVALID,
@@ -40,7 +41,7 @@ STATIONS = [{"station_id": "STN_A"}]
 
 def _span(pid: str = "PLT_1", **kw: Any) -> Dict[str, Any]:
     d = {"platform_id": pid, "station_id": "STN_A", "track_id": "TRK_A",
-         "start_chainage_km": 0.1, "end_chainage_km": 0.4, "nominal_stop_offset_m": None}
+         "start_chainage_km": 0.1, "end_chainage_km": 0.4, "segment_hint_offset_m": None}
     d.update(kw)
     return d
 
@@ -82,8 +83,8 @@ def test_span_duplicate():
 
 @pytest.mark.unit
 @pytest.mark.parametrize("off", [-1.0, 300.5])
-def test_nominal_stop_outside_platform(off):
-    _raises([_span(nominal_stop_offset_m=off)], ERR_PLATFORM_NOMINAL_STOP_INVALID, "PLT_1")
+def test_segment_hint_outside_platform(off):
+    _raises([_span(segment_hint_offset_m=off)], ERR_PLATFORM_SEGMENT_HINT_INVALID, "PLT_1")
 
 
 @pytest.mark.unit
@@ -107,7 +108,7 @@ def test_validator_reports_every_bad_span():
     raw.worksheets["PlatformSpans"] = [
         _span("PLT_OK"),
         _span("PLT_LONG", start_chainage_km=0.3, end_chainage_km=0.6),
-        _span("PLT_STOP", nominal_stop_offset_m=999.0),
+        _span("PLT_STOP", segment_hint_offset_m=999.0),
         _span("PLT_OK", start_chainage_km=0.0, end_chainage_km=0.05),
     ]
     report = ValidationReport()
@@ -115,7 +116,7 @@ def test_validator_reports_every_bad_span():
     got = {(f.error_code, f.object_id) for f in report.findings if f.error_code in ALL_PLATFORM_SPAN_ERROR_CODES}
     assert got == {
         (ERR_PLATFORM_SPAN_EXCEEDS_TRACK, "PLT_LONG"),
-        (ERR_PLATFORM_NOMINAL_STOP_INVALID, "PLT_STOP"),
+        (ERR_PLATFORM_SEGMENT_HINT_INVALID, "PLT_STOP"),
         (ERR_PLATFORM_SPAN_DUPLICATE, "PLT_OK"),
     }
 
@@ -139,3 +140,64 @@ def test_examples_migrated(example):
     wb = openpyxl.load_workbook(ROOT / "examples" / example / "01_Infrastructure.xlsx", read_only=True)
     assert "PlatformSpans" in wb.sheetnames
     assert "Platforms" not in wb.sheetnames and "StoppingPoints" not in wb.sheetnames
+    header = [c.value for c in next(wb["PlatformSpans"].iter_rows(min_row=1, max_row=1))]
+    assert "SEGMENT_HINT_OFFSET_M" in header and "NOMINAL_STOP_OFFSET_M" not in header
+
+
+@pytest.mark.unit
+def test_template_header_uses_segment_hint_column():
+    wb = openpyxl.load_workbook(ROOT / "templates" / "HEADWAY_INFRASTRUCTURE_v1.0.xlsx", read_only=True)
+    header = [c.value for c in next(wb["PlatformSpans"].iter_rows(min_row=1, max_row=1))]
+    assert header[:7] == ["PLATFORM_ID", "STATION_ID", "TRACK_ID", "START_CHAINAGE_KM", "END_CHAINAGE_KM",
+                          "SEGMENT_HINT_OFFSET_M", "DESCRIPTION"]
+
+
+@pytest.mark.unit
+def test_deprecated_segment_hint_column_rejected(tmp_path):
+    """The old header NOMINAL_STOP_OFFSET_M raises its own code, never silently ignored.
+
+    As an unknown column it would otherwise be dropped, and every platform would fall back to
+    the mid-platform segment hint without notice.
+    """
+    import shutil
+
+    from headway.ui.file_manager import FileManager
+
+    for f in (ROOT / "templates").glob("*.xlsx"):
+        shutil.copy(f, tmp_path / f.name)
+    infra = tmp_path / "HEADWAY_INFRASTRUCTURE_v1.0.xlsx"
+    wb = openpyxl.load_workbook(infra)
+    ws = wb["PlatformSpans"]
+    col = [c.value for c in ws[1]].index("SEGMENT_HINT_OFFSET_M") + 1
+    ws.cell(1, col).value = "NOMINAL_STOP_OFFSET_M"
+    wb.save(infra)
+
+    proj, report, _ = FileManager.import_excel_files(sorted(str(p) for p in tmp_path.glob("*.xlsx")))
+    assert proj is None
+    hits = [f for f in report.findings if f.error_code == ERR_PLATFORM_SPAN_DEPRECATED_COLUMN]
+    assert len(hits) == 1 and hits[0].severity.name == "CRITICAL"
+    assert hits[0].worksheet == "PlatformSpans" and hits[0].object_id == "NOMINAL_STOP_OFFSET_M"
+    assert hits[0].message == (
+        "Column NOMINAL_STOP_OFFSET_M is deprecated. Rename it to SEGMENT_HINT_OFFSET_M. "
+        "See docs/MIGRATION_v1.14.0.md."
+    )
+    # Span-range validation keeps its own code: nothing about the column is reported under it.
+    assert not [f for f in report.findings if f.error_code == ERR_PLATFORM_SPAN_INVALID]
+    # The code is a platform-schema code, so the upload panel shows it in the dedicated banner.
+    assert ERR_PLATFORM_SPAN_DEPRECATED_COLUMN in ALL_PLATFORM_SPAN_ERROR_CODES
+
+
+@pytest.mark.unit
+def test_deprecated_column_converter_raises_dedicated_code():
+    """convert_raw_to_canonical refuses the deprecated column with the same dedicated code."""
+    from headway.data.converter import convert_raw_to_canonical
+
+    raw = RawWorkbookData("INFRASTRUCTURE", ROOT / "01_Infrastructure.xlsx", {})
+    raw.deprecated_columns.append("NOMINAL_STOP_OFFSET_M")
+    with pytest.raises(PlatformSpanError) as exc:
+        convert_raw_to_canonical({"INFRASTRUCTURE": raw})
+    assert exc.value.error_code == ERR_PLATFORM_SPAN_DEPRECATED_COLUMN
+    assert exc.value.message == (
+        "Column NOMINAL_STOP_OFFSET_M is deprecated. Rename it to SEGMENT_HINT_OFFSET_M. "
+        "See docs/MIGRATION_v1.14.0.md."
+    )

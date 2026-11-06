@@ -54,7 +54,7 @@ TRACKS = {"TRK_A"}
 
 def _span(pid: str, s_km: float, e_km: float, off: Any = None) -> Dict[str, Any]:
     return {"platform_id": pid, "station_id": "STN_A", "track_id": "TRK_A",
-            "start_chainage_km": s_km, "end_chainage_km": e_km, "nominal_stop_offset_m": off}
+            "start_chainage_km": s_km, "end_chainage_km": e_km, "segment_hint_offset_m": off}
 
 
 def _seg(pid: str, s_km: float, e_km: float, off: Any = None):
@@ -102,8 +102,8 @@ def _rec(seg: str, parent: str, *, occupied: bool, res: float = 0.0, arr: float 
 def test_01_single_link_span():
     res = _seg("PLT_1", 0.100, 0.400)
     assert _geom(res) == [("PLT_1@s1", "LNK_A1", 100.0, 400.0, "PLT_1")]
-    # NOMINAL_STOP_OFFSET_M blank -> mid-platform
-    assert res.nominal_stop_offset_m == pytest.approx(150.0)
+    # SEGMENT_HINT_OFFSET_M blank -> mid-platform
+    assert res.segment_hint_offset_m == pytest.approx(150.0)
     assert (res.stopping_point.platform_id, res.stopping_point.link_id, res.stopping_point.offset_m) == ("PLT_1@s1", "LNK_A1", 250.0)
     assert res.stopping_point.stopping_point_id == "PLT_1@stop"
 
@@ -201,7 +201,7 @@ def test_08_stoppingpoints_raise(tmp_path):
     assert proj is None
     hits = [f for f in report.findings if f.error_code == ERR_STOPPINGPOINTS_DEPRECATED]
     assert len(hits) == 1
-    assert "StoppingPoints" in hits[0].message and "NOMINAL_STOP_OFFSET_M" in hits[0].message
+    assert "StoppingPoints" in hits[0].message and "SEGMENT_HINT_OFFSET_M" in hits[0].message
     assert MIGRATION_GUIDE in hits[0].message
     assert not [f for f in report.findings if f.error_code == ERR_PLATFORMS_DEPRECATED]
 
@@ -209,8 +209,8 @@ def test_08_stoppingpoints_raise(tmp_path):
 @pytest.mark.unit
 def test_09_stopping_pattern_parent_resolution(tmp_path):
     """StoppingPatterns reference PLATFORM_ID; the simulation stops on the segment holding
-    the nominal stop point. Example 06 with PLT_02 extended back across the LNK_03/LNK_04
-    boundary (nominal stop 4.4 km = LNK_04 + 1200 m) -> 2 segments, stop on @s2.
+    the segment hint point. Example 06 with PLT_02 extended back across the LNK_03/LNK_04
+    boundary (segment hint 4.4 km = LNK_04 + 1200 m) -> 2 segments, stop on @s2.
 
     The engine berthing rule (unchanged) applies to the stop segment: FORWARD, the train
     rear berths at the segment start -> rear at 3200 m (start of LNK_04 = PLT_02@s2)."""
@@ -379,7 +379,7 @@ def test_14_migration_helper_roundtrip(tmp_path):
 
     result = mig.migrate_workbooks(src, ops, out_dir=tmp_path / "out")
     assert src.read_bytes() == before  # original untouched
-    assert [(s.platform_id, round(s.start_m, 6), round(s.end_m, 6), s.nominal_stop_offset_m) for s in result.spans] == [
+    assert [(s.platform_id, round(s.start_m, 6), round(s.end_m, 6), s.segment_hint_offset_m) for s in result.spans] == [
         ("PLT_CEN_1", 1380.0, 1780.0, 390.0)
     ]
     assert result.id_map == {p[0]: "PLT_CEN_1" for p in legacy_plats}
@@ -387,9 +387,9 @@ def test_14_migration_helper_roundtrip(tmp_path):
     out = openpyxl.load_workbook(tmp_path / "out" / src.name, data_only=True)
     assert "Platforms" not in out.sheetnames and "StoppingPoints" not in out.sheetnames
     rows = list(out["PlatformSpans"].iter_rows(values_only=True))
-    assert rows[0][:6] == ("PLATFORM_ID", "STATION_ID", "TRACK_ID", "START_CHAINAGE_KM", "END_CHAINAGE_KM", "NOMINAL_STOP_OFFSET_M")
+    assert rows[0][:6] == ("PLATFORM_ID", "STATION_ID", "TRACK_ID", "START_CHAINAGE_KM", "END_CHAINAGE_KM", "SEGMENT_HINT_OFFSET_M")
     span_row = dict(zip([h.lower() for h in rows[0]], rows[2]))
-    assert (span_row["start_chainage_km"], span_row["end_chainage_km"], span_row["nominal_stop_offset_m"]) == (1.38, 1.78, 390)
+    assert (span_row["start_chainage_km"], span_row["end_chainage_km"], span_row["segment_hint_offset_m"]) == (1.38, 1.78, 390)
     ops_out = openpyxl.load_workbook(tmp_path / "out" / ops.name, data_only=True)
     assert ops_out["StoppingPatterns"].cell(2, 4).value == "PLT_CEN_1"
 

@@ -215,7 +215,7 @@ def create_platform_schema_error_html(findings: Any) -> Optional[str]:
 
     Returns None when no finding carries one of the PlatformSpans / legacy-schema codes
     (``ERR_PLATFORMS_DEPRECATED``, ``ERR_STOPPINGPOINTS_DEPRECATED``, ``ERR_PLATFORM_SPAN_*``,
-    ``ERR_STOPPING_PATTERN_REFERENCES_SEGMENT``, ``ERR_PLATFORM_NOMINAL_STOP_INVALID``).
+    ``ERR_STOPPING_PATTERN_REFERENCES_SEGMENT``, ``ERR_PLATFORM_SEGMENT_HINT_INVALID``).
     """
     import html as _html
 

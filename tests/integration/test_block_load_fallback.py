@@ -48,7 +48,7 @@ def _create_minimal_infrastructure_wb(path: Path, link_ids: list[str]) -> Path:
         elif s_name == "PlatformSpans":
             # v1.14.0: one span row (0–200 m on TRK_01 = link_ids[0] 0–200 m, stop at 100 m)
             # replaces the legacy Platforms + StoppingPoints rows.
-            ws.append(["PLATFORM_ID", "STATION_ID", "TRACK_ID", "START_CHAINAGE_KM", "END_CHAINAGE_KM", "NOMINAL_STOP_OFFSET_M"])
+            ws.append(["PLATFORM_ID", "STATION_ID", "TRACK_ID", "START_CHAINAGE_KM", "END_CHAINAGE_KM", "SEGMENT_HINT_OFFSET_M"])
             ws.append(["PLT_01", "STN_01", "TRK_01", 0.0, 0.2, 100.0])
         elif s_name == "Tunnels":
             ws.append(["TUNNEL_ID", "NAME"])

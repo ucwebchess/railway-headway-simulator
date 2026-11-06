@@ -23,6 +23,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.1] — 2026-11-06
+
+### ⚠️ BREAKING CHANGE — `PlatformSpans.NOMINAL_STOP_OFFSET_M` renamed to `SEGMENT_HINT_OFFSET_M`
+
+The optional `PlatformSpans` column only selects **which segment** the train berths on; it does
+not set the exact stop position, so the v1.14.0 name was misleading. Workbooks migrated with
+v1.14.0 must rename the column header (values unchanged). A `PlatformSpans` sheet that still has
+a `NOMINAL_STOP_OFFSET_M` column is **rejected** with the new code
+`ERR_PLATFORM_SPAN_DEPRECATED_COLUMN` ("Column NOMINAL_STOP_OFFSET_M is deprecated. Rename it to
+SEGMENT_HINT_OFFSET_M. See docs/MIGRATION_v1.14.0.md."). It is not silently ignored.
+
+### Added
+- `ERR_PLATFORM_SPAN_DEPRECATED_COLUMN` (CRITICAL on upload; shown in the platform-schema banner).
+- `ERR_TRAIN_OVERHANG` (`TrainOverhangError`, `RoutePlatformStop.check_train_fit`): a train longer
+  than the physical platform it stops at.
+
+### Changed
+- **BREAKING:** column `NOMINAL_STOP_OFFSET_M` → `SEGMENT_HINT_OFFSET_M`; canonical field
+  `PlatformSpan.nominal_stop_offset_m` → `segment_hint_offset_m`; error code
+  `ERR_PLATFORM_NOMINAL_STOP_INVALID` → `ERR_PLATFORM_SEGMENT_HINT_INVALID`.
+  `ERR_PLATFORM_SPAN_INVALID` stays specific to span validation.
+- Template, all 7 examples, migration helper (incl. the INSTRUCTIONS sheet text) and
+  `docs/MIGRATION_v1.14.0.md` use the new name.
+
+### Fixed
+- **Train fit is checked against the whole physical platform**, not the single segment the train
+  berths on: `RoutePlatformStop` (`infrastructure/stations.py`) and
+  `PlatformController.validate_platform_compatibility` use `parent_platform_length_m` (sum of the
+  parent platform's segment lengths). A 202 m train on a 200 m segment of a 400 m platform fits.
+  The stopping-interval check uses the parent platform's extent on the route.
+
+Simulation results are unchanged (all examples, both directions).
+
+---
+
 ## [1.14.0] — 2026-11-06
 
 ### ⚠️ BREAKING CHANGE — Platform schema replacement (`Platforms` → `PlatformSpans`)

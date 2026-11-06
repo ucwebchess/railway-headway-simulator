@@ -188,8 +188,11 @@ class PlatformSpan(BaseCanonicalModel):
     track_id: str = Field(..., description="Track carrying the platform")
     start_chainage_km: float = Field(..., description="Per-track chainage where the platform begins (km)")
     end_chainage_km: float = Field(..., description="Per-track chainage where the platform ends (km)")
-    nominal_stop_offset_m: Optional[float] = Field(
-        default=None, description="Nominal stop point from START_CHAINAGE_KM (m); None = mid-platform"
+    segment_hint_offset_m: Optional[float] = Field(
+        default=None, description=(
+            "Segment hint from START_CHAINAGE_KM (m); selects only which segment the train berths on, "
+            "not the exact stop position. None = mid-platform"
+        ),
     )
     description: Optional[str] = Field(default=None, description="Free text")
 
@@ -319,7 +322,7 @@ class InfrastructureModel(BaseCanonicalModel):
     track_links: List[TrackLink] = Field(default_factory=list, description="1D physical track links")
     stations: List[Station] = Field(default_factory=list, description="Stations")
     # v1.14.0: user-declared platform spans; ``platforms`` / ``stopping_points`` are the
-    # link-level segments and nominal stopping points generated from them.
+    # link-level segments and the stop-segment stopping points generated from them.
     platform_spans: List[PlatformSpan] = Field(default_factory=list, description="Platform spans (one per physical platform)")
     platforms: List[Platform] = Field(default_factory=list, description="Platforms (link-level segments)")
     stopping_points: List[StoppingPoint] = Field(default_factory=list, description="Designated stopping points")

@@ -147,7 +147,7 @@ INFRASTRUCTURE_WORKBOOK = WorkbookDef(
                 ColumnDef("TRACK_ID", "track_id", FieldType.STRING, required=True, description="Track carrying the platform (must exist in Tracks)", example_value="TRK_M1"),
                 ColumnDef("START_CHAINAGE_KM", "start_chainage_km", FieldType.FLOAT, required=True, excel_unit="km", canonical_unit="km", description="Per-track chainage where the platform begins (track starts at 0 km at its first link)", example_value=0.2),
                 ColumnDef("END_CHAINAGE_KM", "end_chainage_km", FieldType.FLOAT, required=True, excel_unit="km", canonical_unit="km", description="Per-track chainage where the platform ends (> START, span >= 10 m)", example_value=0.45),
-                ColumnDef("NOMINAL_STOP_OFFSET_M", "nominal_stop_offset_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", default_value=None, description="Nominal stop point measured from START_CHAINAGE_KM (blank = mid-platform)", example_value=230.0),
+                ColumnDef("SEGMENT_HINT_OFFSET_M", "segment_hint_offset_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", default_value=None, description="Segment hint measured from START_CHAINAGE_KM: selects which segment the train berths on, not the exact stop position (blank = mid-platform)", example_value=230.0),
                 ColumnDef("DESCRIPTION", "description", FieldType.STRING, required=False, description="Free text", example_value="Central Station platform 1"),
             ],
             required=False,
