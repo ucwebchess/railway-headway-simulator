@@ -292,6 +292,11 @@ class SimulationRunner:
         max_duration_s: float = 7200.0,
         planning_margin_s: float = 18.0,
         monte_carlo_reps: int = 100,
+        show_tvs_stairway: bool = False,
+        show_stations_stairway: bool = False,
+        show_tvs_speed: bool = False,
+        show_stations_speed: bool = False,
+
     ) -> Tuple[SimulationResultPackage, ReportDocument]:
         """Executes microscopic railway simulation and assembles the result package."""
         if tracker:
@@ -1488,6 +1493,8 @@ class SimulationRunner:
                 # trajectory — single source for any consumer needing the journey duration.
                 "journey_time_s": float(traj_leader.journey_time_s),
                 "station_stops": station_stop_records,
+                "station_events": station_stop_records,
+                "chart_overlays": {"show_tvs_stairway": bool(show_tvs_stairway), "show_stations_stairway": bool(show_stations_stairway), "show_tvs_speed": bool(show_tvs_speed), "show_stations_speed": bool(show_stations_speed)},
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
                 # v1.14.0: Section 11 platform segment provenance (segment -> parent platform).

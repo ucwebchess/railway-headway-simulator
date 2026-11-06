@@ -92,6 +92,13 @@ def create_simulation_tab() -> Dict[str, Any]:
 
         gr.Markdown("---")
 
+        gr.Markdown("#### Chart overlays (applied on the next run)")
+        with gr.Row():
+            components["show_tvs_stairway"] = gr.Checkbox(label="Show TVS zones on Blocking Stairway", value=False)
+            components["show_stations_stairway"] = gr.Checkbox(label="Show stations on Blocking Stairway", value=False)
+            components["show_tvs_speed"] = gr.Checkbox(label="Show TVS zones on Speed Profile", value=False)
+            components["show_stations_speed"] = gr.Checkbox(label="Show stations on Speed Profile", value=False)
+
         # Action Buttons Row
         with gr.Row():
             components["btn_run_simulation"] = gr.Button("🚀 Run Simulation", variant="primary", scale=2)
@@ -200,6 +207,10 @@ def create_simulation_tab() -> Dict[str, Any]:
         margin_val: float,
         rep_val: int,
         pf_val: float = 1.0,
+        show_tvs_stairway: bool = False,
+        show_stations_stairway: bool = False,
+        show_tvs_speed: bool = False,
+        show_stations_speed: bool = False,
     ) -> Tuple[float, str, str, str]:
         if not session_state.current_project:
             err = create_error_html({
@@ -230,6 +241,10 @@ def create_simulation_tab() -> Dict[str, Any]:
                 max_duration_s=session_state.max_duration_s,
                 planning_margin_s=session_state.planning_margin_s,
                 monte_carlo_reps=session_state.monte_carlo_reps,
+                show_tvs_stairway=show_tvs_stairway,
+                show_stations_stairway=show_stations_stairway,
+                show_tvs_speed=show_tvs_speed,
+                show_stations_speed=show_stations_speed,
             )
 
             # Store in session state
@@ -277,6 +292,10 @@ def create_simulation_tab() -> Dict[str, Any]:
             components["param_margin"],
             components["param_replications"],
             components["param_performance_factor"],
+            components["show_tvs_stairway"],
+            components["show_stations_stairway"],
+            components["show_tvs_speed"],
+            components["show_stations_speed"],
         ],
         outputs=[
             components["sim_progress_bar"],

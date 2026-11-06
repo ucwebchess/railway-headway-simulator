@@ -995,6 +995,7 @@ class ReportAssembler:
             first_traj = next(iter(package.trajectories.values()))
             figures_data[fig_key] = create_speed_distance_figure(
                 first_traj,
+                metadata=package.metadata,
                 permissible_speed_envelope=envelope,
                 track_links=track_links,
                 running_direction=direction,
@@ -1026,9 +1027,12 @@ class ReportAssembler:
                     track_links=track_links,
                     running_direction=direction,
                 )
+                from headway.reporting.tables import create_accel_phases_csv
+                accel_csv = create_accel_phases_csv(package.trajectories.get("TRN_LEADER", first_traj))
                 b64_csv = base64.b64encode(csv_data.encode("utf-8")).decode("ascii")
                 callout_boxes.append({
                     "title": "Speed Profile & Permissible Envelope CSV Export",
+                    "accel_csv": accel_csv,
                     "text": "Complete time-distance speed profile data with civil speed limits is available for engineering analysis.",
                     "html": f'<div style="margin-top: 8px;"><a href="data:text/csv;base64,{b64_csv}" download="speed_profile_{first_traj.train_id}.csv" style="display: inline-block; padding: 6px 14px; background-color: #1E3A8A; color: #FFFFFF; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;">📥 Download Speed Profile CSV</a></div>',
                 })
@@ -1087,6 +1091,7 @@ class ReportAssembler:
             )
             figures_data[fig_key] = create_blocking_stairway_figure(
                 primary_hw,
+                metadata=package.metadata,
                 blocking_intervals=intervals,
                 leader_label_id=leader_lbl,
                 follower_label_id=follower_lbl,

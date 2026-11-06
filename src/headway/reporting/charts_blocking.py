@@ -23,6 +23,7 @@ from headway.reporting.chart_theme import (
     get_plotly_layout,
 )
 from headway.reporting.charts_capacity import create_block_sensitivity_figure
+from headway.reporting.chart_overlays import add_tvs_overlay, add_station_overlay, apply_chart_overlays
 from headway.reporting.visualization_adapters import VisualizationAdapter
 
 
@@ -32,6 +33,7 @@ def create_blocking_stairway_figure(
     blocking_intervals: Optional[Sequence[ResourceBlockingInterval]] = None,
     leader_label_id: Optional[str] = None,
     follower_label_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> go.Figure:
     """P13-BTS-001 to 007 & Task 1: Generate UIC 406 continuous blocking stairway along physical distance (km) with inverted time axis.
 
@@ -264,7 +266,7 @@ def create_blocking_stairway_figure(
         font=dict(size=12, color=ChartColors.PRIMARY_NAVY),
     )
 
-    return fig
+    return apply_chart_overlays(fig, metadata, "stairway")
 
 
 def create_seven_component_figure(
