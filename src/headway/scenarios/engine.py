@@ -118,6 +118,7 @@ PRIMARY_ID_MAP = {
     "tracks": "track_id",
     "track_links": "link_id",
     "stations": "station_id",
+    "platform_spans": "platform_id",
     "platforms": "platform_id",
     "stopping_points": "stopping_point_id",
     "tunnels": "tunnel_id",

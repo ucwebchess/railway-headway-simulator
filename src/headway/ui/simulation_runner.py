@@ -60,6 +60,7 @@ from headway.reporting.result_models import (
     SimulationResultPackage,
     StationStopRecord,
 )
+from headway.reporting.platform_aggregation import build_platform_segment_provenance as _build_platform_segment_provenance
 from headway.reporting.result_validation import ResultValidator
 from headway.rolling_stock.train import RollingStockParameters
 from headway.scenarios.scenario_comparison import (
@@ -295,6 +296,11 @@ class SimulationRunner:
         """Executes microscopic railway simulation and assembles the result package."""
         if tracker:
             tracker.start(stage="Validating Direction & Parameters", total_steps=100)
+
+        # v1.14.0: StoppingPatterns reference the user-facing PlatformSpans.PLATFORM_ID; the
+        # simulation works on the generated link-level segments. Single translation point:
+        # each stop is pointed at the segment holding its platform's nominal stop point.
+        project = cls._project_with_stop_segments(project)
 
         # Resolve effective performance factor (Task 1: wire Analysis ID / Simulation Mode to eff_pf)
         # Performance Factor Resolution (DEF-10 & DEF-11)
@@ -1063,6 +1069,7 @@ class SimulationRunner:
                             station_id=p.station_id,
                             station_name=p.station_id,
                             platform_id=p.platform_id,
+                            parent_platform_id=getattr(p, "parent_platform_id", None),
                             track_id="TRK_01",
                             link_id=p.link_id,
                             arrival_time_s=0.0,
@@ -1179,6 +1186,7 @@ class SimulationRunner:
                         station_id=p.station_id,
                         station_name=p.station_id,
                         platform_id=p.platform_id,
+                        parent_platform_id=getattr(p, "parent_platform_id", None),
                         track_id="TRK_01",
                         link_id=p.link_id,
                         arrival_time_s=round(arr_t, 3),
@@ -1482,6 +1490,8 @@ class SimulationRunner:
                 "station_stops": station_stop_records,
                 "platform_records": platform_records,
                 "provenance_records": provenance_records,
+                # v1.14.0: Section 11 platform segment provenance (segment -> parent platform).
+                "platform_provenance_records": _build_platform_segment_provenance(getattr(project, "infrastructure", None)),
                 "stochastic_headway_samples": mc_samples,
                 # v1.11.0 / Task 2: single-source payload for Section 15 narrative,
                 # histogram annotation and statistics table (identical numbers everywhere).
@@ -1631,6 +1641,13 @@ class SimulationRunner:
             f"and active pattern cannot be uniquely determined for scenario '{scenario_id}', "
             f"direction {running_direction.value}, train type '{primary_train_type_id}'."
         )
+
+    @staticmethod
+    def _project_with_stop_segments(project: Any) -> Any:
+        """v1.14.0: see ``headway.data.platform_spans.project_with_stop_segments``."""
+        from headway.data.platform_spans import project_with_stop_segments
+
+        return project_with_stop_segments(project)
 
     @classmethod
     def _build_station_stop_records(
@@ -1784,7 +1801,7 @@ class SimulationRunner:
                 train_id=str(traj_leader.train_id),
                 station_id=str(station.station_id),
                 station_name=str(station.name),
-                platform_id=str(platform.platform_id),
+                platform_id=str(getattr(platform, "parent_platform_id", None) or platform.platform_id),  # v1.14.0: user-facing ID
                 link_id=str(platform.link_id),
                 running_direction=running_direction,
                 arrival_time_s=round(arr_time, 2) if arr_time is not None else 0.0,

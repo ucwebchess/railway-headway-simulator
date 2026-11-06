@@ -30,7 +30,7 @@ from headway.data.canonical import (
     Node,
     NodeType,
     OperationsModel,
-    Platform,
+    PlatformSpan,
     ResourceInterval,
     RollingStockModel,
     Scenario,
@@ -45,7 +45,6 @@ from headway.data.canonical import (
     SignalType,
     Station,
     StationStop,
-    StoppingPoint,
     Track,
     TrackDirectionality,
     TrackLink,
@@ -56,6 +55,14 @@ from headway.data.canonical import (
     TVSSection,
 )
 from headway.data.importer import RawWorkbookData
+from headway.data.platform_spans import (
+    ERR_PLATFORM_SPAN_INVALID,
+    check_stop_reference,
+    deprecated_sheet_error,
+    is_generated_platform_id,
+    segment_all_platform_spans,
+    _err as _platform_span_error,
+)
 
 
 def convert_raw_to_canonical(
@@ -74,6 +81,11 @@ def convert_raw_to_canonical(
             prj_id = wb.metadata["PROJECT_ID"]
         if "DESCRIPTION" in wb.metadata and not project_name:
             prj_name = wb.metadata["DESCRIPTION"]
+
+    # v1.14.0 (breaking): refuse the legacy platform schema loudly — no auto-migration.
+    for wb in raw_workbooks.values():
+        for legacy_sheet in getattr(wb, "deprecated_sheets", []) or []:
+            raise deprecated_sheet_error(legacy_sheet, getattr(getattr(wb, "file_path", None), "name", "") or "")
 
     # 1. Convert Infrastructure
     infra_model = _build_infrastructure_model(raw_workbooks.get("INFRASTRUCTURE"))
@@ -161,27 +173,33 @@ def _build_infrastructure_model(infra_wb: Optional[RawWorkbookData]) -> Infrastr
         for r in infra_wb.get_rows("Stations")
     ]
 
-    platforms = [
-        Platform(
-            platform_id=r["platform_id"],
+    # v1.14.0: PlatformSpans (one row per physical platform) -> link-level Platform segments
+    # "<PLATFORM_ID>@s<N>" + one StoppingPoint "<PLATFORM_ID>@stop" at the nominal stop point.
+    span_rows = infra_wb.get_rows("PlatformSpans")
+    for r in span_rows:
+        if is_generated_platform_id(str(r.get("platform_id") or "")):
+            raise _platform_span_error(
+                ERR_PLATFORM_SPAN_INVALID, str(r.get("platform_id")),
+                "PLATFORM_ID must be a plain identifier; '@s<N>' / '@stop' suffixes are reserved for "
+                "tool-generated segments.",
+            )
+    segmentations = segment_all_platform_spans(span_rows, tracks, track_links, stations)
+    platform_spans = [
+        PlatformSpan(
+            platform_id=seg.platform_id,
             station_id=r["station_id"],
-            link_id=r["link_id"],
-            start_offset_m=float(r["start_offset_m"]),
-            end_offset_m=float(r["end_offset_m"]),
-            length_m=float(r["length_m"]),
+            track_id=r["track_id"],
+            start_chainage_km=float(r["start_chainage_km"]),
+            end_chainage_km=float(r["end_chainage_km"]),
+            nominal_stop_offset_m=(
+                float(r["nominal_stop_offset_m"]) if r.get("nominal_stop_offset_m") not in (None, "") else None
+            ),
+            description=r.get("description"),
         )
-        for r in infra_wb.get_rows("Platforms")
+        for r, seg in zip(span_rows, segmentations)
     ]
-
-    stopping_points = [
-        StoppingPoint(
-            stopping_point_id=r["stopping_point_id"],
-            platform_id=r["platform_id"],
-            link_id=r["link_id"],
-            offset_m=float(r["offset_m"]),
-        )
-        for r in infra_wb.get_rows("StoppingPoints")
-    ]
+    platforms = [p for seg in segmentations for p in seg.segments]
+    stopping_points = [seg.stopping_point for seg in segmentations]
 
     tunnels = [
         Tunnel(
@@ -250,6 +268,7 @@ def _build_infrastructure_model(infra_wb: Optional[RawWorkbookData]) -> Infrastr
         tracks=tracks,
         track_links=track_links,
         stations=stations,
+        platform_spans=platform_spans,
         platforms=platforms,
         stopping_points=stopping_points,
         tunnels=tunnels,
@@ -438,6 +457,8 @@ def _build_operations_model(ops_wb: Optional[RawWorkbookData]) -> OperationsMode
     stops_map: Dict[str, List[StationStop]] = {}
     for r in sorted(ops_wb.get_rows("StoppingPatterns"), key=lambda x: x.get("stop_index", 0)):
         spid = r["service_pattern_id"]
+        # v1.14.0: stops reference PlatformSpans.PLATFORM_ID, never a generated segment ID.
+        check_stop_reference(r.get("platform_id"), service_pattern_id=spid)
         st = StationStop(
             station_id=r["station_id"],
             platform_id=r["platform_id"],

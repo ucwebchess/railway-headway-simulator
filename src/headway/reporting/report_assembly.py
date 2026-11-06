@@ -842,7 +842,8 @@ class ReportAssembler:
             total_blocks = len(getattr(sig, "blocks", [])) if sig else 0
             total_signals = len(getattr(sig, "signals", [])) if sig else 0
             total_stations = len(getattr(infra, "stations", []))
-            total_platforms = len(getattr(infra, "platforms", []))
+            # v1.14.0: physical platforms (PlatformSpans rows), not link-level segments.
+            total_platforms = len(getattr(infra, "platform_spans", None) or []) or len(getattr(infra, "platforms", []))
             total_tvs = len(getattr(infra, "tvs_sections", [])) or len(getattr(infra, "tvs_zones", []))
 
             tracks = getattr(infra, "tracks", [])
@@ -901,7 +902,10 @@ class ReportAssembler:
             total_blocks=total_blocks_count,
             total_signals=meta.get("total_signals", 0),
             total_stations=meta.get("total_stations", 0),
-            total_platforms=meta.get("total_platforms", len(package.metadata.get("platform_records", []))),
+            total_platforms=meta.get(
+                "total_platforms",
+                len({getattr(r, "parent_platform_id", None) or r.platform_id for r in package.metadata.get("platform_records", [])}),
+            ),
             total_tvs_sections=meta.get("total_tvs_sections", len(package.metadata.get("tvs_events", []))),
             **cls._timing_disclosure_fields(_timing, _sys_rel),
         )
@@ -1361,41 +1365,33 @@ class ReportAssembler:
         if is_app:
             tables.append(create_platform_occupation_table(records, running_direction=direction))
 
-            def occ_dur(r: Any) -> float:
-                if hasattr(r, "total_platform_occupation_s"):
-                    return float(r.total_platform_occupation_s)
-                arr = float(getattr(r, "arrival_time_s", 0.0))
-                clr = float(getattr(r, "clearance_time_s", getattr(r, "departure_time_s", arr)))
-                return max(0.0, clr - arr)
+            # v1.14.0: narrative works on parent platforms (segments aggregated).
+            from headway.reporting.platform_aggregation import (
+                aggregate_platform_records,
+            )
 
-            sorted_records = sorted(records, key=occ_dur, reverse=True)
-            top_records = sorted_records[:3]
+            aggregates = aggregate_platform_records(records)
+            sorted_aggs = sorted(aggregates, key=lambda a: a.total_occupation_s, reverse=True)
+            top_aggs = sorted_aggs[:3]
 
             p1 = (
                 f"Station platform tracks represent critical nodal capacity constraints. This assessment decomposes "
                 f"total platform track occupation into three non-overlapping operational components: Arrival Approach "
                 f"(signal reservation and deceleration), Passenger Dwell (boarding/alighting standstill), and Departure "
-                f"Clearance (acceleration traversal and post-clearance route release) across {len(records)} station platform berths "
+                f"Clearance (acceleration traversal and post-clearance route release) across {len(aggregates)} station platform berths "
                 f"in the {direction.value} direction."
             )
 
             top_lines = []
-            for i, r in enumerate(top_records, 1):
-                stn_name = getattr(r, "station_name", getattr(r, "station_id", "Unknown Station"))
-                plt_id = getattr(r, "platform_id", "PLT_01")
-                approach_dur = float(getattr(r, "arrival_approach_s", 15.0))
-                dwell_dur = float(getattr(r, "passenger_dwell_s", getattr(r, "dwell_duration_s", 0.0)))
-                clearance_dur = float(getattr(r, "departure_clearance_s", 15.0))
-                total_occ = float(getattr(r, "total_platform_occupation_s", round(approach_dur + dwell_dur + clearance_dur, 1)))
-
+            for i, a in enumerate(top_aggs, 1):
                 top_lines.append(
-                    f"{i}) {stn_name} ({plt_id}): total occupation {total_occ:.1f} s "
-                    f"(arrival approach: {approach_dur:.1f} s, passenger dwell: {dwell_dur:.1f} s, "
-                    f"departure clearance: {clearance_dur:.1f} s)"
+                    f"{i}) {a.station_name or a.station_id or 'Unknown Station'} ({a.platform_id}): total occupation "
+                    f"{a.total_occupation_s:.1f} s (arrival approach: {a.arrival_approach_s:.1f} s, passenger dwell: "
+                    f"{a.passenger_dwell_s:.1f} s, departure clearance: {a.departure_clearance_s:.1f} s)"
                 )
 
             p2 = (
-                f"The top {len(top_records)} most heavily occupied station platform tracks are: "
+                f"The top {len(top_aggs)} most heavily occupied station platform tracks are: "
                 + "; ".join(top_lines) + "."
             )
             p3 = (
@@ -1405,29 +1401,16 @@ class ReportAssembler:
             )
             narrative_paras = [p1, p2, p3]
 
-            # Dynamic narrative paragraph beneath the table explaining metrics
-            gov_rec = sorted_records[0] if sorted_records else None
-            if gov_rec:
-                stn_id = getattr(gov_rec, "station_id", "") or ""
-                plt_id = getattr(gov_rec, "platform_id", "") or ""
-                if stn_id and plt_id:
-                    if plt_id.startswith(stn_id):
-                        gov_plt = plt_id
-                    else:
-                        gov_plt = f"{stn_id}-{plt_id}"
-                else:
-                    gov_plt = plt_id or stn_id or "PLT"
-
-                gov_approach = float(getattr(gov_rec, "arrival_approach_s", 15.0))
-                gov_dwell = float(getattr(gov_rec, "passenger_dwell_s", getattr(gov_rec, "dwell_duration_s", 0.0)))
-                gov_clearance = float(getattr(gov_rec, "departure_clearance_s", 15.0))
-                gov_total = float(getattr(gov_rec, "total_platform_occupation_s", round(gov_approach + gov_dwell + gov_clearance, 1)))
-
-                dyn_p = (
-                    f"The longest platform occupation occurred at {gov_plt}, totaling {gov_total:.1f} s "
-                    f"({gov_approach:.1f} s arrival approach + {gov_dwell:.1f} s passenger dwell + {gov_clearance:.1f} s departure clearance)."
+            gov = sorted_aggs[0] if sorted_aggs else None
+            if gov:
+                # v1.14.0: platform named exactly as in the table's Platform ID column.
+                gov_stn = gov.station_name or gov.station_id
+                gov_plt = f"{gov.platform_id} ({gov_stn})" if gov_stn else gov.platform_id
+                narrative_paras.append(
+                    f"The longest platform occupation occurred at {gov_plt}, totaling {gov.total_occupation_s:.1f} s "
+                    f"({gov.arrival_approach_s:.1f} s arrival approach + {gov.passenger_dwell_s:.1f} s passenger dwell + "
+                    f"{gov.departure_clearance_s:.1f} s departure clearance)."
                 )
-                narrative_paras.append(dyn_p)
         else:
             narrative_paras = [
                 "Station platform tracks represent critical operational constraints. This section illustrates platform track "
@@ -1742,10 +1725,18 @@ class ReportAssembler:
     ) -> ReportSection:
         """Section 11: Resource Geometry Provenance (P14-SEC11-001)."""
         records = package.metadata.get("provenance_records", [])
-        is_app = bool(records)
+        plt_records = package.metadata.get("platform_provenance_records", []) if package.metadata else []
+        is_app = bool(records) or bool(plt_records)
         tables: List[EngineeringTable] = []
-        if is_app:
+        if records:
             tables.append(create_resource_provenance_table(records, running_direction=direction))
+        if plt_records:
+            # v1.14.0: one row per platform segment with its Parent Platform.
+            from headway.reporting.tables import (
+                create_platform_segment_provenance_table,
+            )
+
+            tables.append(create_platform_segment_provenance_table(plt_records, running_direction=direction))
 
         return ReportSection(
             section_id=ReportSectionId.GEOMETRY_PROVENANCE,

@@ -22,7 +22,7 @@ The simulator supports six standardized Microsoft Excel (`.xlsx`) workbooks:
 
 | Workbook # | Template Filename | Worksheets / Tabs | Purpose |
 |---|---|---|---|
-| **WB-01** | `HEADWAY_INFRASTRUCTURE_v1.0.xlsx` | `METADATA`, `Nodes`, `Tracks`, `TrackLinks`, `Stations`, `Platforms`, `StoppingPoints`, `Tunnels`, `TVSSections`, `SharedResourceGroups` | Physical network topology, 1D links, alignment geometry, stations, and TVS ventilation boundaries. |
+| **WB-01** | `HEADWAY_INFRASTRUCTURE_v1.0.xlsx` | `METADATA`, `Nodes`, `Tracks`, `TrackLinks`, `Stations`, `PlatformSpans` (v1.14.0; replaces `Platforms` + `StoppingPoints` — see `MIGRATION_v1.14.0.md`), `Tunnels`, `TVSSections`, `SharedResourceGroups` | Physical network topology, 1D links, alignment geometry, stations, and TVS ventilation boundaries. |
 | **WB-02** | `HEADWAY_SIGNALLING_v1.0.xlsx` | `METADATA`, `SignallingSystem`, `Signals`, `Blocks`, `InterlockingRoutes` | Signalling system rules, signals, fixed blocks, overlaps, and route conflicts. |
 | **WB-03** | `HEADWAY_ROLLING_STOCK_v1.0.xlsx` | `METADATA`, `TrainTypes`, `TractionCurves`, `BrakingCurves` | Rolling stock fleet parameters, Davis polynomial resistance, traction curves, and deceleration models. |
 | **WB-04** | `HEADWAY_OPERATIONS_v1.0.xlsx` | `METADATA`, `ServicePatterns`, `StoppingPatterns` | Operational service patterns, route link sequences, stopping patterns, and dwell durations. |

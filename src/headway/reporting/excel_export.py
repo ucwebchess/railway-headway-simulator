@@ -206,6 +206,13 @@ class ExcelReportExporter:
                 if fill_to_use:
                     c.fill = fill_to_use
 
+        # v1.14.0: table footnote (e.g. Section 6 platform segment listing), as in HTML/PDF.
+        footnote = (getattr(table, "metadata", None) or {}).get("footnote")
+        if footnote:
+            ws.append([])
+            ws.append([str(footnote)])
+            ws.cell(row=ws.max_row, column=1).font = cls.NORMAL_FONT
+
         cls._auto_fit_columns(ws)
 
     @classmethod

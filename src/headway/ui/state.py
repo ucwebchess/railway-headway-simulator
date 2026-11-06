@@ -251,7 +251,8 @@ class AppState:
             "Signalling Blocks": str(len(self.current_project.signalling.blocks)),
             "Signals": str(len(self.current_project.signalling.signals)),
             "Stations": str(len(infra.stations)),
-            "Platforms": str(len(infra.platforms)),
+            # v1.14.0: physical platforms (PlatformSpans rows), not link-level segments.
+            "Platforms": str(len(getattr(infra, "platform_spans", None) or []) or len(infra.platforms)),
             "Tunnels": str(len(infra.tunnels)),
             "TVS Sections": str(len(infra.tvs_sections)),
             "Train Types": str(len(rs.train_types)),

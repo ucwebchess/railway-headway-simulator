@@ -13,10 +13,10 @@ from headway.core.version import (
 
 @pytest.mark.unit
 def test_authoritative_version_value():
-    """Verify that version matches the required 1.13.0 release string."""
-    assert __version__ == "1.13.0"
-    assert pkg_version == "1.13.0"
-    assert get_version() == "1.13.0"
+    """Verify that version matches the required 1.14.0 release string."""
+    assert __version__ == "1.14.0"
+    assert pkg_version == "1.14.0"
+    assert get_version() == "1.14.0"
 
 
 @pytest.mark.unit
@@ -33,7 +33,7 @@ def test_get_build_info():
     info = get_build_info()
     assert isinstance(info, dict)
     assert info["app_name"] == APP_NAME
-    assert info["version"] == "1.13.0"
+    assert info["version"] == "1.14.0"
     assert info["version_info"] == (1, 11, 3)
     assert "Release" in info["phase"]
     assert info["status"] == "Released"

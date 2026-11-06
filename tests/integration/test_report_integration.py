@@ -952,7 +952,7 @@ class TestReportIntegration:
         assert "METRO_EXPRESS" not in doc_json
 
     def test_platform_occupation_chart_and_table_enhancements(self) -> None:
-        """v1.9.0 Part 3: Assert platform occupation chart has 3 traces and platform table has new 6-column format."""
+        """v1.9.0 Part 3 / v1.14.0: platform occupation chart has 3 traces; platform table has the per-platform 7-column format."""
         # v1.11.2: runs on the corrected in-memory variant (tests/corrected_variants.py); the shipped example raises a named ERR_* (tests/unit/test_v1112_bidirectional_integrity.py).
         from headway.ui.simulation_runner import SimulationRunner
 
@@ -969,16 +969,20 @@ class TestReportIntegration:
         tbl = plt_tbls[0]
         df = tbl.raw_dataframe
 
+        # v1.14.0: one row per platform (PlatformSpans parent); segment IDs in "Segments".
         expected_cols = [
             "Platform ID",
-            "Train ID",
+            "Station",
+            "Total Occupation (s)",
             "Arrival Approach (s)",
             "Passenger Dwell (s)",
             "Departure Clearance (s)",
-            "Total Occupation (s)",
+            "Segments",
         ]
         assert list(df.columns) == expected_cols
         assert len(df) == 5
+        assert sorted(df["Platform ID"]) == ["PLT_02", "PLT_03", "PLT_04", "PLT_ADR", "PLT_DJD"]
+        assert all(seg == f"{pid}@s1" for pid, seg in zip(df["Platform ID"], df["Segments"]))
 
         # Check metrics calculation (Total = Approach + Dwell + Clearance)
         for _, row in df.iterrows():

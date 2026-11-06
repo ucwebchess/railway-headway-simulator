@@ -5,7 +5,7 @@ This module provides the single authoritative source of truth for the applicatio
 
 from typing import Any, Dict, Tuple
 
-__version__: str = "1.13.0"
+__version__: str = "1.14.0"
 
 VERSION_INFO: Tuple[int, int, int] = (1, 11, 3)
 

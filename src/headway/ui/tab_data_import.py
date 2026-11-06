@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import gradio as gr
 
-from headway.ui.error_handling import create_error_html, create_success_html
+from headway.ui.error_handling import create_error_html, create_platform_schema_error_html, create_success_html
 from headway.ui.file_manager import FileManager
 from headway.ui.state import session_state
 
@@ -142,6 +142,10 @@ def create_data_import_tab() -> Dict[str, Any]:
             session_state.reset()
             proj, report, files = FileManager.import_excel_files(file_list)
             if proj is None:
+                # v1.14.0: legacy Platforms/StoppingPoints or invalid PlatformSpans -> prominent banner.
+                schema_html = create_platform_schema_error_html(report.findings)
+                if schema_html:
+                    return schema_html, []
                 err_msg = "; ".join([f.message for f in report.findings if f.severity.value in ("CRITICAL", "ERROR")])
                 return create_error_html({"category": "Excel Ingestion Failed", "message": err_msg or "Failed to parse files."}), []
 

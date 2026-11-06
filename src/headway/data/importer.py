@@ -34,6 +34,9 @@ class RawWorkbookData:
         self.file_path: Path = file_path
         self.metadata: Dict[str, str] = metadata
         self.worksheets: Dict[str, List[Dict[str, Any]]] = {}
+        # v1.14.0: legacy worksheets present in the file that are rejected by the schema
+        # (e.g. Infrastructure 'Platforms' / 'StoppingPoints'); the converter refuses them.
+        self.deprecated_sheets: List[str] = []
 
     def get_rows(self, worksheet_name: str) -> List[Dict[str, Any]]:
         return self.worksheets.get(worksheet_name, [])
@@ -349,6 +352,28 @@ class ExcelImporter:
             )
 
         raw_wb = RawWorkbookData(workbook_type=wb_type, file_path=path, metadata=metadata)
+
+        # v1.14.0 (breaking): the segment-level 'Platforms' and the 'StoppingPoints' sheets were
+        # replaced by 'PlatformSpans'. No backward compatibility and no auto-migration — refuse
+        # loudly (CRITICAL finding here; convert_raw_to_canonical raises the same code).
+        if wb_type == "INFRASTRUCTURE":
+            from headway.data.platform_spans import (
+                DEPRECATED_INFRA_SHEETS,
+                MIGRATION_GUIDE,
+                deprecated_sheet_message,
+            )
+
+            for legacy_sheet, legacy_code in DEPRECATED_INFRA_SHEETS.items():
+                if legacy_sheet in wb.sheetnames:
+                    raw_wb.deprecated_sheets.append(legacy_sheet)
+                    report.add_finding(
+                        error_code=legacy_code,
+                        severity=Severity.CRITICAL,
+                        message=deprecated_sheet_message(legacy_sheet, wb_name),
+                        workbook=wb_name,
+                        worksheet=legacy_sheet,
+                        recommendation=f"Run docs/migrate_platforms.py, then follow {MIGRATION_GUIDE}.",
+                    )
 
         # Level 1 check: Required worksheets
         for ws_def in wb_def.worksheets:

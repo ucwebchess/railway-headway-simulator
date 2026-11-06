@@ -499,6 +499,46 @@ def create_resource_provenance_table(
 create_resource_geometry_provenance_table = create_resource_provenance_table
 
 
+def create_platform_segment_provenance_table(
+    records: Sequence[Any],
+    running_direction: RunningDirection = RunningDirection.FORWARD,
+) -> EngineeringTable:
+    """v1.14.0 Section 11: platform segment provenance — one row per generated segment."""
+    cols = [
+        "Segment ID", "Parent Platform", "Station", "Track", "Link ID", "Start Offset (m)", "End Offset (m)",
+        "Length (m)", "Track Start Ch. (km)", "Track End Ch. (km)", "Stop Segment", "Geometry Source",
+    ]
+    raw_rows, fmt_rows = [], []
+    for r in records:
+        parent = r.parent_platform_id or "—"
+        raw_rows.append({
+            "Segment ID": r.segment_id, "Parent Platform": parent, "Station": r.station_id, "Track": r.track_id,
+            "Link ID": r.link_id, "Start Offset (m)": round(r.start_offset_m, 3), "End Offset (m)": round(r.end_offset_m, 3),
+            "Length (m)": round(r.length_m, 3), "Track Start Ch. (km)": r.track_start_chainage_km,
+            "Track End Ch. (km)": r.track_end_chainage_km, "Stop Segment": "Yes" if r.is_stop_segment else "No",
+            "Geometry Source": r.geometry_source,
+        })
+        fmt_rows.append({
+            "Segment ID": r.segment_id, "Parent Platform": parent, "Station": r.station_id, "Track": r.track_id,
+            "Link ID": r.link_id, "Start Offset (m)": f"{r.start_offset_m:.2f}", "End Offset (m)": f"{r.end_offset_m:.2f}",
+            "Length (m)": f"{r.length_m:.2f}",
+            "Track Start Ch. (km)": "N/A" if r.track_start_chainage_km is None else f"{r.track_start_chainage_km:.3f}",
+            "Track End Ch. (km)": "N/A" if r.track_end_chainage_km is None else f"{r.track_end_chainage_km:.3f}",
+            "Stop Segment": "Yes" if r.is_stop_segment else "No", "Geometry Source": r.geometry_source,
+        })
+    return EngineeringTable(
+        table_id="TBL_PLATFORM_SEGMENT_PROVENANCE",
+        title="Platform Segment Provenance (PlatformSpans auto-segmentation)",
+        raw_dataframe=pd.DataFrame(raw_rows, columns=cols),
+        formatted_dataframe=pd.DataFrame(fmt_rows, columns=cols),
+        running_direction=running_direction,
+        metadata={"footnote": (
+            "Segment IDs <PLATFORM_ID>@s<N> are generated deterministically from PlatformSpans "
+            "(N = position in the track's link order); Track chainage is per-track (0 km at the track's first link)."
+        )},
+    )
+
+
 def create_headway_matrix_table(
     matrix: MixedTrafficHeadwayMatrix,
 ) -> EngineeringTable:
@@ -570,87 +610,54 @@ def create_platform_occupation_table(
     records: Optional[Sequence[Any]] = None,
     running_direction: RunningDirection = RunningDirection.FORWARD,
 ) -> EngineeringTable:
-    """Milestone P13 / v1.9.0: Platform Track Occupation Breakdown Table.
+    """Section 6 Platform Track Occupation table — one row per platform (v1.14.0).
 
-    Columns: Platform ID, Train ID, Arrival Approach (s), Passenger Dwell (s),
-             Departure Clearance (s), Total Occupation (s)
+    Columns: Platform ID, Station, Total Occupation (s), Arrival Approach (s),
+             Passenger Dwell (s), Departure Clearance (s), Segments
+    Link-level segment records (``<PLATFORM_ID>@s<N>``) are aggregated to their parent
+    PlatformSpans platform (see ``headway.reporting.platform_aggregation``); the segment
+    IDs are listed in the Segments column and in the table footnote.
     """
-    raw_rows = []
-    formatted_rows = []
-
-    if records:
-        for r in records:
-            stn_id = getattr(r, "station_id", "") or ""
-            plt_id = getattr(r, "platform_id", "") or ""
-            if stn_id and plt_id:
-                if plt_id.startswith(stn_id):
-                    full_plt_id = plt_id
-                else:
-                    full_plt_id = f"{stn_id}-{plt_id}"
-            else:
-                full_plt_id = plt_id or stn_id or "PLT"
-
-            train_id = str(getattr(r, "train_id", "TRN_01"))
-
-            # UIC 406 / P14-SEC06: 3-component decomposition
-            # Arrival Approach = arrival_time_s - reservation_start_s
-            # Passenger Dwell = departure_time_s - arrival_time_s
-            # Departure Clearance = final_release_s - departure_time_s
-            arr_t = float(getattr(r, "arrival_time_s", 0.0))
-            dep_t = float(getattr(r, "departure_time_s", arr_t))
-            res_start_t = getattr(r, "reservation_start_s", None)
-            fin_rel_t = getattr(r, "final_release_s", None)
-
-            if res_start_t is not None:
-                approach_s = max(0.0, arr_t - float(res_start_t))
-            elif hasattr(r, "arrival_approach_s"):
-                approach_s = float(r.arrival_approach_s)
-            else:
-                approach_s = 15.0
-
-            dwell_s = max(0.0, dep_t - arr_t)
-            if dwell_s == 0.0 and hasattr(r, "dwell_duration_s"):
-                dwell_s = float(r.dwell_duration_s)
-
-            if fin_rel_t is not None:
-                clearance_s = max(0.0, float(fin_rel_t) - dep_t)
-            elif hasattr(r, "departure_clearance_s"):
-                clearance_s = float(r.departure_clearance_s)
-            else:
-                clr_t = float(getattr(r, "clearance_time_s", dep_t))
-                clearance_s = max(0.0, clr_t - dep_t)
-                if clearance_s == 0.0:
-                    clearance_s = float(getattr(r, "residual_rear_duration_s", 15.0))
-
-            total_occ = round(approach_s + dwell_s + clearance_s, 1)
-
-            raw_rows.append({
-                "Platform ID": full_plt_id,
-                "Train ID": train_id,
-                "Arrival Approach (s)": round(approach_s, 1),
-                "Passenger Dwell (s)": round(dwell_s, 1),
-                "Departure Clearance (s)": round(clearance_s, 1),
-                "Total Occupation (s)": total_occ,
-            })
-            formatted_rows.append({
-                "Platform ID": full_plt_id,
-                "Train ID": train_id,
-                "Arrival Approach (s)": f"{approach_s:.1f}",
-                "Passenger Dwell (s)": f"{dwell_s:.1f}",
-                "Departure Clearance (s)": f"{clearance_s:.1f}",
-                "Total Occupation (s)": f"{total_occ:.1f}",
-            })
+    from headway.reporting.platform_aggregation import (
+        aggregate_platform_records,
+        segment_footnote,
+    )
 
     cols = [
         "Platform ID",
-        "Train ID",
+        "Station",
+        "Total Occupation (s)",
         "Arrival Approach (s)",
         "Passenger Dwell (s)",
         "Departure Clearance (s)",
-        "Total Occupation (s)",
+        "Segments",
     ]
+    aggregates = aggregate_platform_records(records)
+    raw_rows = []
+    formatted_rows = []
+    for agg in aggregates:
+        raw_rows.append({
+            "Platform ID": agg.platform_id,
+            "Station": agg.station_name or agg.station_id,
+            "Total Occupation (s)": agg.total_occupation_s,
+            "Arrival Approach (s)": round(agg.arrival_approach_s, 1),
+            "Passenger Dwell (s)": round(agg.passenger_dwell_s, 1),
+            "Departure Clearance (s)": round(agg.departure_clearance_s, 1),
+            "Segments": agg.segments_label,
+        })
+        formatted_rows.append({
+            "Platform ID": agg.platform_id,
+            "Station": agg.station_name or agg.station_id,
+            "Total Occupation (s)": f"{agg.total_occupation_s:.1f}",
+            "Arrival Approach (s)": f"{agg.arrival_approach_s:.1f}",
+            "Passenger Dwell (s)": f"{agg.passenger_dwell_s:.1f}",
+            "Departure Clearance (s)": f"{agg.departure_clearance_s:.1f}",
+            "Segments": agg.segments_label,
+        })
+
     raw_df = pd.DataFrame(raw_rows, columns=cols) if raw_rows else pd.DataFrame(columns=cols)
     fmt_df = pd.DataFrame(formatted_rows, columns=cols) if formatted_rows else pd.DataFrame(columns=cols)
+    footnote = segment_footnote(aggregates)
 
     return EngineeringTable(
         table_id="TBL_PLATFORM_OCCUPATION",
@@ -658,6 +665,7 @@ def create_platform_occupation_table(
         raw_dataframe=raw_df,
         formatted_dataframe=fmt_df,
         running_direction=running_direction,
+        metadata={"footnote": footnote} if footnote else None,
     )
 
 

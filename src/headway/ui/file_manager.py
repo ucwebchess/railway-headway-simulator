@@ -10,6 +10,7 @@ import shutil
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from headway.data.platform_spans import MIGRATION_GUIDE, PlatformSpanError
 from headway.data.canonical import CanonicalProject
 from headway.data.converter import convert_raw_to_canonical
 from headway.data.importer import ExcelImporter, RawWorkbookData
@@ -95,6 +96,17 @@ class FileManager:
             try:
                 project = convert_raw_to_canonical(raw_wbs)
                 return project, report, file_map
+            except PlatformSpanError as e:
+                # v1.14.0: legacy platform schema / invalid PlatformSpans -> refused loudly with
+                # the specific ERR_* code (no project is returned).
+                if not any(f.error_code == e.error_code for f in report.findings):
+                    report.add_finding(
+                        error_code=e.error_code,
+                        severity=Severity.CRITICAL,
+                        message=e.message,
+                        recommendation=f"See {MIGRATION_GUIDE}.",
+                    )
+                return None, report, file_map
             except Exception as e:
                 report.add_finding(
                     error_code="ERR_CONVERSION_FAILED",

@@ -245,44 +245,44 @@ def test_interval_bounds_tolerance():
     assert len(bounds_bad) >= 1
 
 
+def _span_infra(start_km: float, end_km: float) -> RawWorkbookData:
+    raw = RawWorkbookData(
+        "INFRASTRUCTURE",
+        Path("test_infra.xlsx"),
+        {"WORKBOOK_TYPE": "INFRASTRUCTURE", "SCHEMA_VERSION": "1.0.0"},
+    )
+    raw.worksheets["Tracks"] = [{"track_id": "TRK_01"}]
+    raw.worksheets["Stations"] = [{"station_id": "STN_01"}]
+    raw.worksheets["TrackLinks"] = [
+        {"link_id": "LNK_01", "track_id": "TRK_01", "start_node_id": "N1", "end_node_id": "N2", "length_m": 200.0},
+    ]
+    raw.worksheets["PlatformSpans"] = [
+        {"platform_id": "PLT_01", "station_id": "STN_01", "track_id": "TRK_01",
+         "start_chainage_km": start_km, "end_chainage_km": end_km},
+    ]
+    return raw
+
+
 @pytest.mark.unit
 def test_platform_bounds_tolerance():
-    """Verify platform bounds checking applies millimetre tolerance."""
-    infra_raw = RawWorkbookData(
-        "INFRASTRUCTURE",
-        Path("test_infra.xlsx"),
-        {"WORKBOOK_TYPE": "INFRASTRUCTURE", "SCHEMA_VERSION": "1.0.0"},
-    )
-    infra_raw.worksheets["TrackLinks"] = [
-        {"link_id": "LNK_01", "start_node_id": "N1", "end_node_id": "N2", "length_m": 200.0},
-    ]
-    # Platform slightly negative (-0.0005 m, within 1 mm) and slightly beyond (200.0005 m, within 1 mm)
-    infra_raw.worksheets["Platforms"] = [
-        {"platform_id": "PLT_01", "link_id": "LNK_01", "start_offset_m": -0.0005, "end_offset_m": 200.0005},
-    ]
+    """Verify platform bounds checking applies millimetre tolerance.
 
+    v1.14.0: migrated from the legacy ``Platforms`` link-offset check to the
+    ``PlatformSpans`` track-coverage check (same 1 mm tolerance; the code for a span
+    beyond the track is ``ERR_PLATFORM_SPAN_EXCEEDS_TRACK``).
+    """
+    # Span slightly before the track start (-0.0005 m) and slightly beyond its end
+    # (200.0005 m) — both within 1 mm.
     report = ValidationReport()
-    DatasetValidator(report).validate_all({"INFRASTRUCTURE": infra_raw})
-    bounds_errs = [f for f in report.findings if f.error_code == "ERR_ENG_OFFSET_OUT_OF_BOUNDS"]
-    assert len(bounds_errs) == 0
+    DatasetValidator(report).validate_all({"INFRASTRUCTURE": _span_infra(-0.0000005, 0.2000005)})
+    assert [f for f in report.findings if f.error_code == "ERR_PLATFORM_SPAN_EXCEEDS_TRACK"] == []
 
-    # Platform clearly negative (-0.05 m)
-    infra_bad = RawWorkbookData(
-        "INFRASTRUCTURE",
-        Path("test_infra.xlsx"),
-        {"WORKBOOK_TYPE": "INFRASTRUCTURE", "SCHEMA_VERSION": "1.0.0"},
-    )
-    infra_bad.worksheets["TrackLinks"] = [
-        {"link_id": "LNK_01", "start_node_id": "N1", "end_node_id": "N2", "length_m": 200.0},
-    ]
-    infra_bad.worksheets["Platforms"] = [
-        {"platform_id": "PLT_02", "link_id": "LNK_01", "start_offset_m": -0.05, "end_offset_m": 100.0},
-    ]
-
+    # Span clearly before the track start (-0.05 m)
     report_bad = ValidationReport()
-    DatasetValidator(report_bad).validate_all({"INFRASTRUCTURE": infra_bad})
-    bounds_bad = [f for f in report_bad.findings if f.error_code == "ERR_ENG_OFFSET_OUT_OF_BOUNDS"]
-    assert len(bounds_bad) >= 1
+    DatasetValidator(report_bad).validate_all({"INFRASTRUCTURE": _span_infra(-0.00005, 0.1)})
+    bounds_bad = [f for f in report_bad.findings if f.error_code == "ERR_PLATFORM_SPAN_EXCEEDS_TRACK"]
+    assert len(bounds_bad) == 1
+    assert bounds_bad[0].object_id == "PLT_01"
 
 
 @pytest.mark.unit

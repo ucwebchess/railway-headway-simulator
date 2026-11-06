@@ -148,6 +148,50 @@
         }
       }
     },
+    "platform_spans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "platform_id",
+          "station_id",
+          "track_id",
+          "start_chainage_km",
+          "end_chainage_km"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "platform_id": {
+            "type": "string"
+          },
+          "station_id": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": "string"
+          },
+          "start_chainage_km": {
+            "type": "number"
+          },
+          "end_chainage_km": {
+            "type": "number"
+          },
+          "nominal_stop_offset_m": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0.0
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
     "platforms": {
       "type": "array",
       "items": {
@@ -182,6 +226,12 @@
           "length_m": {
             "type": "number",
             "exclusiveMinimum": 0.0
+          },
+          "parent_platform_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

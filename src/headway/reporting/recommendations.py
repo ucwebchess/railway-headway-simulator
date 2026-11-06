@@ -53,14 +53,15 @@ class RecommendationEngine:
         platforms = platform_records or []
         for plt in platforms:
             if plt.is_residual_rear_active and plt.residual_rear_duration_s > 0.0:
+                plt_label = getattr(plt, "parent_platform_id", None) or plt.platform_id  # v1.14.0: parent ID
                 infringing_blocks = ", ".join(plt.upstream_infringing_resource_ids) or "upstream approach block"
                 recommendations.append(
                     Recommendation(
                         recommendation_id=f"REC-{rule_counter:03d}",
                         category=RecommendationCategory.STATION_PLATFORM_MODIFICATION,
-                        title=f"Mitigate Residual Rear Fouling at Platform {plt.platform_id}",
+                        title=f"Mitigate Residual Rear Fouling at Platform {plt_label}",
                         description=(
-                            f"Train dwelling at platform '{plt.platform_id}' ({plt.station_name}) infringes on "
+                            f"Train dwelling at platform '{plt_label}' ({plt.station_name}) infringes on "
                             f"{infringing_blocks} for {plt.residual_rear_duration_s:.1f} s due to train length exceeding "
                             "the clear platform berth distance."
                         ),
@@ -72,7 +73,7 @@ class RecommendationEngine:
                             f"Advancing the stopping marker or relocating the insulated rail joint by {plt.residual_rear_duration_s:.1f} s "
                             "equivalent distance can eliminate upstream block fouling and reduce line headway."
                         ),
-                        governing_resource_id=plt.platform_id,
+                        governing_resource_id=plt_label,
                         requires_further_simulation=True,
                         assumptions_and_limitations=(
                             "Subject to physical platform civil length, signal sight distance, and passenger egress clearances."

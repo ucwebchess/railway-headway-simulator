@@ -40,17 +40,16 @@ def _create_minimal_infrastructure_wb(path: Path, link_ids: list[str]) -> Path:
     for i, lnk in enumerate(link_ids, start=1):
         ws_lnks.append([lnk, "TRK_01", f"ND_{i:04d}", f"ND_{i+1:04d}", 1000.0, 120.0, 0.0])
 
-    for s_name in ["Stations", "Platforms", "StoppingPoints", "Tunnels", "TVSSections", "TVSGeometry", "SharedResourceGroups"]:
+    for s_name in ["Stations", "PlatformSpans", "Tunnels", "TVSSections", "TVSGeometry", "SharedResourceGroups"]:
         ws = wb.create_sheet(s_name)
         if s_name == "Stations":
             ws.append(["STATION_ID", "NAME"])
             ws.append(["STN_01", "Station 1"])
-        elif s_name == "Platforms":
-            ws.append(["PLATFORM_ID", "STATION_ID", "LINK_ID", "START_OFFSET_M", "END_OFFSET_M", "LENGTH_M"])
-            ws.append(["PLT_01", "STN_01", link_ids[0], 0.0, 200.0, 200.0])
-        elif s_name == "StoppingPoints":
-            ws.append(["STOPPING_POINT_ID", "PLATFORM_ID", "LINK_ID", "OFFSET_M"])
-            ws.append(["SP_01", "PLT_01", link_ids[0], 100.0])
+        elif s_name == "PlatformSpans":
+            # v1.14.0: one span row (0–200 m on TRK_01 = link_ids[0] 0–200 m, stop at 100 m)
+            # replaces the legacy Platforms + StoppingPoints rows.
+            ws.append(["PLATFORM_ID", "STATION_ID", "TRACK_ID", "START_CHAINAGE_KM", "END_CHAINAGE_KM", "NOMINAL_STOP_OFFSET_M"])
+            ws.append(["PLT_01", "STN_01", "TRK_01", 0.0, 0.2, 100.0])
         elif s_name == "Tunnels":
             ws.append(["TUNNEL_ID", "NAME"])
         elif s_name == "TVSSections":

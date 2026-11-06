@@ -135,27 +135,20 @@ INFRASTRUCTURE_WORKBOOK = WorkbookDef(
             ],
             required=False,
         ),
+        # v1.14.0 (breaking): one row per PHYSICAL platform, by per-track chainage. Replaces the
+        # segment-level 'Platforms' and the 'StoppingPoints' sheets (both now rejected with
+        # ERR_PLATFORMS_DEPRECATED / ERR_STOPPINGPOINTS_DEPRECATED; see docs/MIGRATION_v1.14.0.md).
         WorksheetDef(
-            name="Platforms",
-            description="Station passenger platforms along track links",
+            name="PlatformSpans",
+            description="Station platforms — one row per physical platform (auto-segmented per track link)",
             columns=[
-                ColumnDef("PLATFORM_ID", "platform_id", FieldType.STRING, required=True, description="Unique platform identifier", example_value="PLT_01"),
-                ColumnDef("STATION_ID", "station_id", FieldType.STRING, required=True, description="Parent station identifier", example_value="STN_CENTRAL"),
-                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=True, description="Track link where platform is located", example_value="LNK_01"),
-                ColumnDef("START_OFFSET_M", "start_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Platform start offset along link", example_value=200.0),
-                ColumnDef("END_OFFSET_M", "end_offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Platform end offset along link", example_value=450.0),
-                ColumnDef("LENGTH_M", "length_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Usable platform length in meters", example_value=250.0),
-            ],
-            required=False,
-        ),
-        WorksheetDef(
-            name="StoppingPoints",
-            description="Designated stopping points at platforms",
-            columns=[
-                ColumnDef("STOPPING_POINT_ID", "stopping_point_id", FieldType.STRING, required=True, description="Unique stopping point ID", example_value="STP_01"),
-                ColumnDef("PLATFORM_ID", "platform_id", FieldType.STRING, required=True, description="Platform identifier", example_value="PLT_01"),
-                ColumnDef("LINK_ID", "link_id", FieldType.STRING, required=True, description="Track link identifier", example_value="LNK_01"),
-                ColumnDef("OFFSET_M", "offset_m", FieldType.FLOAT, required=True, excel_unit="m", canonical_unit="m", description="Stopping point offset along link", example_value=430.0),
+                ColumnDef("PLATFORM_ID", "platform_id", FieldType.STRING, required=True, description="Unique platform identifier (unique across the workbook)", example_value="PLT_01"),
+                ColumnDef("STATION_ID", "station_id", FieldType.STRING, required=True, description="Parent station identifier (must exist in Stations)", example_value="STN_CENTRAL"),
+                ColumnDef("TRACK_ID", "track_id", FieldType.STRING, required=True, description="Track carrying the platform (must exist in Tracks)", example_value="TRK_M1"),
+                ColumnDef("START_CHAINAGE_KM", "start_chainage_km", FieldType.FLOAT, required=True, excel_unit="km", canonical_unit="km", description="Per-track chainage where the platform begins (track starts at 0 km at its first link)", example_value=0.2),
+                ColumnDef("END_CHAINAGE_KM", "end_chainage_km", FieldType.FLOAT, required=True, excel_unit="km", canonical_unit="km", description="Per-track chainage where the platform ends (> START, span >= 10 m)", example_value=0.45),
+                ColumnDef("NOMINAL_STOP_OFFSET_M", "nominal_stop_offset_m", FieldType.FLOAT, required=False, excel_unit="m", canonical_unit="m", default_value=None, description="Nominal stop point measured from START_CHAINAGE_KM (blank = mid-platform)", example_value=230.0),
+                ColumnDef("DESCRIPTION", "description", FieldType.STRING, required=False, description="Free text", example_value="Central Station platform 1"),
             ],
             required=False,
         ),

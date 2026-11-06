@@ -55,7 +55,7 @@ def create_infrastructure_tab() -> Dict[str, Any]:
                     )
                 with gr.TabItem("Stations & Platforms"):
                     components["tbl_stations"] = gr.Dataframe(
-                        headers=["Station ID", "Platform ID", "Link ID", "Start Offset (m)", "End Offset (m)", "Length (m)"],
+                        headers=["Station ID", "Platform ID", "Segment", "Link ID", "Start Offset (m)", "End Offset (m)", "Length (m)"],
                         value=[],
                         interactive=False,
                     )
@@ -140,6 +140,7 @@ def create_infrastructure_tab() -> Dict[str, Any]:
                 if plat.station_id == stn.station_id:
                     stations_data.append([
                         stn.station_id,
+                        getattr(plat, "parent_platform_id", None) or plat.platform_id,  # v1.14.0: user-facing ID
                         plat.platform_id,
                         plat.link_id,
                         plat.start_offset_m,
