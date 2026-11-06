@@ -6,6 +6,12 @@ physical platform**. Workbooks that still contain `Platforms` or `StoppingPoints
 **rejected on import** (`ERR_PLATFORMS_DEPRECATED`, `ERR_STOPPINGPOINTS_DEPRECATED`);
 there is no backward compatibility and no automatic migration in the importer.
 
+> **v1.14.1:** the optional column `NOMINAL_STOP_OFFSET_M` was renamed to
+> **`SEGMENT_HINT_OFFSET_M`** — it only selects which segment the train berths on, not the
+> exact stop position. If you migrated with v1.14.0, rename that header (values unchanged);
+> the old name is rejected with `ERR_PLATFORM_SPAN_DEPRECATED_COLUMN`. The error code
+> `ERR_PLATFORM_NOMINAL_STOP_INVALID` is now `ERR_PLATFORM_SEGMENT_HINT_INVALID`.
+
 Quick path:
 
 1. `python docs/migrate_platforms.py HEADWAY_INFRASTRUCTURE.xlsx --operations HEADWAY_OPERATIONS.xlsx`
@@ -169,7 +175,7 @@ Every message names the offending sheet/ID and points to this guide.
 | `ERR_PLATFORM_SPAN_INVALID` | `START ≥ END`; span < 10 m; `STATION_ID` / `TRACK_ID` not found; a generated-style ID (`…@s<N>`) entered by hand; the track is not a simple link chain. | Correct the row. |
 | `ERR_PLATFORM_SPAN_EXCEEDS_TRACK` | The span lies (partly) outside the track's coverage `0 … Σ link lengths`. | Check per-track chainage (§1). |
 | `ERR_PLATFORM_SPAN_DUPLICATE` | A `PLATFORM_ID` appears more than once. | Use unique IDs. |
-| `ERR_PLATFORM_SPAN_DEPRECATED_COLUMN` | The `PlatformSpans` sheet has a column named `NOMINAL_STOP_OFFSET_M` (its pre-release name). Message: *Column NOMINAL_STOP_OFFSET_M is deprecated. Rename it to SEGMENT_HINT_OFFSET_M. See docs/MIGRATION_v1.14.0.md.* | Rename the column header to `SEGMENT_HINT_OFFSET_M`; values stay the same. |
+| `ERR_PLATFORM_SPAN_DEPRECATED_COLUMN` | The `PlatformSpans` sheet has a column named `NOMINAL_STOP_OFFSET_M` (its v1.14.0 name). Message: *Column NOMINAL_STOP_OFFSET_M is deprecated. Rename it to SEGMENT_HINT_OFFSET_M. See docs/MIGRATION_v1.14.0.md.* | Rename the column header to `SEGMENT_HINT_OFFSET_M`; values stay the same. |
 | `ERR_PLATFORM_SEGMENT_HINT_INVALID` | `SEGMENT_HINT_OFFSET_M` < 0 or > platform length. | Enter an offset within the platform. |
 | `ERR_TRAIN_OVERHANG` | A train is longer than the whole physical platform it stops at (sum of the platform's segment lengths). | Lengthen the platform span or use a shorter train. |
 | `ERR_STOPPING_PATTERN_REFERENCES_SEGMENT` | A StoppingPattern references a generated segment ID (`PLT_X@s2`). | Reference the platform `PLT_X`. |

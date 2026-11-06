@@ -59,7 +59,7 @@ DEPRECATED_INFRA_SHEETS: Dict[str, str] = {
     "StoppingPoints": ERR_STOPPINGPOINTS_DEPRECATED,
 }
 
-#: Deprecated ``PlatformSpans`` column names -> current name. A deprecated column is refused
+#: v1.14.1: deprecated ``PlatformSpans`` column names -> current name. A deprecated column is refused
 #: loudly (``ERR_PLATFORM_SPAN_DEPRECATED_COLUMN``) instead of being ignored as an unknown
 #: column, which would silently fall back to the default (mid-platform) segment hint.
 DEPRECATED_PLATFORM_SPAN_COLUMNS: Dict[str, str] = {

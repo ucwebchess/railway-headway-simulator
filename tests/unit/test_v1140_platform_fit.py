@@ -1,4 +1,4 @@
-"""v1.14.0 — train fit is checked against the physical (parent) platform, not one segment.
+"""v1.14.1 — train fit is checked against the physical (parent) platform, not one segment.
 
 A ``PlatformSpans`` row is auto-segmented into link-level platforms ``<PLATFORM_ID>@s<N>``.
 The train berths on one of them (the stop segment selected by ``SEGMENT_HINT_OFFSET_M``),

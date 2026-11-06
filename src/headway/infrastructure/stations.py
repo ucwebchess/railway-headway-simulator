@@ -7,7 +7,7 @@ Strictly satisfies RHS-P02-001 § 15:
 - P02-ST-005: Direction compatibility.
 - P02-ST-006 & P02-DIR-010: Reverse direction station ordering and reverse stopping positions.
 - P02-ST-007: Train-length stopping geometry (front and rear positions, platform coverage check).
-- v1.14.0: platform fit is checked against the **physical (parent) platform** — the sum of the
+- v1.14.1: platform fit is checked against the **physical (parent) platform** — the sum of the
   lengths of all link-level segments generated from one ``PlatformSpans`` row
   (``parent_platform_length_m``) — not against the single segment the train berths on.
   A train longer than the whole platform raises ``ERR_TRAIN_OVERHANG``.
@@ -94,7 +94,7 @@ class RoutePlatformStop:
     def is_train_accommodated(self, train_length_m: float) -> bool:
         """P02-ST-003 & 007: Verify if train length fits within the physical platform.
 
-        v1.14.0: compared with ``parent_platform_length_m`` (sum of the parent platform's
+        v1.14.1: compared with ``parent_platform_length_m`` (sum of the parent platform's
         segment lengths) — a 202 m train on a 200 m segment of a 400 m platform fits.
         """
         return train_length_m <= self.parent_platform_length_m + FIT_TOLERANCE_M
@@ -124,7 +124,7 @@ class RoutePlatformStop:
         Rear of train is at `stopping_position_m - train_length_m` (in running direction).
         Returns (s_rear, s_front, is_within_platform).
 
-        v1.14.0: "within platform" means within the physical (parent) platform on this route
+        v1.14.1: "within platform" means within the physical (parent) platform on this route
         — the train may extend from its stop segment onto sibling segments.
         """
         s_front = self.stopping_position_m
@@ -221,7 +221,7 @@ class StationPlatformModel:
                     )
                 )
 
-        # v1.14.0: physical (parent) platform extent on this route = union of its segments.
+        # v1.14.1: physical (parent) platform extent on this route = union of its segments.
         parent_bounds: Dict[str, Tuple[float, float]] = {}
         for st in route_stops:
             lo = min(st.route_distance_start_m, st.route_distance_end_m)

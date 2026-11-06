@@ -37,7 +37,7 @@ class RawWorkbookData:
         # v1.14.0: legacy worksheets present in the file that are rejected by the schema
         # (e.g. Infrastructure 'Platforms' / 'StoppingPoints'); the converter refuses them.
         self.deprecated_sheets: List[str] = []
-        # v1.14.0: deprecated columns found in the file ('NOMINAL_STOP_OFFSET_M' ->
+        # v1.14.1: deprecated columns found in the file ('NOMINAL_STOP_OFFSET_M' ->
         # 'SEGMENT_HINT_OFFSET_M'); the converter refuses them instead of ignoring them.
         self.deprecated_columns: List[str] = []
 
@@ -415,7 +415,7 @@ class ExcelImporter:
                     )
                 seen_cols.add(col_h.upper())
 
-            # v1.14.0: a deprecated PlatformSpans column is refused loudly — as an unknown
+            # v1.14.1: a deprecated PlatformSpans column is refused loudly — as an unknown
             # column it would otherwise be ignored and silently fall back to the default value.
             if wb_type == "INFRASTRUCTURE" and ws_def.name == "PlatformSpans":
                 from headway.data.platform_spans import (

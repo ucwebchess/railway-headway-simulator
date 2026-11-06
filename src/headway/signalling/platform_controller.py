@@ -160,7 +160,7 @@ class PlatformController:
                 context={"platform_id": platform_id},
             )
 
-        # v1.14.0: fit against the physical (parent) platform — the sum of its segment lengths.
+        # v1.14.1: fit against the physical (parent) platform — the sum of its segment lengths.
         usable_m = parent_platform_length_m(plat, self.platforms.values())
         if train_length_m > usable_m + FIT_TOLERANCE_M:
             raise PlatformCompatibilityError(
