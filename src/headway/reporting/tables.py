@@ -928,3 +928,60 @@ def export_table(
         raise ValueError(
             f"Unsupported export format '{fmt}'. Supported formats: csv, xlsx, json, html."
         )
+
+
+ACCEL_PHASE_COLUMNS = [
+    "phase_id", "phase_type", "start_time_s", "end_time_s",
+    "start_chainage_m", "end_chainage_m", "distance_m",
+    "start_speed_kmh", "end_speed_kmh", "avg_rate_ms2", "min_rate_ms2", "max_rate_ms2",
+]
+
+
+def create_accel_phases_dataframe(trajectory) -> pd.DataFrame:
+    """Aggregate finite-difference intervals into >=2 s phases; rates are signed SI.
+
+    Average rate is duration-weighted (net velocity change / elapsed time), including
+    irregular sampling. Invalid/non-increasing intervals break, rather than bridge, phases.
+    """
+    rows = []
+    phase = []
+    kind = None
+
+    def flush():
+        if not phase:
+            return
+        first, last = phase[0][0], phase[-1][1]
+        duration = last.time_s - first.time_s
+        if duration < 2.0:
+            return
+        rates = [p[2] for p in phase]
+        rows.append([len(rows) + 1, kind, first.time_s, last.time_s,
+                     first.front_distance_m, last.front_distance_m,
+                     abs(last.front_distance_m - first.front_distance_m),
+                     first.speed_ms * 3.6, last.speed_ms * 3.6,
+                     (last.speed_ms - first.speed_ms) / duration, min(rates), max(rates)])
+
+    for a, b in zip(trajectory.samples, trajectory.samples[1:]):
+        dt = b.time_s - a.time_s
+        if dt <= 0 or not np.isfinite([a.time_s, b.time_s, a.speed_ms, b.speed_ms,
+                                             a.front_distance_m, b.front_distance_m]).all():
+            flush()
+            phase, kind = [], None
+            continue
+        rate = (b.speed_ms - a.speed_ms) / dt
+        new_kind = "accel" if rate > 0.05 else "decel" if rate < -0.05 else "cruise"
+        if kind != new_kind:
+            flush()
+            phase = []
+            kind = new_kind
+        phase.append((a, b, rate))
+    flush()
+    return pd.DataFrame(rows, columns=ACCEL_PHASE_COLUMNS)
+
+
+def create_accel_phases_csv(trajectory) -> str:
+    """Return an in-memory CSV, including headers for an empty trajectory."""
+    import io
+    buffer = io.StringIO()
+    create_accel_phases_dataframe(trajectory).to_csv(buffer, index=False)
+    return buffer.getvalue()

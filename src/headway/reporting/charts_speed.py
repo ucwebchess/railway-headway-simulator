@@ -20,6 +20,7 @@ from plotly.subplots import make_subplots
 from headway.data.canonical import Platform, Station, TrackLink, TVSSection
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.chart_theme import ChartColors, get_plotly_layout
+from headway.reporting.chart_overlays import add_tvs_overlay, add_station_overlay, apply_chart_overlays
 from headway.reporting.visualization_adapters import VisualizationAdapter
 from headway.simulation.trajectory import TrainTrajectory
 
@@ -80,6 +81,7 @@ def create_speed_distance_figure(
     running_direction: Optional[RunningDirection] = None,
     track_links: Optional[Sequence[TrackLink]] = None,
     rolling_stock_max_speed_kmh: Optional[float] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> go.Figure:
     """P13-SPD-001 to 005: Generate interactive Plotly Speed–Distance diagram with speed envelope."""
     traj_list = [trajectories] if isinstance(trajectories, TrainTrajectory) else list(trajectories)
@@ -211,7 +213,7 @@ def create_speed_distance_figure(
     fig.update_layout(layout)
     if eff_dir == RunningDirection.REVERSE and traj_is_decreasing:
         fig.update_xaxes(autorange="reversed")
-    return fig
+    return apply_chart_overlays(fig, metadata, "speed")
 
 
 def create_gradient_profile_figure(

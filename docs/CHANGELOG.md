@@ -1,3 +1,14 @@
+## v1.14.2 — Chart overlays and acceleration CSV
+
+- Four default-off simulation input checkboxes opt into TVS zone bands and station
+  markers on speed profiles and blocking stairways (regenerated on run).
+- Shared overlays consume route-frame TVS/station metadata without alignment offsets.
+- Added in-memory acceleration/deceleration/cruise phase CSV export to Results and
+  the HTML report, with signed finite-difference rates, duration-weighted averages,
+  consecutive-phase merging, and a two-second minimum duration.
+- Default-off chart JSON regression hashes verified against the v1.14.1 starting commit.
+- No physics engine or importer changes.
+
 # CHANGELOG
 ## Railway Headway & Capacity Simulator
 

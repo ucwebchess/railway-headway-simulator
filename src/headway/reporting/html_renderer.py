@@ -14,6 +14,7 @@ Matches visual styling of reference engineering report:
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 import html
+import base64
 
 from headway.reporting.report_models import ReportDocument, ReportSectionId
 
@@ -219,6 +220,10 @@ class HtmlReportRenderer:
             # Callout boxes
             for cb in s.callout_boxes:
                 body_content = cb.get("html") or html.escape(cb.get("text", ""))
+                if "accel_csv" in cb:
+                    encoded = base64.b64encode(cb["accel_csv"].encode("utf-8")).decode("ascii")
+                    body_content += (f'<a href="data:text/csv;base64,{encoded}" '
+                                     'download="acceleration_phases.csv">Download Acceleration Phases CSV</a>')
                 html_parts.append(f"""
                 <div class='callout-box'>
                     <div class='callout-title'>{html.escape(cb.get('title', 'Note'))}</div>
@@ -239,7 +244,6 @@ class HtmlReportRenderer:
                         fig_html = fig_html.replace("https://cdn.plot.ly/", "").replace("cdn.plot.ly", "")
                         html_parts.append(fig_html)
                     elif isinstance(fig_obj, (str, Path)) and Path(str(fig_obj)).exists():
-                        import base64
                         p = Path(str(fig_obj))
                         b64_data = base64.b64encode(p.read_bytes()).decode("utf-8")
                         mime = "image/png" if p.suffix.lower() == ".png" else "image/svg+xml"

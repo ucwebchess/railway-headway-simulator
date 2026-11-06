@@ -1,0 +1,16 @@
+{
+  "fig_speed_alignment": {
+    "sha256": "8dd82a93ef5de4456239f2bfe25b64cd626b7c15f2e23674d565fcde5ae368bb",
+    "names": [
+      "Simulated Speed: TRN_LEADER",
+      "Permissible Speed Envelope"
+    ]
+  },
+  "fig_blocking_stairway": {
+    "sha256": "a19074585b69530eb9f9c45ff0aef04b28c10d9d97cd0234eb9215659e45d8c0",
+    "names": [
+      "Leader Train (SRV_6000)",
+      "Follower Train (SRV_6000) [Shifted +251.0s]"
+    ]
+  }
+}

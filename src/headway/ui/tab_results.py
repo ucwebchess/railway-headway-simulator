@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import gradio as gr
 import plotly.graph_objects as go
 
+from headway.reporting.tables import create_accel_phases_csv
 from headway.reporting.charts_blocking import create_blocking_stairway_figure, create_seven_component_figure
 from headway.reporting.charts_capacity import create_block_sensitivity_figure
 from headway.reporting.charts_headway import create_mixed_traffic_heatmap, create_time_distance_figure
@@ -58,6 +59,7 @@ def create_results_tab() -> Dict[str, Any]:
             components["export_xlsx_btn"] = gr.Button("📊 Export Results to Excel (.xlsx)", variant="secondary")
             components["export_json_btn"] = gr.Button("📑 Export Results to JSON (.json)", variant="secondary")
             components["export_speed_csv_btn"] = gr.Button("📈 Export Speed Profile CSV (.csv)", variant="secondary")
+            components["export_accel_csv_btn"] = gr.Button("Export Acceleration Phases CSV (.csv)", variant="secondary")
 
         components["export_file_download"] = gr.HTML(label="Export File Download Ready", visible=False)
 
@@ -226,6 +228,7 @@ def create_results_tab() -> Dict[str, Any]:
         fig_speed = (
             create_speed_distance_figure(
                 primary_traj,
+                metadata=pkg.metadata,
                 permissible_speed_envelope=pkg.metadata.get("permissible_speed_envelope"),
                 track_links=pkg.metadata.get("track_links"),
                 running_direction=direction,
@@ -235,7 +238,7 @@ def create_results_tab() -> Dict[str, Any]:
         )
 
         primary_hw = next(iter(pkg.headway_results.values()), None)
-        fig_stair = create_blocking_stairway_figure(primary_hw) if primary_hw else empty_fig
+        fig_stair = create_blocking_stairway_figure(primary_hw, metadata=pkg.metadata) if primary_hw else empty_fig
         fig_seven = create_seven_component_figure(pkg.blocking_intervals, running_direction=direction) if pkg.blocking_intervals else empty_fig
 
         # Conflicts table
@@ -403,6 +406,19 @@ def create_results_tab() -> Dict[str, Any]:
         fn=export_speed_csv_results,
         inputs=[],
         outputs=[components["export_file_download"]],
+    )
+
+    def export_accel_csv_results() -> Any:
+        import base64
+        pkg = session_state.latest_result_package
+        trajectory = pkg.trajectories.get("TRN_LEADER") if pkg else None
+        if trajectory is None:
+            return gr.update(value="No leader trajectory available to export.", visible=True)
+        encoded = base64.b64encode(create_accel_phases_csv(trajectory).encode("utf-8")).decode("ascii")
+        return gr.update(value=f'<a href="data:text/csv;base64,{encoded}" download="acceleration_phases.csv">Download Acceleration Phases CSV</a>', visible=True)
+
+    components["export_accel_csv_btn"].click(
+        fn=export_accel_csv_results, inputs=[], outputs=[components["export_file_download"]],
     )
 
     return components
