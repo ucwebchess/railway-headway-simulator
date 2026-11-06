@@ -574,7 +574,7 @@ class DatasetValidator:
 
             # v1.14.0: PlatformSpans geometry — dry-run the auto-segmentation per span so every
             # problem is reported with its own code (ERR_PLATFORM_SPAN_INVALID / _EXCEEDS_TRACK /
-            # ERR_PLATFORM_NOMINAL_STOP_INVALID). The converter raises the first one.
+            # ERR_PLATFORM_SEGMENT_HINT_INVALID). The converter raises the first one.
             from headway.data.platform_spans import (
                 PlatformSpanError,
                 segment_platform_span,

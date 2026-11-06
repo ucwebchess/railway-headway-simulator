@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from headway.data.canonical import InfrastructureModel, Platform, Station, TrackDirectionality
 from headway.infrastructure.direction import RunningDirection
 from headway.infrastructure.route import Route
+from headway.infrastructure.stations import FIT_TOLERANCE_M, parent_platform_length_m
 from headway.signalling.residual_occupation import ResidualOccupationDetector, ResidualOccupationRecord
 from headway.signalling.resource_types import (
     PlatformCompatibilityError,
@@ -159,14 +160,18 @@ class PlatformController:
                 context={"platform_id": platform_id},
             )
 
-        if train_length_m > plat.length_m + 1e-3:
+        # v1.14.0: fit against the physical (parent) platform — the sum of its segment lengths.
+        usable_m = parent_platform_length_m(plat, self.platforms.values())
+        if train_length_m > usable_m + FIT_TOLERANCE_M:
             raise PlatformCompatibilityError(
                 f"Train length ({train_length_m:.1f} m) exceeds usable platform length "
-                f"({plat.length_m:.1f} m) for platform '{platform_id}'.",
+                f"({usable_m:.1f} m) for platform '{platform_id}'.",
                 context={
                     "platform_id": platform_id,
+                    "parent_platform_id": getattr(plat, "parent_platform_id", None) or platform_id,
                     "train_length_m": train_length_m,
-                    "platform_length_m": plat.length_m,
+                    "platform_length_m": usable_m,
+                    "segment_length_m": plat.length_m,
                 },
             )
         return plat

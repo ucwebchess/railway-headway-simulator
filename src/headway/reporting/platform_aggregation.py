@@ -5,7 +5,7 @@ by the importer into link-level ``<PLATFORM_ID>@s<N>`` segments. The simulation 
 occupation per segment; reports show one row per parent platform.
 
 Aggregation rule (per parent platform, segments in link order):
-- Occupation is recorded only on the segment holding the platform's nominal stop point
+- Occupation is recorded only on the segment holding the platform's segment hint point
   (v1.11.1 rule: a platform reports occupation only if the assigned stop lies within it);
   every other segment is ``never_occupied`` (all components 0.0 s).
 - Arrival Approach / Passenger Dwell / Departure Clearance of the platform are the
@@ -132,7 +132,7 @@ def segment_footnote(aggregates: Sequence[PlatformAggregate]) -> Optional[str]:
         return None
     return (
         "Segments: platforms are aggregated from link-level segments auto-generated from PlatformSpans "
-        "(<PLATFORM_ID>@s<N>, link order); occupation is recorded on the segment holding the nominal stop point. "
+        "(<PLATFORM_ID>@s<N>, link order); occupation is recorded on the stop segment selected by SEGMENT_HINT_OFFSET_M. "
         + "; ".join(parts) + "."
     )
 

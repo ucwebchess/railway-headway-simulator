@@ -36,16 +36,19 @@ convert with `docs/migrate_platforms.py` and see **`docs/MIGRATION_v1.14.0.md`**
 
 ### Added
 - **`PlatformSpans` sheet**: `PLATFORM_ID`, `STATION_ID`, `TRACK_ID`, `START_CHAINAGE_KM`,
-  `END_CHAINAGE_KM` (required), `NOMINAL_STOP_OFFSET_M` (optional, metres from START; blank =
-  mid-platform), `DESCRIPTION`. Chainage is per-track (0 km at the track's first link).
+  `END_CHAINAGE_KM` (required), `SEGMENT_HINT_OFFSET_M` (optional, metres from START; blank =
+  mid-platform; selects only which segment the train berths on, not the exact stop position),
+  `DESCRIPTION`. Chainage is per-track (0 km at the track's first link).
 - **Auto-segmentation** (`headway.data.platform_spans`): each span becomes link-level platform
   segments `<PLATFORM_ID>@s<N>` (N = 1-based link order — a stable, deterministic ID contract)
-  with the new canonical field `Platform.parent_platform_id`; the nominal stop resolves to the
-  segment containing it (generated stopping point `<PLATFORM_ID>@stop`).
+  with the new canonical field `Platform.parent_platform_id`; the segment hint point selects
+  the stop segment containing it (generated stopping point `<PLATFORM_ID>@stop`).
 - New error codes, each naming the offending sheet/ID and pointing to the migration guide:
   `ERR_PLATFORM_SPAN_INVALID`, `ERR_PLATFORM_SPAN_EXCEEDS_TRACK`, `ERR_PLATFORM_SPAN_DUPLICATE`,
   `ERR_PLATFORMS_DEPRECATED`, `ERR_STOPPINGPOINTS_DEPRECATED`,
-  `ERR_STOPPING_PATTERN_REFERENCES_SEGMENT`, `ERR_PLATFORM_NOMINAL_STOP_INVALID`.
+  `ERR_STOPPING_PATTERN_REFERENCES_SEGMENT`, `ERR_PLATFORM_SEGMENT_HINT_INVALID`,
+  `ERR_PLATFORM_SPAN_DEPRECATED_COLUMN` (a `PlatformSpans` column still named
+  `NOMINAL_STOP_OFFSET_M` is rejected instead of being silently ignored).
 - `docs/MIGRATION_v1.14.0.md` (worked example, steps, StoppingPoints migration, error reference)
   and `docs/migrate_platforms.py` (Platforms + StoppingPoints → PlatformSpans using TrackLinks
   lengths; rewrites StoppingPatterns references; writes copies, originals untouched).
@@ -54,6 +57,11 @@ convert with `docs/migrate_platforms.py` and see **`docs/MIGRATION_v1.14.0.md`**
   **Parent Platform**, link offsets, per-track chainage and stop-segment flag.
 
 ### Changed
+- **Train fit is checked against the whole physical platform**: `RoutePlatformStop`
+  (`infrastructure/stations.py`) and `PlatformController.validate_platform_compatibility` use
+  `parent_platform_length_m` (sum of the parent platform's segment lengths) instead of the
+  segment length. A train longer than the whole platform raises `ERR_TRAIN_OVERHANG`
+  (`TrainOverhangError`, `RoutePlatformStop.check_train_fit`).
 - **StoppingPatterns reference the `PLATFORM_ID`** of `PlatformSpans`; referencing a generated
   segment ID raises `ERR_STOPPING_PATTERN_REFERENCES_SEGMENT`. The runner points each stop at the
   platform's stop segment internally.

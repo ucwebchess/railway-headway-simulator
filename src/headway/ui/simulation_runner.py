@@ -299,7 +299,7 @@ class SimulationRunner:
 
         # v1.14.0: StoppingPatterns reference the user-facing PlatformSpans.PLATFORM_ID; the
         # simulation works on the generated link-level segments. Single translation point:
-        # each stop is pointed at the segment holding its platform's nominal stop point.
+        # each stop is pointed at the segment holding its platform's segment hint point.
         project = cls._project_with_stop_segments(project)
 
         # Resolve effective performance factor (Task 1: wire Analysis ID / Simulation Mode to eff_pf)

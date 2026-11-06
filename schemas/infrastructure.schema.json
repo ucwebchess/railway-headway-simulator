@@ -176,7 +176,7 @@
           "end_chainage_km": {
             "type": "number"
           },
-          "nominal_stop_offset_m": {
+          "segment_hint_offset_m": {
             "type": [
               "number",
               "null"

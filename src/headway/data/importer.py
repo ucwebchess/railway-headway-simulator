@@ -37,6 +37,9 @@ class RawWorkbookData:
         # v1.14.0: legacy worksheets present in the file that are rejected by the schema
         # (e.g. Infrastructure 'Platforms' / 'StoppingPoints'); the converter refuses them.
         self.deprecated_sheets: List[str] = []
+        # v1.14.0: deprecated columns found in the file ('NOMINAL_STOP_OFFSET_M' ->
+        # 'SEGMENT_HINT_OFFSET_M'); the converter refuses them instead of ignoring them.
+        self.deprecated_columns: List[str] = []
 
     def get_rows(self, worksheet_name: str) -> List[Dict[str, Any]]:
         return self.worksheets.get(worksheet_name, [])
@@ -411,6 +414,34 @@ class ExcelImporter:
                         column=col_h,
                     )
                 seen_cols.add(col_h.upper())
+
+            # v1.14.0: a deprecated PlatformSpans column is refused loudly — as an unknown
+            # column it would otherwise be ignored and silently fall back to the default value.
+            if wb_type == "INFRASTRUCTURE" and ws_def.name == "PlatformSpans":
+                from headway.data.platform_spans import (
+                    DEPRECATED_PLATFORM_SPAN_COLUMNS,
+                    ERR_PLATFORM_SPAN_DEPRECATED_COLUMN,
+                    MIGRATION_GUIDE,
+                    deprecated_column_message,
+                )
+
+                for col_h in raw_headers:
+                    old = col_h.upper()
+                    if old in DEPRECATED_PLATFORM_SPAN_COLUMNS and old not in raw_wb.deprecated_columns:
+                        raw_wb.deprecated_columns.append(old)
+                        report.add_finding(
+                            error_code=ERR_PLATFORM_SPAN_DEPRECATED_COLUMN,
+                            severity=Severity.CRITICAL,
+                            message=deprecated_column_message(old),
+                            workbook=wb_name,
+                            worksheet=ws_def.name,
+                            column=col_h,
+                            object_id=old,
+                            recommendation=(
+                                f"Rename the header to '{DEPRECATED_PLATFORM_SPAN_COLUMNS[old]}' "
+                                f"(see {MIGRATION_GUIDE})."
+                            ),
+                        )
 
             # Map column index to ColumnDef
             col_map: Dict[int, ColumnDef] = {}

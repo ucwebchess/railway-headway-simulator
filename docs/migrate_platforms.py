@@ -17,7 +17,7 @@ What it does
    A single-row group keeps its ID unchanged; a multi-row group is named by the stem
    (e.g. ``PLT_ADR_A1_1 .. PLT_ADR_A1_6`` -> ``PLT_ADR_A1``).
 4. Converts each ``StoppingPoints`` row (link + offset) into the span's
-   ``NOMINAL_STOP_OFFSET_M`` (metres from ``START_CHAINAGE_KM``).
+   ``SEGMENT_HINT_OFFSET_M`` (metres from ``START_CHAINAGE_KM``).
 5. Writes a copy of the Infrastructure workbook with ``Platforms`` / ``StoppingPoints``
    removed and a ``PlatformSpans`` sheet added; with ``--operations`` also a copy of the
    Operations workbook whose ``StoppingPatterns.PLATFORM_ID`` values are rewritten to the
@@ -47,9 +47,12 @@ except ImportError:  # pragma: no cover - running from a checkout without instal
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
     from headway.data.platform_spans import MIN_SPAN_LENGTH_M, track_chainage_frame
 
+#: In-workbook description of SEGMENT_HINT_OFFSET_M (INSTRUCTIONS sheet).
+HINT_DESCRIPTION = "Selects which platform segment the train berths on (not the exact stop position)"
+
 SPAN_COLUMNS = [
     "PLATFORM_ID", "STATION_ID", "TRACK_ID", "START_CHAINAGE_KM", "END_CHAINAGE_KM",
-    "NOMINAL_STOP_OFFSET_M", "DESCRIPTION",
+    "SEGMENT_HINT_OFFSET_M", "DESCRIPTION",
 ]
 SPAN_SUBHEADER = ["(Required)", "(Required)", "(Required)", "[km]", "[km]", "[m]", "(Optional)"]
 CONTIGUITY_TOL_M = 0.01
@@ -77,7 +80,7 @@ class MigratedSpan:
     track_id: str
     start_m: float
     end_m: float
-    nominal_stop_offset_m: Optional[float]
+    segment_hint_offset_m: Optional[float]
     source_ids: List[str] = field(default_factory=list)
     stopping_point_ids: List[str] = field(default_factory=list)
 
@@ -92,7 +95,7 @@ class MigratedSpan:
         return [
             self.platform_id, self.station_id, self.track_id,
             round(self.start_m / 1000.0, 6), round(self.end_m / 1000.0, 6),
-            None if self.nominal_stop_offset_m is None else round(self.nominal_stop_offset_m, 3),
+            None if self.segment_hint_offset_m is None else round(self.segment_hint_offset_m, 3),
             desc,
         ]
 
@@ -224,7 +227,7 @@ def migrate_rows(platform_rows: List[Dict[str, Any]], stopping_point_rows: List[
     if short:
         warnings.append(f"Spans shorter than {MIN_SPAN_LENGTH_M:.0f} m will be rejected by the validator: {short}")
 
-    # Stopping points -> nominal stop offsets.
+    # Stopping points -> segment hint offsets.
     by_id = {sp.platform_id: sp for sp in spans}
     for r in stopping_point_rows:
         spid = str(r.get("STOPPING_POINT_ID") or "").strip()
@@ -242,17 +245,17 @@ def migrate_rows(platform_rows: List[Dict[str, Any]], stopping_point_rows: List[
                 f"StoppingPoint '{spid}' lies {offset:.3f} m from the start of platform '{span.platform_id}' "
                 f"(length {span.length_m:.3f} m) — outside the platform."
             )
-        if span.nominal_stop_offset_m is not None:
+        if span.segment_hint_offset_m is not None:
             warnings.append(
                 f"Platform '{span.platform_id}' has several stopping points; kept the first "
                 f"({span.stopping_point_ids[0]}), ignored '{spid}'."
             )
             continue
-        span.nominal_stop_offset_m = min(max(offset, 0.0), span.length_m)
+        span.segment_hint_offset_m = min(max(offset, 0.0), span.length_m)
         span.stopping_point_ids.append(spid)
     for sp in spans:
-        if sp.nominal_stop_offset_m is None:
-            warnings.append(f"Platform '{sp.platform_id}' had no stopping point; NOMINAL_STOP_OFFSET_M left blank (mid-platform).")
+        if sp.segment_hint_offset_m is None:
+            warnings.append(f"Platform '{sp.platform_id}' had no stopping point; SEGMENT_HINT_OFFSET_M left blank (mid-platform).")
     return MigrationResult(spans=spans, id_map=id_map, warnings=warnings)
 
 
@@ -291,8 +294,9 @@ def write_infrastructure(src: Path, dst: Path, result: MigrationResult) -> None:
         for row in wb["INSTRUCTIONS"].iter_rows():
             for cell in row:
                 if isinstance(cell.value, str) and ("StoppingPoints" in cell.value or "Platforms" in cell.value):
-                    cell.value = (cell.value.replace("StoppingPoints", "PlatformSpans.NOMINAL_STOP_OFFSET_M")
-                                  .replace("Platforms", "PlatformSpans"))
+                    cell.value = (cell.value.replace("StoppingPoints", "PlatformSpans.SEGMENT_HINT_OFFSET_M")
+                                  .replace("Platforms", "PlatformSpans")
+                                  .replace("Designated stopping points at platforms", HINT_DESCRIPTION))
     dst.parent.mkdir(parents=True, exist_ok=True)
     wb.save(dst)
 
@@ -319,7 +323,7 @@ def write_operations(src: Path, dst: Path, id_map: Dict[str, str]) -> int:
 def format_table(result: MigrationResult) -> str:
     lines = [f"{'PLATFORM_ID':<16} {'STATION':<12} {'TRACK':<10} {'START_KM':>10} {'END_KM':>10} {'LEN_M':>9} {'STOP_OFF_M':>10}  SOURCE ROWS"]
     for sp in result.spans:
-        off = "" if sp.nominal_stop_offset_m is None else f"{sp.nominal_stop_offset_m:.3f}"
+        off = "" if sp.segment_hint_offset_m is None else f"{sp.segment_hint_offset_m:.3f}"
         lines.append(f"{sp.platform_id:<16} {sp.station_id:<12} {sp.track_id:<10} {sp.start_m / 1000:>10.6f} "
                      f"{sp.end_m / 1000:>10.6f} {sp.length_m:>9.3f} {off:>10}  {', '.join(sp.source_ids)}")
     return "\n".join(lines)

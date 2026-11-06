@@ -58,6 +58,7 @@ from headway.data.importer import RawWorkbookData
 from headway.data.platform_spans import (
     ERR_PLATFORM_SPAN_INVALID,
     check_stop_reference,
+    deprecated_column_error,
     deprecated_sheet_error,
     is_generated_platform_id,
     segment_all_platform_spans,
@@ -86,6 +87,8 @@ def convert_raw_to_canonical(
     for wb in raw_workbooks.values():
         for legacy_sheet in getattr(wb, "deprecated_sheets", []) or []:
             raise deprecated_sheet_error(legacy_sheet, getattr(getattr(wb, "file_path", None), "name", "") or "")
+        for old_column in getattr(wb, "deprecated_columns", []) or []:
+            raise deprecated_column_error(old_column, getattr(getattr(wb, "file_path", None), "name", "") or "")
 
     # 1. Convert Infrastructure
     infra_model = _build_infrastructure_model(raw_workbooks.get("INFRASTRUCTURE"))
@@ -174,7 +177,7 @@ def _build_infrastructure_model(infra_wb: Optional[RawWorkbookData]) -> Infrastr
     ]
 
     # v1.14.0: PlatformSpans (one row per physical platform) -> link-level Platform segments
-    # "<PLATFORM_ID>@s<N>" + one StoppingPoint "<PLATFORM_ID>@stop" at the nominal stop point.
+    # "<PLATFORM_ID>@s<N>" + one StoppingPoint "<PLATFORM_ID>@stop" at the segment hint point.
     span_rows = infra_wb.get_rows("PlatformSpans")
     for r in span_rows:
         if is_generated_platform_id(str(r.get("platform_id") or "")):
@@ -191,8 +194,8 @@ def _build_infrastructure_model(infra_wb: Optional[RawWorkbookData]) -> Infrastr
             track_id=r["track_id"],
             start_chainage_km=float(r["start_chainage_km"]),
             end_chainage_km=float(r["end_chainage_km"]),
-            nominal_stop_offset_m=(
-                float(r["nominal_stop_offset_m"]) if r.get("nominal_stop_offset_m") not in (None, "") else None
+            segment_hint_offset_m=(
+                float(r["segment_hint_offset_m"]) if r.get("segment_hint_offset_m") not in (None, "") else None
             ),
             description=r.get("description"),
         )
