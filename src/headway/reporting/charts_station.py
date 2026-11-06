@@ -40,19 +40,21 @@ def create_platform_occupation_figure(
     if running_direction == RunningDirection.REVERSE:
         recs = list(reversed(recs))
 
-    def _get_plt_id(r: Any) -> str:
-        stn = getattr(r, "station_id", "") or ""
-        plt = getattr(r, "platform_id", "") or ""
+    # v1.14.0: one bar per parent platform (link-level segments aggregated).
+    from headway.reporting.platform_aggregation import aggregate_platform_records
+
+    aggs = aggregate_platform_records(recs)
+
+    def _label(a: Any) -> str:
+        stn, plt = a.station_id, a.platform_id
         if stn and plt:
-            if plt.startswith(stn):
-                return plt
-            return f"{stn}-{plt}"
+            return plt if plt.startswith(stn) else f"{stn}-{plt}"
         return plt or stn or "PLT"
 
-    platform_ids = [_get_plt_id(r) for r in recs]
-    approach_durations = [float(getattr(r, "arrival_approach_s", 15.0)) for r in recs]
-    dwell_durations = [float(getattr(r, "passenger_dwell_s", getattr(r, "dwell_duration_s", 0.0))) for r in recs]
-    clearance_durations = [float(getattr(r, "departure_clearance_s", 15.0)) for r in recs]
+    platform_ids = [_label(a) for a in aggs]
+    approach_durations = [a.arrival_approach_s for a in aggs]
+    dwell_durations = [a.passenger_dwell_s for a in aggs]
+    clearance_durations = [a.departure_clearance_s for a in aggs]
 
     # Trace 1: Arrival Approach (Light Blue)
     fig.add_trace(

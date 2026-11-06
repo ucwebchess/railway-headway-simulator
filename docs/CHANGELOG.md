@@ -23,6 +23,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.0] — 2026-11-06
+
+### ⚠️ BREAKING CHANGE — Platform schema replacement (`Platforms` → `PlatformSpans`)
+
+The Infrastructure workbook's **`Platforms` and `StoppingPoints` sheets are removed** and replaced
+by a single **`PlatformSpans`** sheet with one row per physical platform. **There is no backward
+compatibility:** an Infrastructure workbook that still contains a `Platforms` sheet is rejected
+with `ERR_PLATFORMS_DEPRECATED`, one with a `StoppingPoints` sheet with
+`ERR_STOPPINGPOINTS_DEPRECATED` (no project is loaded). The importer does **not** auto-migrate —
+convert with `docs/migrate_platforms.py` and see **`docs/MIGRATION_v1.14.0.md`**.
+
+### Added
+- **`PlatformSpans` sheet**: `PLATFORM_ID`, `STATION_ID`, `TRACK_ID`, `START_CHAINAGE_KM`,
+  `END_CHAINAGE_KM` (required), `NOMINAL_STOP_OFFSET_M` (optional, metres from START; blank =
+  mid-platform), `DESCRIPTION`. Chainage is per-track (0 km at the track's first link).
+- **Auto-segmentation** (`headway.data.platform_spans`): each span becomes link-level platform
+  segments `<PLATFORM_ID>@s<N>` (N = 1-based link order — a stable, deterministic ID contract)
+  with the new canonical field `Platform.parent_platform_id`; the nominal stop resolves to the
+  segment containing it (generated stopping point `<PLATFORM_ID>@stop`).
+- New error codes, each naming the offending sheet/ID and pointing to the migration guide:
+  `ERR_PLATFORM_SPAN_INVALID`, `ERR_PLATFORM_SPAN_EXCEEDS_TRACK`, `ERR_PLATFORM_SPAN_DUPLICATE`,
+  `ERR_PLATFORMS_DEPRECATED`, `ERR_STOPPINGPOINTS_DEPRECATED`,
+  `ERR_STOPPING_PATTERN_REFERENCES_SEGMENT`, `ERR_PLATFORM_NOMINAL_STOP_INVALID`.
+- `docs/MIGRATION_v1.14.0.md` (worked example, steps, StoppingPoints migration, error reference)
+  and `docs/migrate_platforms.py` (Platforms + StoppingPoints → PlatformSpans using TrackLinks
+  lengths; rewrites StoppingPatterns references; writes copies, originals untouched).
+- Upload panel: a prominent banner for platform-schema errors with the migration-guide link.
+- Section 11 (Provenance): new *Platform Segment Provenance* table — one row per segment with its
+  **Parent Platform**, link offsets, per-track chainage and stop-segment flag.
+
+### Changed
+- **StoppingPatterns reference the `PLATFORM_ID`** of `PlatformSpans`; referencing a generated
+  segment ID raises `ERR_STOPPING_PATTERN_REFERENCES_SEGMENT`. The runner points each stop at the
+  platform's stop segment internally.
+- **Section 6** (Station Platform Occupation): one row per platform with columns Platform ID,
+  Station, Total Occupation (s), Arrival Approach (s), Passenger Dwell (s), Departure Clearance (s),
+  Segments; a footnote lists each platform's segment IDs (HTML, PDF and Excel). The *Train ID*
+  column is dropped. The occupation chart and narrative use the same per-platform values.
+- Parent platform IDs replace segment IDs in user-facing output (station-stop table,
+  recommendations, platform counts; the Infrastructure tab shows Platform + Segment).
+- Template `HEADWAY_INFRASTRUCTURE_v1.0.xlsx` and all 7 examples migrated to `PlatformSpans`.
+  Simulation results are unchanged: every example (both directions) reproduces the pre-change
+  headway, journey time, block count, stop and platform timings exactly.
+
+### Removed
+- `Platforms` and `StoppingPoints` worksheets (Infrastructure workbook).
+
+---
+
 ## [1.13.0] — 2026-11-03
 
 New executive KPI: **Total Track Length (km)**. Reporting and runner metadata only — the physics

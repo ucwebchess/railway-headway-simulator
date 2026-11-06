@@ -58,6 +58,14 @@ class PlatformOccupationRecord:
     # When True, ALL occupation components are exactly 0.0 s — the legacy 15 s visual
     # clearance fallback is neutralised so unused platforms cannot show phantom time.
     never_occupied: bool = False
+    # v1.14.0: user-facing PlatformSpans.PLATFORM_ID of this link-level segment (None for
+    # platforms not generated from a span). Reports aggregate and display by this ID.
+    parent_platform_id: Optional[str] = None
+
+    @property
+    def display_platform_id(self) -> str:
+        """Platform ID shown to users: the parent platform for generated segments."""
+        return self.parent_platform_id or self.platform_id
 
     @property
     def dwell_duration_s(self) -> float:
@@ -96,6 +104,32 @@ class PlatformOccupationRecord:
     @property
     def total_platform_occupation_s(self) -> float:
         return round(self.arrival_approach_s + self.passenger_dwell_s + self.departure_clearance_s, 1)
+
+
+@dataclass(frozen=True)
+class PlatformSegmentProvenanceRecord:
+    """v1.14.0: provenance of one link-level platform segment (Section 11).
+
+    Segments ``<PLATFORM_ID>@s<N>`` are generated deterministically from a PlatformSpans
+    row (N = 1-based position in the track's link order); ``parent_platform_id`` is that
+    row's PLATFORM_ID. Chainages are per-track (0 km at the track's first link).
+    """
+
+    segment_id: str
+    parent_platform_id: Optional[str]
+    station_id: str
+    track_id: str
+    link_id: str
+    start_offset_m: float
+    end_offset_m: float
+    track_start_chainage_km: Optional[float] = None
+    track_end_chainage_km: Optional[float] = None
+    is_stop_segment: bool = False
+    geometry_source: str = "PLATFORM_SPAN_AUTO_SEGMENTATION"
+
+    @property
+    def length_m(self) -> float:
+        return abs(self.end_offset_m - self.start_offset_m)
 
 
 @dataclass(frozen=True)

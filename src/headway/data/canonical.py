@@ -164,6 +164,51 @@ class Station(BaseCanonicalModel):
         return normalize_identifier(v, id_type="STATION_ID")
 
 
+def _normalize_platform_like_id(v: Any, id_type: str) -> str:
+    """v1.14.0: plain identifiers, or tool-generated ``<ID>@s<N>`` / ``<ID>@stop`` (the parent
+    part is validated with the normal identifier rules; users cannot type '@')."""
+    from headway.data.platform_spans import split_generated_id
+
+    raw = str(v).strip() if v is not None else v
+    parts = split_generated_id(raw) if isinstance(raw, str) else None
+    if parts is not None:
+        return normalize_identifier(parts[0], id_type=id_type) + parts[1]
+    return normalize_identifier(v, id_type=id_type)
+
+
+class PlatformSpan(BaseCanonicalModel):
+    """v1.14.0: one physical platform, declared by per-track chainage (PlatformSpans sheet).
+
+    Auto-segmented into link-level :class:`Platform` objects ``<PLATFORM_ID>@s<N>`` and one
+    :class:`StoppingPoint` ``<PLATFORM_ID>@stop`` (see ``headway.data.platform_spans``).
+    """
+
+    platform_id: str = Field(..., description="User-facing platform identifier (unique)")
+    station_id: str = Field(..., description="Parent station identifier")
+    track_id: str = Field(..., description="Track carrying the platform")
+    start_chainage_km: float = Field(..., description="Per-track chainage where the platform begins (km)")
+    end_chainage_km: float = Field(..., description="Per-track chainage where the platform ends (km)")
+    nominal_stop_offset_m: Optional[float] = Field(
+        default=None, description="Nominal stop point from START_CHAINAGE_KM (m); None = mid-platform"
+    )
+    description: Optional[str] = Field(default=None, description="Free text")
+
+    @field_validator("platform_id")
+    @classmethod
+    def validate_platform_id(cls, v: str) -> str:
+        return normalize_identifier(v, id_type="PLATFORM_ID")
+
+    @field_validator("station_id")
+    @classmethod
+    def validate_station_id(cls, v: str) -> str:
+        return normalize_identifier(v, id_type="STATION_ID")
+
+    @field_validator("track_id")
+    @classmethod
+    def validate_track_id(cls, v: str) -> str:
+        return normalize_identifier(v, id_type="TRACK_ID")
+
+
 class Platform(BaseCanonicalModel):
     """Passenger boarding platform along a track link."""
 
@@ -173,11 +218,19 @@ class Platform(BaseCanonicalModel):
     start_offset_m: float = Field(..., ge=0.0, description="Platform start offset along link")
     end_offset_m: float = Field(..., ge=0.0, description="Platform end offset along link")
     length_m: float = Field(..., gt=0.0, description="Usable platform stopping length in meters")
+    # v1.14.0: user-facing PlatformSpans.PLATFORM_ID this link-level segment was generated from
+    # (segment IDs are ``<PLATFORM_ID>@s<N>``). None for platforms not generated from a span.
+    parent_platform_id: Optional[str] = Field(default=None, description="Parent platform span identifier")
 
     @field_validator("platform_id")
     @classmethod
     def validate_platform_id(cls, v: str) -> str:
-        return normalize_identifier(v, id_type="PLATFORM_ID")
+        return _normalize_platform_like_id(v, "PLATFORM_ID")
+
+    @field_validator("parent_platform_id")
+    @classmethod
+    def validate_parent_platform_id(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else normalize_identifier(v, id_type="PLATFORM_ID")
 
     @field_validator("station_id")
     @classmethod
@@ -201,7 +254,7 @@ class StoppingPoint(BaseCanonicalModel):
     @field_validator("stopping_point_id")
     @classmethod
     def validate_id(cls, v: str) -> str:
-        return normalize_identifier(v, id_type="STOPPING_POINT_ID")
+        return _normalize_platform_like_id(v, "STOPPING_POINT_ID")
 
 
 class Tunnel(BaseCanonicalModel):
@@ -265,7 +318,10 @@ class InfrastructureModel(BaseCanonicalModel):
     tracks: List[Track] = Field(default_factory=list, description="Track lines")
     track_links: List[TrackLink] = Field(default_factory=list, description="1D physical track links")
     stations: List[Station] = Field(default_factory=list, description="Stations")
-    platforms: List[Platform] = Field(default_factory=list, description="Platforms")
+    # v1.14.0: user-declared platform spans; ``platforms`` / ``stopping_points`` are the
+    # link-level segments and nominal stopping points generated from them.
+    platform_spans: List[PlatformSpan] = Field(default_factory=list, description="Platform spans (one per physical platform)")
+    platforms: List[Platform] = Field(default_factory=list, description="Platforms (link-level segments)")
     stopping_points: List[StoppingPoint] = Field(default_factory=list, description="Designated stopping points")
     tunnels: List[Tunnel] = Field(default_factory=list, description="Tunnels")
     tvs_sections: List[TVSSection] = Field(default_factory=list, description="Tunnel ventilation sections")
@@ -468,6 +524,10 @@ class StationStop(BaseCanonicalModel):
     @field_validator("platform_id")
     @classmethod
     def validate_platform(cls, v: str) -> str:
+        # v1.14.0: stops reference the user-facing PLATFORM_ID, never a generated segment.
+        from headway.data.platform_spans import check_stop_reference
+
+        check_stop_reference(v)
         return normalize_identifier(v, id_type="PLATFORM_ID")
 
 

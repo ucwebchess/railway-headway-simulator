@@ -70,7 +70,7 @@ def build_route_scope_project(dst: Path, route: list[str] | None = None) -> Path
     wb = openpyxl.load_workbook(dst / "01_Infrastructure.xlsx")
     _rewrite(wb["Nodes"], nodes)
     _rewrite(wb["TrackLinks"], links)
-    for s in ("Stations", "Platforms", "StoppingPoints", "Tunnels", "TVSSections", "TVSGeometry"):
+    for s in ("Stations", "PlatformSpans", "Tunnels", "TVSSections", "TVSGeometry"):  # v1.14.0 schema
         _rewrite(wb[s], [])
     wb.save(dst / "01_Infrastructure.xlsx")
 

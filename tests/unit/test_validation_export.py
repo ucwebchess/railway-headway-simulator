@@ -25,7 +25,7 @@ def test_export_validation_report_to_excel(tmp_path: Path):
         severity=Severity.WARNING,
         message="Test warning",
         workbook="01_Infrastructure.xlsx",
-        worksheet="Platforms",
+        worksheet="PlatformSpans",
     )
 
     out_file = tmp_path / "findings.xlsx"

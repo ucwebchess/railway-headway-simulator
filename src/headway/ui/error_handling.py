@@ -208,3 +208,53 @@ def create_warning_html(
         </div>
     </div>
     """
+
+
+def create_platform_schema_error_html(findings: Any) -> Optional[str]:
+    """v1.14.0: prominent upload-panel banner for platform-schema errors.
+
+    Returns None when no finding carries one of the PlatformSpans / legacy-schema codes
+    (``ERR_PLATFORMS_DEPRECATED``, ``ERR_STOPPINGPOINTS_DEPRECATED``, ``ERR_PLATFORM_SPAN_*``,
+    ``ERR_STOPPING_PATTERN_REFERENCES_SEGMENT``, ``ERR_PLATFORM_NOMINAL_STOP_INVALID``).
+    """
+    import html as _html
+
+    from headway.data.platform_spans import (
+        ALL_PLATFORM_SPAN_ERROR_CODES,
+        ERR_PLATFORMS_DEPRECATED,
+        ERR_STOPPINGPOINTS_DEPRECATED,
+        MIGRATION_GUIDE,
+        MIGRATION_GUIDE_URL,
+        MIGRATION_HELPER,
+    )
+
+    hits = [f for f in (findings or []) if getattr(f, "error_code", None) in ALL_PLATFORM_SPAN_ERROR_CODES]
+    if not hits:
+        return None
+    legacy = any(f.error_code in (ERR_PLATFORMS_DEPRECATED, ERR_STOPPINGPOINTS_DEPRECATED) for f in hits)
+    title = "Legacy platform schema rejected (v1.14.0)" if legacy else "Invalid PlatformSpans data"
+    items = "".join(
+        f"<li style='margin: 4px 0;'><code style='font-weight: 700; color: #991B1B;'>{_html.escape(f.error_code)}</code>"
+        f"{' &mdash; ' + _html.escape(str(f.worksheet)) if getattr(f, 'worksheet', None) else ''}"
+        f"{' / <code>' + _html.escape(str(f.object_id)) + '</code>' if getattr(f, 'object_id', None) else ''}: "
+        f"{_html.escape(str(f.message))}</li>"
+        for f in hits
+    )
+    how = (
+        "Replace the <code>Platforms</code> and <code>StoppingPoints</code> sheets with one <code>PlatformSpans</code> "
+        "sheet (one row per physical platform). Convert automatically with "
+        f"<code>python {MIGRATION_HELPER} INFRASTRUCTURE.xlsx --operations OPERATIONS.xlsx</code>, review the printed "
+        "table, then upload the migrated workbooks."
+        if legacy
+        else "Correct the listed PlatformSpans rows / StoppingPatterns references and upload again."
+    )
+    return f"""
+    <div id="platform-schema-error" style="background-color: #FEF2F2; border: 2px solid #DC2626; border-left: 8px solid #DC2626; padding: 16px 20px; border-radius: 6px; margin: 10px 0;">
+        <div style="font-weight: 800; color: #991B1B; font-size: 16px; margin-bottom: 8px;">⛔ {_html.escape(title)}</div>
+        <ul style="color: #7F1D1D; font-size: 13px; margin: 0 0 10px 18px; padding: 0;">{items}</ul>
+        <div style="font-size: 13px; color: #1F2937; background: #FFFFFF; padding: 10px 12px; border-radius: 4px; border: 1px solid #E5E7EB;">
+            <strong>How to fix:</strong> {how}<br/>
+            <strong>Migration guide:</strong> <a href="{MIGRATION_GUIDE_URL}" target="_blank" rel="noopener">{_html.escape(MIGRATION_GUIDE)}</a>
+        </div>
+    </div>
+    """

@@ -69,15 +69,28 @@ class DatasetValidator:
                 if sid:
                     self._safe_register("STATION", sid, "INFRASTRUCTURE", "Stations", row.get("_row"))
 
-            for row in infra.get_rows("Platforms"):
+            # v1.14.0: PlatformSpans (one row per physical platform). PLATFORM_ID is unique
+            # across the workbook -> ERR_PLATFORM_SPAN_DUPLICATE (not the generic ERR_ID_DUPLICATE).
+            for row in infra.get_rows("PlatformSpans"):
                 pid = row.get("platform_id")
-                if pid:
-                    self._safe_register("PLATFORM", pid, "INFRASTRUCTURE", "Platforms", row.get("_row"))
+                if not pid:
+                    continue
+                if self.registry.exists("PLATFORM", str(pid).strip()):
+                    from headway.data.platform_spans import (
+                        ERR_PLATFORM_SPAN_DUPLICATE,
+                        MIGRATION_GUIDE,
+                    )
 
-            for row in infra.get_rows("StoppingPoints"):
-                spid = row.get("stopping_point_id")
-                if spid:
-                    self._safe_register("STOPPING_POINT", spid, "INFRASTRUCTURE", "StoppingPoints", row.get("_row"))
+                    self.report.add_finding(
+                        error_code=ERR_PLATFORM_SPAN_DUPLICATE,
+                        severity=Severity.ERROR,
+                        message=f"'{pid}': PLATFORM_ID must be unique across the workbook. See {MIGRATION_GUIDE}.",
+                        workbook="INFRASTRUCTURE",
+                        worksheet="PlatformSpans",
+                        object_id=str(pid),
+                    )
+                    continue
+                self._safe_register("PLATFORM", pid, "INFRASTRUCTURE", "PlatformSpans", row.get("_row"))
 
             for row in infra.get_rows("Tunnels"):
                 tnl_id = row.get("tunnel_id")
@@ -170,15 +183,10 @@ class DatasetValidator:
                 self._check_ref("NODE", row.get("start_node_id"), "TrackLinks.start_node_id", "INFRASTRUCTURE", "TrackLinks", lid)
                 self._check_ref("NODE", row.get("end_node_id"), "TrackLinks.end_node_id", "INFRASTRUCTURE", "TrackLinks", lid)
 
-            for row in infra.get_rows("Platforms"):
+            for row in infra.get_rows("PlatformSpans"):
                 pid = row.get("platform_id")
-                self._check_ref("STATION", row.get("station_id"), "Platforms.station_id", "INFRASTRUCTURE", "Platforms", pid)
-                self._check_ref("LINK", row.get("link_id"), "Platforms.link_id", "INFRASTRUCTURE", "Platforms", pid)
-
-            for row in infra.get_rows("StoppingPoints"):
-                spid = row.get("stopping_point_id")
-                self._check_ref("PLATFORM", row.get("platform_id"), "StoppingPoints.platform_id", "INFRASTRUCTURE", "StoppingPoints", spid)
-                self._check_ref("LINK", row.get("link_id"), "StoppingPoints.link_id", "INFRASTRUCTURE", "StoppingPoints", spid)
+                self._check_ref("STATION", row.get("station_id"), "PlatformSpans.station_id", "INFRASTRUCTURE", "PlatformSpans", pid)
+                self._check_ref("TRACK", row.get("track_id"), "PlatformSpans.track_id", "INFRASTRUCTURE", "PlatformSpans", pid)
 
             # TVS sections
             infra_tvs_geom = infra.get_rows("TVSGeometry")
@@ -270,7 +278,29 @@ class DatasetValidator:
                 spid = row.get("service_pattern_id")
                 self._check_ref("SERVICE_PATTERN", spid, "StoppingPatterns.service_pattern_id", "OPERATIONS", "StoppingPatterns", spid)
                 self._check_ref("STATION", row.get("station_id"), "StoppingPatterns.station_id", "OPERATIONS", "StoppingPatterns", spid)
-                self._check_ref("PLATFORM", row.get("platform_id"), "StoppingPatterns.platform_id", "OPERATIONS", "StoppingPatterns", spid)
+                from headway.data.platform_spans import (
+                    ERR_STOPPING_PATTERN_REFERENCES_SEGMENT,
+                    MIGRATION_GUIDE,
+                    is_segment_id,
+                    parent_of,
+                )
+
+                if is_segment_id(row.get("platform_id")):
+                    seg = str(row.get("platform_id")).strip()
+                    self.report.add_finding(
+                        error_code=ERR_STOPPING_PATTERN_REFERENCES_SEGMENT,
+                        severity=Severity.CRITICAL,
+                        message=(
+                            f"'{seg}': StoppingPatterns ({spid}) references a "
+                            f"generated platform segment; reference '{parent_of(seg)}' (PlatformSpans.PLATFORM_ID). "
+                            f"See {MIGRATION_GUIDE}."
+                        ),
+                        workbook="OPERATIONS",
+                        worksheet="StoppingPatterns",
+                        object_id=seg,
+                    )
+                else:
+                    self._check_ref("PLATFORM", row.get("platform_id"), "StoppingPatterns.platform_id", "OPERATIONS", "StoppingPatterns", spid)
 
         an = raw_workbooks.get("HEADWAY_ANALYSIS")
         if an:
@@ -542,29 +572,39 @@ class DatasetValidator:
                     except ValueError:
                         pass
 
-            # Platforms within link bounds
-            for row in infra.get_rows("Platforms"):
-                pid = row.get("platform_id")
-                lid = row.get("link_id")
-                start = row.get("start_offset_m")
-                end = row.get("end_offset_m")
-                if lid in link_lengths and start is not None and end is not None:
-                    max_len = link_lengths[lid]
-                    if (
-                        start < -GEOMETRY_TOLERANCE_M
-                        or start > max_len + GEOMETRY_TOLERANCE_M
-                        or end < -GEOMETRY_TOLERANCE_M
-                        or end > max_len + GEOMETRY_TOLERANCE_M
-                        or start >= end
-                    ):
+            # v1.14.0: PlatformSpans geometry — dry-run the auto-segmentation per span so every
+            # problem is reported with its own code (ERR_PLATFORM_SPAN_INVALID / _EXCEEDS_TRACK /
+            # ERR_PLATFORM_NOMINAL_STOP_INVALID). The converter raises the first one.
+            from headway.data.platform_spans import (
+                PlatformSpanError,
+                segment_platform_span,
+                track_chainage_frame,
+            )
+
+            span_rows = infra.get_rows("PlatformSpans")
+            if span_rows:
+                link_rows = [r for r in infra.get_rows("TrackLinks") if r.get("link_id") and r.get("length_m") is not None]
+                station_ids = {r.get("station_id") for r in infra.get_rows("Stations")}
+                track_ids = {r.get("track_id") for r in infra.get_rows("Tracks")}
+                frames: Dict[str, Any] = {}
+                for row in span_rows:
+                    pid = row.get("platform_id")
+                    tid = row.get("track_id")
+                    try:
+                        if tid in track_ids and tid not in frames:
+                            frames[tid] = track_chainage_frame(link_rows, tid)
+                        segment_platform_span(row, frames.get(tid, []), station_ids, track_ids)
+                    except PlatformSpanError as err:
                         self.report.add_finding(
-                            error_code="ERR_ENG_OFFSET_OUT_OF_BOUNDS",
+                            error_code=err.error_code,
                             severity=Severity.ERROR,
-                            message=f"Platform '{pid}' interval [{start}, {end}] exceeds link '{lid}' length ({max_len} m) or is inverted.",
+                            message=err.message,
                             workbook="INFRASTRUCTURE",
-                            worksheet="Platforms",
-                            object_id=pid,
+                            worksheet="PlatformSpans",
+                            object_id=str(pid) if pid is not None else None,
                         )
+                    except Exception:  # noqa: BLE001, S110 - non-numeric/malformed cells are reported by field validation
+                        pass
 
             # TVS sections positive occupancy
             for row in infra.get_rows("TVSSections"):

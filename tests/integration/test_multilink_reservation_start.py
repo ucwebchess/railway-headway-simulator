@@ -187,6 +187,11 @@ class _FastCorridorSimulator(MultiTrainSimulator):
 
 def _run_corridor_simulation(project, dwell_override: Optional[float] = None, performance_factor: float = 1.0):
     """Run microscopic simulation and return package and document."""
+    # v1.14.0: this harness drives the engine directly (bypassing run_simulation_pipeline), so it
+    # applies the same StoppingPatterns -> stop-segment view the pipeline applies.
+    from headway.data.platform_spans import project_with_stop_segments
+
+    project = project_with_stop_segments(project)
     infra = project.infrastructure
     sig = project.signalling
     rs = project.rolling_stock
