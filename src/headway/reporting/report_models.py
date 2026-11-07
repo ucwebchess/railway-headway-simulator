@@ -119,6 +119,9 @@ class ExecutiveKpis:
     total_track_length_m: Optional[float] = None
     route_link_count: Optional[int] = None
     network_track_length_m: Optional[float] = None
+    # v1.14.4: leader trajectory duration, start of run to end of track (samples[-1] - samples[0]).
+    # Differs from total_service_duration_s (origin departure -> terminus arrival); see Section 8.
+    trajectory_duration_s: Optional[float] = None
 
     @property
     def total_track_length_km(self) -> Optional[float]:
@@ -175,6 +178,14 @@ class ExecutiveKpis:
         ss = tot % 60
         return f"{hh:02d}:{mm:02d}:{ss:02d}"
 
+    @property
+    def trajectory_duration_str(self) -> str:
+        """v1.14.4: Formatted trajectory duration (start of run to end of track) in HH:MM:SS."""
+        if self.trajectory_duration_s is None:
+            return "N/A"
+        tot = round(self.trajectory_duration_s)
+        return f"{tot // 3600:02d}:{(tot % 3600) // 60:02d}:{tot % 60:02d}"
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "technical_headway_s": self.technical_headway_s,
@@ -190,6 +201,8 @@ class ExecutiveKpis:
             "planning_margin_str": self.planning_margin_str,
             "total_service_duration_s": self.total_service_duration_s,
             "total_service_duration_str": self.total_service_duration_str,
+            "trajectory_duration_s": self.trajectory_duration_s,
+            "trajectory_duration_str": self.trajectory_duration_str,
             "total_track_length_m": self.total_track_length_m,
             "total_track_length_km": self.total_track_length_km,
             "total_track_length_str": self.total_track_length_str,

@@ -97,6 +97,12 @@ def _between(seq, a, b, c):
     return ia < ib < ic and ib == ia + 1 and ic == ib + 1
 
 
+def _consecutive(seq, *items):
+    """True when all items are present and appear back-to-back in the given order."""
+    start = seq.index(items[0])
+    return list(seq[start:start + len(items)]) == list(items)
+
+
 @pytest.mark.parametrize("direction", [RunningDirection.FORWARD, RunningDirection.REVERSE])
 def test_kpi_value_and_placement_in_all_renderers(project, direction, tmp_path):
     pkg, doc = SimulationRunner.run_simulation_pipeline(project, running_direction=direction)
@@ -126,7 +132,14 @@ def test_kpi_value_and_placement_in_all_renderers(project, direction, tmp_path):
     ExcelReportExporter.export(doc, output_path=xp)
     rows = [r for r in openpyxl.load_workbook(xp)["Executive_Summary"].iter_rows(values_only=True) if r and r[0]]
     names = [str(r[0]) for r in rows]
-    assert _between(names, "Total Service Duration (End-to-End)", "Total Track Length", "Controlling Bottleneck Resource")
+    # v1.14.4: Trajectory Duration sits directly below the KPI it is compared with.
+    assert _consecutive(
+        names,
+        "Total Service Duration (End-to-End)",
+        "Trajectory Duration",
+        "Total Track Length",
+        "Controlling Bottleneck Resource",
+    )
     trk = rows[names.index("Total Track Length")]
     assert trk[1] == pytest.approx(9.05) and trk[2] == "km"
 

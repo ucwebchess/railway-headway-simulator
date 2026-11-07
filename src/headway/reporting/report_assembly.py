@@ -531,20 +531,77 @@ class ReportAssembler:
     # -------------------------------------------------------------------------
 
     @classmethod
-    def _compute_total_service_duration(cls, package: SimulationResultPackage) -> Optional[float]:
-        """Compute Total Service Duration = Journey Time from start to end.
+    def _station_stop_service_window(cls, package: SimulationResultPackage) -> Optional[Tuple[float, float]]:
+        """v1.14.4: ``(origin_departure_s, terminus_arrival_s)`` from the station stops, in absolute
+        simulation time -- the exact window the Total Service Duration KPI uses (its first source).
 
-        Total Service Duration = (Arrival Time at destination) - (Departure Time at origin)
-        Includes running time along all links, station dwells, and infrastructure restrictions.
+        None when there are fewer than 2 stops or the window is not positive (the KPI then falls
+        back to platform records / trajectories).
         """
-        # 1. If station stops exist in metadata with at least 2 stops
         station_stops = package.metadata.get("station_stops", [])
         if station_stops and len(station_stops) >= 2:
             t_origin = getattr(station_stops[0], "departure_time_s", getattr(station_stops[0], "arrival_time_s", 0.0))
             t_dest = getattr(station_stops[-1], "arrival_time_s", getattr(station_stops[-1], "departure_time_s", 0.0))
-            duration = max(0.0, float(t_dest - t_origin))
-            if duration > 0.0:
-                return duration
+            if float(t_dest - t_origin) > 0.0:
+                return float(t_origin), float(t_dest)
+        return None
+
+    @classmethod
+    def _leader_trajectory(cls, package: SimulationResultPackage) -> Optional[Any]:
+        if not package.trajectories:
+            return None
+        return package.trajectories.get("TRN_LEADER") or next(iter(package.trajectories.values()))
+
+    @classmethod
+    def _compute_trajectory_duration(cls, package: SimulationResultPackage) -> Optional[float]:
+        """v1.14.4: leader trajectory duration, start of run to end of track."""
+        traj = cls._leader_trajectory(package)
+        if traj is None or not traj.samples or len(traj.samples) < 2:
+            return None
+        return float(traj.samples[-1].time_s - traj.samples[0].time_s)
+
+    @staticmethod
+    def _fmt_s(value: float) -> str:
+        return f"{value:.0f}" if abs(value - round(value)) < 0.05 else f"{value:.1f}"
+
+    @classmethod
+    def _station_stopping_footnote(cls, package: SimulationResultPackage) -> str:
+        """v1.14.4: Section 8 caption stating the time reference frame of the table and of the
+        Total Service Duration KPI, plus the terminal clearing movement after the last stop."""
+        parts = ["Times are absolute simulation time from the start of the run."]
+        window = cls._station_stop_service_window(package)
+        if window is None:
+            return parts[0]
+        origin_dep, terminus_arr = window
+        parts.append(
+            "The Total Service Duration KPI measures from origin departure (the origin station's departure "
+            f"time, which is {cls._fmt_s(origin_dep)} s in this run) to terminus arrival."
+        )
+        traj = cls._leader_trajectory(package)
+        if traj is not None and traj.samples:
+            clearing_s = float(traj.samples[-1].time_s) - terminus_arr
+            if clearing_s >= 0.5:
+                parts.append(
+                    f"The trajectory continues {cls._fmt_s(clearing_s)} seconds past the final station arrival to "
+                    "reach the physical end of track. This terminal clearing movement is not included in the "
+                    "Total Service Duration KPI."
+                )
+        return " ".join(parts)
+
+    @classmethod
+    def _compute_total_service_duration(cls, package: SimulationResultPackage) -> Optional[float]:
+        """Compute Total Service Duration = origin departure -> terminus arrival.
+
+        Total Service Duration = (Arrival Time at destination) - (Departure Time at origin)
+        Includes running time along all links, station dwells, and infrastructure restrictions.
+        v1.14.4: this is NOT the trajectory duration (start of run -> end of track): the run-in
+        before the origin departure and any terminal clearing movement after the terminus
+        arrival are excluded. Section 8's footnote states both offsets for the run.
+        """
+        # 1. If station stops exist in metadata with at least 2 stops
+        window = cls._station_stop_service_window(package)
+        if window is not None:
+            return window[1] - window[0]
 
         # 2. If platform records exist in metadata with at least 2 platforms
         # v1.11.1 / Task 3: exclude zeroed `never_occupied` placeholder rows — they carry
@@ -649,6 +706,7 @@ class ReportAssembler:
         theo_cap = (3600.0 / hw_s) if hw_s > 0 else 0.0
         plan_cap = (3600.0 / (hw_s + margin_s)) if (hw_s + margin_s) > 0 else 0.0
         total_service_dur = cls._compute_total_service_duration(package)
+        traj_dur = cls._compute_trajectory_duration(package)
         track_len_m, route_link_count, network_len_m = cls._compute_total_track_length(package)
         pf = getattr(primary_hw, "performance_factor", 1.0) if primary_hw else package.metadata.get("performance_factor", 1.0)
         pf_src = getattr(primary_hw, "performance_factor_source", "default") if primary_hw else package.metadata.get("performance_factor_source", "default")
@@ -664,6 +722,7 @@ class ReportAssembler:
             headway_definition=primary_hw.headway_definition if primary_hw else "TECHNICAL_MINIMUM",
             planning_margin_s=margin_s,
             total_service_duration_s=round(total_service_dur, 1) if total_service_dur is not None else None,
+            trajectory_duration_s=round(traj_dur, 1) if traj_dur is not None else None,
             performance_factor=float(pf),
             performance_factor_source=str(pf_src),
             total_track_length_m=round(track_len_m, 2) if track_len_m is not None else None,
@@ -1540,7 +1599,10 @@ class ReportAssembler:
         is_app = bool(stops)
         tables: List[EngineeringTable] = []
         if is_app:
-            tables.append(create_station_stopping_table(stops, running_direction=direction))
+            table = create_station_stopping_table(stops, running_direction=direction)
+            # v1.14.4: state the table's time reference frame vs. the Total Service Duration KPI.
+            table.metadata = {**(table.metadata or {}), "footnote": cls._station_stopping_footnote(package)}
+            tables.append(table)
 
         return ReportSection(
             section_id=ReportSectionId.STATION_STOPPING_TABLE,
