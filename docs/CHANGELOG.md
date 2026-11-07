@@ -34,6 +34,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.4] — 2026-11-07
+
+Duration reference-frame labeling. The Total Service Duration KPI (origin departure → terminus arrival) was labeled inconsistently across report surfaces. Its value is unchanged. Reporting only; no physics engine or importer changes.
+
+### Changed
+- **PDF** KPI card subtext: "End-to-End Line Traversal" → "Origin departure to terminus arrival", matching the HTML card.
+- **Excel** Executive_Summary: the Total Service Duration note reads "…s service duration (origin departure to terminus arrival)" instead of "…s journey time".
+
+### Added
+- **Section 8** (Station Stopping) table footnote in HTML, PDF and Excel. It states that the times are absolute simulation time from the start of the run, gives the origin departure time the KPI starts from, and states how long the trajectory continues past the final station arrival to the physical end of track. That terminal clearing movement is not in the KPI. The clearing sentence is omitted when it is under 0.5 s, and the KPI sentence when there are fewer than 2 stops.
+- **Excel** Executive_Summary row "Trajectory Duration" (start of run to end of track, leader `samples[-1] − samples[0]`), directly below "Total Service Duration (End-to-End)". The block now reads Total Service Duration | Trajectory Duration | Total Track Length | Controlling Bottleneck Resource. HTML/PDF cards unchanged.
+- `trajectory_duration_s` / `trajectory_duration_str` on `ExecutiveKpis`, included in the report data and the JSON export (`to_dict()`). Additive field; not a breaking change.
+- Issue drafts targeting v1.15.0 (observations, not fixed here):
+  - `docs/issues/dual_duration_kpi.md`: dual passenger-journey / full-train-movement KPI.
+  - `docs/issues/terminal_crawl_track.md`: track beyond the terminus stopping point on the u8000 project; intent to be confirmed.
+  - `docs/issues/terminal_crawl_asymmetry.md`: FORWARD/REVERSE terminal clearing times differ (88 s vs 52 s); follow-up investigation.
+- `tests/unit/test_v1144_duration_labels.py` (FORWARD + REVERSE, corrected 07_hsr_140km).
+
+---
+
 ## [1.14.3] — 2026-11-07
 
 Follow-up to v1.14.2 (#72): chart overlays in REVERSE, default-off identity tests, and acceleration-phase physics checks. Reporting only; no physics engine or importer changes.

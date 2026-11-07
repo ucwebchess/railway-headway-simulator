@@ -402,7 +402,7 @@ class PdfReportRenderer:
             kpi_cells.append([
                 Paragraph("TOTAL SERVICE DURATION", styles["KpiLabel"]),
                 Paragraph(kpis.total_service_duration_str, styles["KpiVal"]),
-                Paragraph("End-to-End Line Traversal", styles["KpiSub"]),
+                Paragraph("Origin departure to terminus arrival", styles["KpiSub"]),
             ])
         # v1.13.0: Total Track Length (km) — between Total Service Duration and Controlling Bottleneck.
         if kpis.total_track_length_m is not None:

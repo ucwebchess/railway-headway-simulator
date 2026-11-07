@@ -107,8 +107,12 @@ class ExcelReportExporter:
         ws.append(["Planning Operational Capacity", kpis.planning_capacity_tph, "tph", f"under {kpis.planning_margin_s}s planning margin"])
         ws.append(["Operational Performance Factor", kpis.performance_factor_str, "%", f"Source: {kpis.performance_factor_source} (Traction & Service Braking scaled)"])
         if kpis.total_service_duration_s is not None:
-            ws.append(["Total Service Duration (End-to-End)", kpis.total_service_duration_str, "HH:MM:SS", f"{kpis.total_service_duration_s:.1f}s journey time"])
-        # v1.13.0: Total Track Length (km) — between Total Service Duration and Controlling Bottleneck.
+            ws.append(["Total Service Duration (End-to-End)", kpis.total_service_duration_str, "HH:MM:SS", f"{kpis.total_service_duration_s:.1f}s service duration (origin departure to terminus arrival)"])
+        # v1.14.4: trajectory duration (start of run -> end of track) directly below the KPI it is
+        # compared with; a different quantity, on its own row.
+        if getattr(kpis, "trajectory_duration_s", None) is not None:
+            ws.append(["Trajectory Duration", kpis.trajectory_duration_str, "HH:MM:SS", f"{kpis.trajectory_duration_s:.1f}s trajectory duration (start of run to end of track)"])
+        # v1.13.0: Total Track Length (km) — before Controlling Bottleneck (v1.14.4: after Trajectory Duration).
         if kpis.total_track_length_m is not None:
             ws.append(["Total Track Length", round(kpis.total_track_length_km, 3), "km", kpis.total_track_length_subtext])
         ws.append(["Controlling Bottleneck Resource", kpis.controlling_bottleneck_id, "ID", f"{kpis.controlling_bottleneck_type} at km {kpis.controlling_bottleneck_chainage_km:.2f}"])
