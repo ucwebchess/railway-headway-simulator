@@ -34,6 +34,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.3] — 2026-11-07
+
+Follow-up to v1.14.2 (#72): chart overlays in REVERSE, default-off identity tests, and acceleration-phase physics checks. Reporting only; no physics engine or importer changes.
+
+### Fixed
+- **REVERSE Speed Profile overlays were mirrored.** That chart plots a REVERSE run on the forward (physical) axis, as its permissible-speed envelope does, but the TVS bands and station lines were drawn at route-frame chainage. For example, the route-origin station appeared at the far end of the line. Overlays are now mapped with `x = route_length_m − chainage` (`mirror=True`). TVS bands coincide with FORWARD, and station lines sit on the train's standstill. FORWARD and the Blocking Stairway, which plots route-frame chainage in both directions, are unchanged.
+
+### Added
+- `ERR_CHART_OVERLAY_FRAME` (`ChartOverlayFrameError`) is raised when an overlay must be mirrored but `route_length_m` is missing, non-positive or non-finite, instead of drawing it in the wrong place.
+- `tests/integration/test_v1143_chart_overlays.py` (24 tests):
+  - default-off chart output byte-identical to v1.14.2, for both charts in FORWARD and REVERSE on 04_tunnel_tvs and 07_hsr_140km (`tests/fixtures/v1142_chart_hashes.json`);
+  - REVERSE overlay frame tests and mirror unit tests;
+  - physics checks on the acceleration phases in both directions: every standstill is reached through a decel phase, peak braking ≤ the train's emergency limit, typical stopping rate ≈ its service limit, and the run starts by accelerating from rest.
+
+### Changed
+- `add_tvs_overlay`, `add_station_overlay` and `apply_chart_overlays` take an optional `mirror=False` keyword argument. Existing calls behave as before.
+
 ## [1.14.1] — 2026-11-06
 
 ### ⚠️ BREAKING CHANGE — `PlatformSpans.NOMINAL_STOP_OFFSET_M` renamed to `SEGMENT_HINT_OFFSET_M`

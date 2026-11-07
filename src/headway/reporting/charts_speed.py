@@ -213,7 +213,13 @@ def create_speed_distance_figure(
     fig.update_layout(layout)
     if eff_dir == RunningDirection.REVERSE and traj_is_decreasing:
         fig.update_xaxes(autorange="reversed")
-    return apply_chart_overlays(fig, metadata, "speed")
+    # v1.14.3: a REVERSE trajectory exported on the forward (physical) axis is plotted on that
+    # axis, like the envelope above, so route-frame overlays must be mirrored onto it.
+    overlay_mirror = eff_dir == RunningDirection.REVERSE and any(
+        t.samples and len(t.samples) > 1 and t.samples[0].front_distance_m > t.samples[-1].front_distance_m
+        for t in traj_list
+    )
+    return apply_chart_overlays(fig, metadata, "speed", mirror=overlay_mirror)
 
 
 def create_gradient_profile_figure(

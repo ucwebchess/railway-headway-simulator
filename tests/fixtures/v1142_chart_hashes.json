@@ -1,0 +1,63 @@
+{
+  "_comment": "v1.14.2 default-off chart output: sha256 of fig.to_json() + trace names, captured on unmodified main 0355ddf via SimulationRunner.run_simulation_pipeline -> doc.figures_data, in the CI environment (Python 3.11, plotly 7.1.0, pandas 3.1.1, numpy 2.4.6). Plotly's JSON includes its template, so the hashes are plotly-version specific, like fixtures/v1141_chart_hashes.json.",
+  "04_tunnel_tvs": {
+    "FORWARD/fig_speed_alignment": {
+      "sha256": "4036f5e8dcf2e9d68dbd727ddf76101664d515ce857cc4c8f45ec287da0b42f5",
+      "names": [
+        "Simulated Speed: TRN_LEADER",
+        "Permissible Speed Envelope"
+      ]
+    },
+    "FORWARD/fig_blocking_stairway": {
+      "sha256": "d42c186a6f9019e4366c5c45413eae3dab19e96cf8d0d428e6568201dde6f935",
+      "names": [
+        "Leader Train (SRV_TNL_01)",
+        "Follower Train (SRV_TNL_01) [Shifted +121.0s]"
+      ]
+    },
+    "REVERSE/fig_speed_alignment": {
+      "sha256": "ad3b1966978f14010c92758b36594425605942b9fa80cf26a7a72e2743db1536",
+      "names": [
+        "Simulated Speed: TRN_LEADER",
+        "Permissible Speed Envelope"
+      ]
+    },
+    "REVERSE/fig_blocking_stairway": {
+      "sha256": "3f9e330127310656328e46d1e1ad74c5a9c6ccb5cf807b5a724fb92bdde57614",
+      "names": [
+        "Leader Train (SRV_TNL_01)",
+        "Follower Train (SRV_TNL_01) [Shifted +220.0s]"
+      ]
+    }
+  },
+  "07_hsr_140km": {
+    "FORWARD/fig_speed_alignment": {
+      "sha256": "8dd82a93ef5de4456239f2bfe25b64cd626b7c15f2e23674d565fcde5ae368bb",
+      "names": [
+        "Simulated Speed: TRN_LEADER",
+        "Permissible Speed Envelope"
+      ]
+    },
+    "FORWARD/fig_blocking_stairway": {
+      "sha256": "a19074585b69530eb9f9c45ff0aef04b28c10d9d97cd0234eb9215659e45d8c0",
+      "names": [
+        "Leader Train (SRV_6000)",
+        "Follower Train (SRV_6000) [Shifted +251.0s]"
+      ]
+    },
+    "REVERSE/fig_speed_alignment": {
+      "sha256": "2d9a2b98db87ea1c331bc18d35e7e1bb2a7918cf9d7b532ef3f80ee327720d23",
+      "names": [
+        "Simulated Speed: TRN_LEADER",
+        "Permissible Speed Envelope"
+      ]
+    },
+    "REVERSE/fig_blocking_stairway": {
+      "sha256": "e42c4db15d8af4f58a61e895a4f07779afb6c7a38d617787bc31b55bbc14873b",
+      "names": [
+        "Leader Train (SRV_6000)",
+        "Follower Train (SRV_6000) [Shifted +257.0s]"
+      ]
+    }
+  }
+}
