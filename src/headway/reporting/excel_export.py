@@ -90,7 +90,7 @@ class ExcelReportExporter:
 
         ws.append([meta.title])
         ws.cell(row=1, column=1).font = Font(name="Arial", size=14, bold=True, color="1B365D")
-        ws.append([f"Scenario: {meta.scenario_id} | Running Direction: {doc.running_direction.value} | Run ID: {meta.simulation_run_id}"])
+        ws.append([f"Project: {meta.project_id} | Scenario: {meta.scenario_id} | Running Direction: {doc.running_direction.value} | Run ID: {meta.simulation_run_id}"])
         ws.append([])
 
         # KPI Block

@@ -99,6 +99,8 @@ def _create_minimal_package(headway_s: float = 90.0, direction: RunningDirection
         headway_results={"METRO_1->METRO_2": hw},
         blocking_intervals=[interval],
         metadata={
+            # v1.14.5: report header PROJECT_ID (as read from the workbook METADATA sheet).
+            "project_id": "PRJ_NEGATIVE",
             # v1.11.1 / Task 4: single-source PF payload required by Sections 3/18 narratives.
             "performance_factor_results": {
                 "reference_headway_s": headway_s,

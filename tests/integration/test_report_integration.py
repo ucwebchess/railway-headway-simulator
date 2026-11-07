@@ -310,6 +310,8 @@ def _create_synthetic_full_package(
         monte_carlo_result=mc,
         scenario_comparison_report=report_cmp,
         metadata={
+            # v1.14.5: report header PROJECT_ID (as read from the workbook METADATA sheet).
+            "project_id": "PRJ_INTEG",
             "platform_records": [plt],
             "provenance_records": prov_records,
             "blocking_intervals": intervals,
@@ -1187,13 +1189,11 @@ class TestReportIntegration:
             "Entry Signal Ch. (km)",
             "Exit Signal ID",
             "Exit Signal Ch. (km)",
-            "Geometry Source",
-            "Dataset ID",
-            "Version",
-            "Baseline Invariant",
         ]
-        for col in expected_cols:
-            assert col in prov_table.columns
+        # v1.14.5: Geometry Source, Dataset ID, Version and Baseline Invariant removed from the register.
+        assert list(prov_table.columns) == expected_cols
+        for col in ("Geometry Source", "Dataset ID", "Version", "Baseline Invariant"):
+            assert col not in prov_table.columns
 
         first_row = prov_table.raw_dataframe.iloc[0]
         assert first_row["Resource ID"] == "BLK_UP_01"

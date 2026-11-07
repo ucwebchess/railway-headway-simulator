@@ -252,12 +252,16 @@ def create_blocking_stairway_figure(
     if running_dir == RunningDirection.REVERSE:
         fig.update_xaxes(autorange="reversed")
 
+    # v1.14.5 Task 4: horizontally centred at the top of the plot area (y=0.98, top-anchored, so it
+    # stays inside the plot area below the title and the direction banner).
     fig.add_annotation(
         text=hw_annotation,
         xref="paper",
         yref="paper",
-        x=0.02,
+        x=0.5,
         y=0.98,
+        xanchor="center",
+        yanchor="top",
         showarrow=False,
         bgcolor="rgba(255, 255, 255, 0.9)",
         bordercolor=ChartColors.CRITICAL_RED,

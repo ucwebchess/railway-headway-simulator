@@ -34,6 +34,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.5] — 2026-11-07
+
+Report graphics and labeling corrections. Presentation only; no physics engine, importer, schema or example-data changes. New charts render in both FORWARD and REVERSE.
+
+### Breaking
+- **Report assembly now requires a project ID.** The report header shows "Project: {PROJECT_ID}" from the workbook METADATA `PROJECT_ID`, instead of `scenario_id.split("_")[0]`. A missing or blank ID, or the converter placeholder `PRJ_DEFAULT`, raises `ERR_REPORT_PROJECT_ID_MISSING` (`ReportProjectIdMissingError`); there is no fallback. All 7 shipped examples define `PROJECT_ID`.
+
+### Changed
+- Header "Software: OpenTrack-2026" in HTML, PDF (new for parity) and Excel; the Section 12 audit KPI uses the same label. Replaces the stale "1.3.0".
+- "Project: {PROJECT_ID}" shown in the HTML, PDF and Excel headers.
+- Footer reads "Headway & Capacity Simulation - OpenTrack 2026" (HTML and PDF).
+- "Download Acceleration Phases CSV" uses the same style as "Download Speed Profile CSV", side by side in one panel.
+- Blocking-stairway summary box moved to the top centre of the plot (paper x 0.5, y 0.98); styling unchanged.
+- TVS zone labels sit at the bottom of their band, just above the x-axis, on both the speed profile and the stairway. Band shading unchanged.
+- TVS legend entries read "TVS_XX" (one per zone) instead of "TVS zone: TVS_XX".
+
+### Removed
+- Section 5 "Longest Resource Occupation Durations": `Resource Category` column.
+- Section 11 provenance register: `Geometry Source`, `Dataset ID`, `Version` and `Baseline Invariant` columns. The section heading is now "Resource Geometry Provenance" and the table "Resource Geometry Provenance Register" (no baseline-integrity claim). The Platform Segment Provenance table keeps its `Geometry Source` column (how each platform was derived).
+- Section 12: the sentence about recording software build versions for calculation auditability (heading and table kept).
+
+### Added
+- `reporting/charts_rolling_stock.py`: "Tractive Effort Curve" (workbook curve, else F = min(F_max, P/v), with F_max and v_transition = P/F_max markers) and "Davis Resistance Decomposition" (A, B·v, C·v², total R(v), annotated at max speed). Rendered under Rolling Stock Characteristics, side by side in HTML and PDF.
+- `reporting/charts_alignment.py`: "Service Alignment Diagram" (route line, stations, platform bars, served and unused stops, TVS bands, service-direction arrow) below the Section 6 platform table. A platform that cannot be placed in the route frame raises `ERR_CHART_ALIGNMENT_FRAME`.
+- `reporting/html_widgets.py`: shared CSV download button and panel.
+- `tests/integration/test_v1145_report_graphics.py`.
+- Issue draft targeting v1.15.0: `docs/issues/test_isolation_leak.md`. Report tests can depend on a project left open in `session_state` by earlier tests; fixtures should be self-contained.
+
+### Tests
+- Synthetic report packages in the benchmark and negative-test builders carry a `project_id`.
+- Tests asserting the removed columns and the "1.3.0" label were updated.
+- The `fig_blocking_stairway` chart hashes in `tests/fixtures/v1141_chart_hashes.json` and `v1142_chart_hashes.json` were regenerated in the CI environment. The JSON differs from main only in the moved annotation.
+
+---
+
 ## [1.14.4] — 2026-11-07
 
 Duration reference-frame labeling. The Total Service Duration KPI (origin departure → terminus arrival) was labeled inconsistently across report surfaces. Its value is unchanged. Reporting only; no physics engine or importer changes.
