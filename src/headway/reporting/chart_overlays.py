@@ -16,6 +16,9 @@ import plotly.graph_objects as go
 from headway.core.exceptions import ReportingError
 
 TVS_FILL = "rgba(255, 165, 0, 0.15)"
+TVS_LABEL_Y = 0.0                 # y2 (0..1 over the plot area): 0 = the x-axis line
+TVS_LABEL_POSITION = "top center"  # text drawn above the anchor point
+TVS_LABEL_FONT_PX = 11            # baseline 0.25 * 11 = 2.75 px above the axis line
 
 
 class ChartOverlayFrameError(ReportingError):
@@ -79,12 +82,17 @@ def add_tvs_overlay(fig, tvs_events, route_length_m, mirror=False):
         seen.add(key)
         lo, hi = sorted((_to_chart(lo, length), _to_chart(hi, length)))
         lo, hi = lo / scale, hi / scale
+        # v1.14.5 Task 6: the legend entry is the TVS ID itself (one entry per zone).
         fig.add_trace(go.Scatter(x=[lo, lo, hi, hi], y=[0, 1, 1, 0], yaxis="y2",
                                  fill="tozeroy", mode="lines", line=dict(width=0),
-                                 fillcolor=TVS_FILL, name=f"TVS zone: {zone}", hoverinfo="name"))
-        fig.add_trace(go.Scatter(x=[(lo + hi) / 2], y=[0.96], yaxis="y2", mode="text",
-                                 text=[zone], textposition="top center", name=f"TVS label: {zone}",
-                                 showlegend=False, hoverinfo="skip"))
+                                 fillcolor=TVS_FILL, name=zone, hoverinfo="name"))
+        # v1.14.5 Task 5: label at the bottom of the band, anchored on the x-axis line (y2 = 0). In
+        # text-only mode Plotly draws "top center" text with its baseline 0.25 x font size above the
+        # anchor: 11 px font -> 2.75 px above the axis line, clear of the tick labels below it.
+        fig.add_trace(go.Scatter(x=[(lo + hi) / 2], y=[TVS_LABEL_Y], yaxis="y2", mode="text",
+                                 text=[zone], textposition=TVS_LABEL_POSITION,
+                                 textfont=dict(size=TVS_LABEL_FONT_PX), name=f"TVS label: {zone}",
+                                 showlegend=False, hoverinfo="skip", cliponaxis=False))
     return fig
 
 

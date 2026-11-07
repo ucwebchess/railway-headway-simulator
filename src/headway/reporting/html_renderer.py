@@ -16,7 +16,8 @@ from typing import Any, Dict, Optional, Union
 import html
 import base64
 
-from headway.reporting.report_models import ReportDocument, ReportSectionId
+from headway.reporting.html_widgets import csv_download_button
+from headway.reporting.report_models import REPORT_FOOTER_LABEL, ReportDocument, ReportSectionId
 
 
 class HtmlReportRenderer:
@@ -39,6 +40,29 @@ class HtmlReportRenderer:
 
         direction_badge_class = "badge-forward" if direction_val == "FORWARD" else "badge-reverse"
         plotlyjs_inlined = False
+
+        def _figure_html(f_key: str, wrapper_class: str = "figure-wrapper") -> list:
+            """Embed one figure (Plotly figure, static image path, or placeholder)."""
+            nonlocal plotlyjs_inlined
+            fig_obj = document.figures_data.get(f_key)
+            if fig_obj is None:
+                return []
+            out = [f"<div class='{wrapper_class}'>"]
+            if hasattr(fig_obj, "to_html") and embed_interactive_plotly:
+                inc_js = not plotlyjs_inlined
+                fig_html = fig_obj.to_html(full_html=False, include_plotlyjs=inc_js)
+                if inc_js:
+                    plotlyjs_inlined = True
+                out.append(fig_html.replace("https://cdn.plot.ly/", "").replace("cdn.plot.ly", ""))
+            elif isinstance(fig_obj, (str, Path)) and Path(str(fig_obj)).exists():
+                p = Path(str(fig_obj))
+                b64_data = base64.b64encode(p.read_bytes()).decode("utf-8")
+                mime = "image/png" if p.suffix.lower() == ".png" else "image/svg+xml"
+                out.append(f"<img src='data:{mime};base64,{b64_data}' alt='{html.escape(f_key)}' style='max-width: 100%; height: auto;' />")
+            else:
+                out.append(f"<div class='figure-placeholder'>Figure: {html.escape(f_key)}</div>")
+            out.append("</div>")
+            return out
 
         html_parts = []
         html_parts.append("<!DOCTYPE html>")
@@ -181,6 +205,16 @@ class HtmlReportRenderer:
             """)
         html_parts.append("</div>")
 
+        # v1.14.5 Task 11: rolling-stock characteristic charts, side by side, after the summary table.
+        rs_fig_keys = [k for k in ("fig_tractive_effort", "fig_davis_resistance") if k in document.figures_data]
+        if rs_fig_keys:
+            html_parts.append("<div class='summary-box rolling-stock-charts'>")
+            html_parts.append("<h3 class='box-title'>Rolling Stock Characteristics — Performance Curves</h3>")
+            html_parts.append("<div class='two-col-grid'>")
+            for k in rs_fig_keys:
+                html_parts.extend(_figure_html(k, wrapper_class="figure-wrapper rs-chart"))
+            html_parts.append("</div></div>")
+
         # Bottleneck Diagnosis Box (P14-EXE-005)
         if diag:
             html_parts.append(f"""
@@ -220,10 +254,10 @@ class HtmlReportRenderer:
             # Callout boxes
             for cb in s.callout_boxes:
                 body_content = cb.get("html") or html.escape(cb.get("text", ""))
-                if "accel_csv" in cb:
-                    encoded = base64.b64encode(cb["accel_csv"].encode("utf-8")).decode("ascii")
-                    body_content += (f'<a href="data:text/csv;base64,{encoded}" '
-                                     'download="acceleration_phases.csv">Download Acceleration Phases CSV</a>')
+                if cb.get("accel_csv") and 'download="acceleration_phases.csv"' not in body_content:
+                    # v1.14.5: same styling as the Speed Profile CSV button (normally already in its panel).
+                    body_content += csv_download_button(cb["accel_csv"], "acceleration_phases.csv",
+                                                        "Download Acceleration Phases CSV")
                 html_parts.append(f"""
                 <div class='callout-box'>
                     <div class='callout-title'>{html.escape(cb.get('title', 'Note'))}</div>
@@ -233,24 +267,7 @@ class HtmlReportRenderer:
 
             # Figures
             for f_key in s.figure_keys:
-                fig_obj = document.figures_data.get(f_key)
-                if fig_obj is not None:
-                    html_parts.append("<div class='figure-wrapper'>")
-                    if hasattr(fig_obj, "to_html") and embed_interactive_plotly:
-                        inc_js = True if not plotlyjs_inlined else False
-                        fig_html = fig_obj.to_html(full_html=False, include_plotlyjs=inc_js)
-                        if inc_js:
-                            plotlyjs_inlined = True
-                        fig_html = fig_html.replace("https://cdn.plot.ly/", "").replace("cdn.plot.ly", "")
-                        html_parts.append(fig_html)
-                    elif isinstance(fig_obj, (str, Path)) and Path(str(fig_obj)).exists():
-                        p = Path(str(fig_obj))
-                        b64_data = base64.b64encode(p.read_bytes()).decode("utf-8")
-                        mime = "image/png" if p.suffix.lower() == ".png" else "image/svg+xml"
-                        html_parts.append(f"<img src='data:{mime};base64,{b64_data}' alt='{html.escape(f_key)}' style='max-width: 100%; height: auto;' />")
-                    else:
-                        html_parts.append(f"<div class='figure-placeholder'>Figure: {html.escape(f_key)}</div>")
-                    html_parts.append("</div>")
+                html_parts.extend(_figure_html(f_key))
 
             # Tables
             for tbl in s.tables:
@@ -264,6 +281,10 @@ class HtmlReportRenderer:
                         f"{html.escape(str(tbl.metadata['footnote']))}</div>"
                     )
                 html_parts.append("</div>")
+
+            # v1.14.5: figures placed after the tables (Section 6 Service Alignment Diagram).
+            for f_key in s.post_table_figure_keys:
+                html_parts.extend(_figure_html(f_key))
 
             # Recommendations (for Section 18)
             if s.recommendations:
@@ -291,7 +312,7 @@ class HtmlReportRenderer:
 
         # Footer
         html_parts.append("<footer class='report-footer'>")
-        html_parts.append(f"<div>{html.escape(meta.organization)} — Headway & Capacity Simulation Subsystem v{html.escape(meta.software_version)}</div>")
+        html_parts.append(f"<div>{html.escape(meta.organization)} — {html.escape(REPORT_FOOTER_LABEL)}</div>")
         html_parts.append(f"<div>Report ID: <code>{html.escape(meta.report_id)}</code> &nbsp;|&nbsp; Hash: <code>{meta.input_configuration_hash}</code></div>")
         html_parts.append("</footer>")
 

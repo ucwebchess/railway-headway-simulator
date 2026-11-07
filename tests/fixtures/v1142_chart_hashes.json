@@ -1,5 +1,5 @@
 {
-  "_comment": "v1.14.2 default-off chart output: sha256 of fig.to_json() + trace names, captured on unmodified main 0355ddf via SimulationRunner.run_simulation_pipeline -> doc.figures_data, in the CI environment (Python 3.11, plotly 7.1.0, pandas 3.1.1, numpy 2.4.6). Plotly's JSON includes its template, so the hashes are plotly-version specific, like fixtures/v1141_chart_hashes.json.",
+  "_comment": "v1.14.2 default-off chart output: sha256 of fig.to_json() + trace names, captured on unmodified main 0355ddf via SimulationRunner.run_simulation_pipeline -> doc.figures_data, in the CI environment (Python 3.11, plotly 7.1.0, pandas 3.1.1, numpy 2.4.6). Plotly's JSON includes its template, so the hashes are plotly-version specific, like fixtures/v1141_chart_hashes.json. v1.14.5: the fig_blocking_stairway hashes (here and in v1141_chart_hashes.json) were regenerated in the same CI environment after Task 4 moved the stairway annotation; the JSON differs from unmodified main 9080e82 only in layout.annotations[1] (x 0.02 -> 0.5, xanchor center and yanchor top added). The speed-alignment hashes are unchanged.",
   "04_tunnel_tvs": {
     "FORWARD/fig_speed_alignment": {
       "sha256": "4036f5e8dcf2e9d68dbd727ddf76101664d515ce857cc4c8f45ec287da0b42f5",
@@ -9,7 +9,7 @@
       ]
     },
     "FORWARD/fig_blocking_stairway": {
-      "sha256": "d42c186a6f9019e4366c5c45413eae3dab19e96cf8d0d428e6568201dde6f935",
+      "sha256": "f60369e5218e8a00d20334b8aa9c3e274c7d7ff0667a92dbbee7d58937e356d7",
       "names": [
         "Leader Train (SRV_TNL_01)",
         "Follower Train (SRV_TNL_01) [Shifted +121.0s]"
@@ -23,7 +23,7 @@
       ]
     },
     "REVERSE/fig_blocking_stairway": {
-      "sha256": "3f9e330127310656328e46d1e1ad74c5a9c6ccb5cf807b5a724fb92bdde57614",
+      "sha256": "f32f02957a98d4c038bc21951b949d634eb5440edac7f069f9952c0148efd54a",
       "names": [
         "Leader Train (SRV_TNL_01)",
         "Follower Train (SRV_TNL_01) [Shifted +220.0s]"
@@ -39,7 +39,7 @@
       ]
     },
     "FORWARD/fig_blocking_stairway": {
-      "sha256": "a19074585b69530eb9f9c45ff0aef04b28c10d9d97cd0234eb9215659e45d8c0",
+      "sha256": "a81c536823e056ed3b96f361bda1e1805d1809573d6c626fe5e3086b58866bdc",
       "names": [
         "Leader Train (SRV_6000)",
         "Follower Train (SRV_6000) [Shifted +251.0s]"
@@ -53,7 +53,7 @@
       ]
     },
     "REVERSE/fig_blocking_stairway": {
-      "sha256": "e42c4db15d8af4f58a61e895a4f07779afb6c7a38d617787bc31b55bbc14873b",
+      "sha256": "d96bd0233170c50fc4e0f7c3c7eef0d89e480df48e994f7ac1062f358d9fb13d",
       "names": [
         "Leader Train (SRV_6000)",
         "Follower Train (SRV_6000) [Shifted +257.0s]"

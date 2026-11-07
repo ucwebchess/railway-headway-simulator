@@ -7,7 +7,7 @@
     ]
   },
   "fig_blocking_stairway": {
-    "sha256": "a19074585b69530eb9f9c45ff0aef04b28c10d9d97cd0234eb9215659e45d8c0",
+    "sha256": "a81c536823e056ed3b96f361bda1e1805d1809573d6c626fe5e3086b58866bdc",
     "names": [
       "Leader Train (SRV_6000)",
       "Follower Train (SRV_6000) [Shifted +251.0s]"

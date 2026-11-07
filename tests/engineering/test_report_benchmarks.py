@@ -400,6 +400,8 @@ def build_benchmark_package(
         monte_carlo_result=mc_result,
         scenario_comparison_report=report_cmp,
         metadata={
+            # v1.14.5: report header PROJECT_ID (as read from the workbook METADATA sheet).
+            "project_id": "PRJ_BENCHMARK",
             "platform_records": [plt_rec],
             "station_stops": [stop_rec],
             "provenance_records": [prov_rec],
@@ -766,7 +768,8 @@ class TestReportBenchmarks:
         doc = ReportAssembler.assemble_report(pkg)
         assert doc.metadata.input_configuration_hash == pkg.effective_config_hash
         assert doc.metadata.scenario_id == pkg.scenario_id
-        assert doc.metadata.software_version == "1.3.0"
+        # v1.14.5: the report shows the display label, not a package version.
+        assert doc.metadata.software_version == "OpenTrack-2026"
 
     def test_p14_b035_report_immutability(self) -> None:
         """P14-B035: Executive KPIs and Recommendations are frozen dataclasses."""

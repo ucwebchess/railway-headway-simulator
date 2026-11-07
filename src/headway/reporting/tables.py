@@ -230,7 +230,10 @@ def create_longest_occupation_table(
     top_n: Optional[int] = None,
     running_direction: RunningDirection = RunningDirection.FORWARD,
 ) -> EngineeringTable:
-    """P13-TBL-002: Standalone longest resource blocking durations table."""
+    """P13-TBL-002: Standalone longest resource blocking durations table.
+
+    v1.14.5: the Resource Category column is no longer shown.
+    """
     sorted_intervals = sorted(intervals, key=lambda bi: bi.duration_s, reverse=True)
 
     raw_rows = []
@@ -256,7 +259,6 @@ def create_longest_occupation_table(
             {
                 "Rank": idx,
                 "Resource ID": bi.resource_id,
-                "Resource Category": str(bi.resource_category),
                 "Total Duration (s)": bi.duration_s,
                 "Block Length (km)": blk_len_km,
                 "Alignment Chainage (km)": align_start_km,
@@ -271,7 +273,6 @@ def create_longest_occupation_table(
             {
                 "Rank": idx,
                 "Resource ID": bi.resource_id,
-                "Resource Category": str(bi.resource_category),
                 "Total Duration (s)": f"{bi.duration_s:.1f}",
                 "Block Length (km)": (f"{blk_len_km:.3f}" if blk_len_km is not None else "N/A"),
                 "Alignment Chainage (km)": (f"{align_start_km:.3f}" if align_start_km is not None else "N/A"),
@@ -433,7 +434,11 @@ def create_resource_provenance_table(
     records: Sequence[ResourceProvenanceRecord],
     running_direction: RunningDirection = RunningDirection.FORWARD,
 ) -> EngineeringTable:
-    """P13-PRV-001: Resource geometry provenance and baseline integrity table."""
+    """P13-PRV-001: Resource geometry provenance and baseline integrity table.
+
+    v1.14.5: Geometry Source, Dataset ID, Version and Baseline Invariant columns removed from the
+    report register (the underlying ResourceProvenanceRecord fields are unchanged).
+    """
     raw_rows = []
     formatted_rows = []
 
@@ -462,10 +467,6 @@ def create_resource_provenance_table(
                 "Entry Signal Ch. (km)": entry_km_raw,
                 "Exit Signal ID": exit_sig,
                 "Exit Signal Ch. (km)": exit_km_raw,
-                "Geometry Source": r.geometry_source,
-                "Dataset ID": r.dataset_id,
-                "Version": r.dataset_version,
-                "Baseline Invariant": "UNMODIFIED" if r.is_baseline_geometry else "OVERRIDDEN",
             }
         )
 
@@ -480,16 +481,12 @@ def create_resource_provenance_table(
                 "Entry Signal Ch. (km)": entry_km_fmt,
                 "Exit Signal ID": exit_sig,
                 "Exit Signal Ch. (km)": exit_km_fmt,
-                "Geometry Source": r.geometry_source,
-                "Dataset ID": r.dataset_id,
-                "Version": r.dataset_version,
-                "Baseline Invariant": "UNMODIFIED" if r.is_baseline_geometry else "OVERRIDDEN",
             }
         )
 
     return EngineeringTable(
         table_id="TBL_RESOURCE_PROVENANCE",
-        title="Resource Geometry Provenance & Baseline Integrity Register",
+        title="Resource Geometry Provenance Register",
         raw_dataframe=pd.DataFrame(raw_rows),
         formatted_dataframe=pd.DataFrame(formatted_rows),
         running_direction=running_direction,

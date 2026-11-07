@@ -512,7 +512,8 @@ class TestVisualizationBenchmarks:
         assert tbl.raw_dataframe["Total Blocking (s)"].iloc[0] == 51.0
 
     def test_p13_b019_resource_geometry_provenance_table(self) -> None:
-        """P13-B019: Provenance table records baseline integrity and geometry origin."""
+        """P13-B019: Provenance table lists resource geometry (v1.14.5: geometry source, dataset ID,
+        version and baseline-invariant columns are no longer shown)."""
         rec = ResourceProvenanceRecord(
             resource_id="LNK_01",
             resource_type="TRACK_LINK",
@@ -525,7 +526,11 @@ class TestVisualizationBenchmarks:
         )
         tbl = create_resource_provenance_table([rec])
         assert tbl.row_count == 1
-        assert tbl.raw_dataframe["Baseline Invariant"].iloc[0] == "UNMODIFIED"
+        assert tbl.raw_dataframe["Resource ID"].iloc[0] == "LNK_01"
+        assert tbl.raw_dataframe["Length (m)"].iloc[0] == 1000.0
+        assert tbl.raw_dataframe["Physical End Chainage (km)"].iloc[0] == 1.0
+        for col in ("Geometry Source", "Dataset ID", "Version", "Baseline Invariant"):
+            assert col not in tbl.columns
 
     def test_p13_b020_block_length_sensitivity_chart(self) -> None:
         """P13-B020: Block length sensitivity chart plots headway and capacity panels."""

@@ -45,6 +45,12 @@ from headway.reporting.charts_speed import (
     generate_speed_profile_csv,
 )
 from headway.reporting.charts_station import create_platform_occupation_figure
+from headway.reporting.charts_alignment import create_service_alignment_figure, platform_route_extents
+from headway.reporting.charts_rolling_stock import (
+    create_davis_resistance_figure,
+    create_tractive_effort_figure,
+    primary_train_type,
+)
 from headway.reporting.charts_stochastic import (
     create_confidence_interval_figure,
     create_stochastic_histogram_figure,
@@ -66,6 +72,7 @@ from headway.reporting.report_models import (
     ReportSectionId,
     ReportType,
     RollingStockSummary,
+    REPORT_SOFTWARE_LABEL,
 )
 from headway.analysis.statistics import StatisticalSummary
 from headway.reporting.result_models import (
@@ -191,6 +198,42 @@ def _audit_block_geometry(provenance_records: List[Any], project: Any = None) ->
             )
 
 
+# v1.14.5: the converter's placeholder when no workbook METADATA sheet defines PROJECT_ID.
+_CONVERTER_DEFAULT_PROJECT_ID = "PRJ_DEFAULT"
+
+
+class ReportProjectIdMissingError(ReportingError):
+    """Raised when the report cannot name the project from the workbook METADATA PROJECT_ID."""
+
+    DEFAULT_ERROR_CODE = "ERR_REPORT_PROJECT_ID_MISSING"
+
+
+def resolve_report_project_id(package: Any, project: Optional[Any] = None, display_project: Optional[Any] = None) -> str:
+    """v1.14.5: PROJECT_ID for the report header, from the project bound to this report call.
+
+    Sources, in order: ``project.project_id`` (the explicit argument or ``package.metadata["project"]``,
+    read by the importer from the workbook METADATA sheet), ``package.metadata["project_id"]``, then the
+    display-binding project (UI session fallback, as used by the rest of the report). Missing,
+    blank, or the converter placeholder ``PRJ_DEFAULT`` raise ERR_REPORT_PROJECT_ID_MISSING: there is
+    no fallback to a literal such as "Project".
+    """
+    meta = getattr(package, "metadata", None) or {}
+    bound = project if project is not None else meta.get("project")
+    pid = getattr(bound, "project_id", None) if bound is not None else None
+    if pid is None:
+        pid = meta.get("project_id")
+    if pid is None and display_project is not None:
+        pid = getattr(display_project, "project_id", None)
+    pid = str(pid).strip() if pid is not None else ""
+    if not pid or pid == _CONVERTER_DEFAULT_PROJECT_ID:
+        raise ReportProjectIdMissingError(
+            "ERR_REPORT_PROJECT_ID_MISSING: the report header needs PROJECT_ID from the workbook METADATA sheet "
+            f"(found {pid!r}). Add a PROJECT_ID row to the METADATA sheet.",
+            context={"scenario_id": getattr(package, "scenario_id", None), "project_id": pid},
+        )
+    return pid
+
+
 class ReportAssembler:
     """Assembles standardized simulation results into a structured ReportDocument."""
 
@@ -220,6 +263,9 @@ class ReportAssembler:
                 proj = getattr(session_state, "current_project", None)
             except Exception:
                 proj = None
+        # v1.14.5 Task 2: resolved before any other work so a missing PROJECT_ID fails loudly. Same
+        # display binding as the rest of the report (bound project, then the UI session fallback).
+        report_project_id = resolve_report_project_id(package, audit_proj, display_project=proj)
 
         # Resolve blocking intervals strictly from package metadata (Phase 4c: loud failure)
         blocking_intervals = None
@@ -330,12 +376,12 @@ class ReportAssembler:
         # 1. Metadata
         metadata = ReportMetadata(
             report_id=r_id,
-            project_id=package.scenario_id.split("_")[0] if "_" in package.scenario_id else "PROJECT",
+            project_id=report_project_id,
             scenario_id=package.scenario_id,
             simulation_run_id=package.run_id,
             report_type=cfg.report_type,
             running_direction=direction,
-            software_version="1.3.0",
+            software_version=REPORT_SOFTWARE_LABEL,
             input_configuration_hash=package.effective_config_hash,
             validation_status="VALID",
             title=cfg.title or "Railway Headway & Line Capacity Assessment",
@@ -379,6 +425,13 @@ class ReportAssembler:
 
         # 6. Figures Store
         figures_data: Dict[str, Any] = {}
+
+        # v1.14.5 Task 11: rolling-stock characteristic charts (Executive Summary, under the
+        # Rolling Stock Characteristics table), from the same project as that summary table.
+        _tt = primary_train_type({**(package.metadata or {}), "project": proj}) if proj else None
+        if _tt is not None:
+            figures_data["fig_tractive_effort"] = create_tractive_effort_figure(_tt)
+            figures_data["fig_davis_resistance"] = create_davis_resistance_figure(_tt)
 
         # 7. Assemble Sections
         sections: Dict[ReportSectionId, ReportSection] = {}
@@ -1078,7 +1131,6 @@ class ReportAssembler:
         callout_boxes = []
         if has_traj:
             try:
-                import base64
                 first_traj = next(iter(package.trajectories.values()))
                 csv_data = generate_speed_profile_csv(
                     first_traj,
@@ -1088,12 +1140,16 @@ class ReportAssembler:
                 )
                 from headway.reporting.tables import create_accel_phases_csv
                 accel_csv = create_accel_phases_csv(package.trajectories.get("TRN_LEADER", first_traj))
-                b64_csv = base64.b64encode(csv_data.encode("utf-8")).decode("ascii")
+                from headway.reporting.html_widgets import csv_button_panel, csv_download_button
+                buttons = [csv_download_button(csv_data, f"speed_profile_{first_traj.train_id}.csv", "Download Speed Profile CSV")]
+                if accel_csv:
+                    # v1.14.5 Task 3: same styling, same panel, adjacent to the speed profile button.
+                    buttons.append(csv_download_button(accel_csv, "acceleration_phases.csv", "Download Acceleration Phases CSV"))
                 callout_boxes.append({
                     "title": "Speed Profile & Permissible Envelope CSV Export",
                     "accel_csv": accel_csv,
                     "text": "Complete time-distance speed profile data with civil speed limits is available for engineering analysis.",
-                    "html": f'<div style="margin-top: 8px;"><a href="data:text/csv;base64,{b64_csv}" download="speed_profile_{first_traj.train_id}.csv" style="display: inline-block; padding: 6px 14px; background-color: #1E3A8A; color: #FFFFFF; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;">📥 Download Speed Profile CSV</a></div>',
+                    "html": csv_button_panel(buttons),
                 })
             except Exception:
                 pass
@@ -1423,6 +1479,11 @@ class ReportAssembler:
         fig_key = "fig_platform_occupation"
         if is_app:
             figures_data[fig_key] = create_platform_occupation_figure(records, running_direction=direction)
+        align_key = "fig_service_alignment"
+        if is_app:
+            align_fig = cls._build_service_alignment_figure(package, direction)
+            if align_fig is not None:
+                figures_data[align_key] = align_fig
 
         narrative_paras: List[str] = []
         tables: List[EngineeringTable] = []
@@ -1490,6 +1551,30 @@ class ReportAssembler:
             narrative_paragraphs=narrative_paras,
             figure_keys=[fig_key] if is_app else [],
             tables=tables,
+            post_table_figure_keys=[align_key] if align_key in figures_data else [],
+        )
+
+    @classmethod
+    def _build_service_alignment_figure(cls, package: SimulationResultPackage, direction: RunningDirection):
+        """v1.14.5 Task 12: Service Alignment Diagram (None when route geometry is unavailable)."""
+        meta = package.metadata or {}
+        route_len = meta.get("route_length_m")
+        links, route_ids = meta.get("track_links"), meta.get("route_link_ids")
+        if not route_len or not links or not route_ids:
+            return None
+        platforms = platform_route_extents(
+            meta.get("platform_provenance_records") or [], links, route_ids, float(route_len), direction
+        )
+        tt_id = str(meta.get("train_type_id") or "")
+        sp_id = str(meta.get("active_service_pattern_id") or "")
+        return create_service_alignment_figure(
+            route_length_m=float(route_len),
+            station_events=meta.get("station_events") or meta.get("station_stops") or [],
+            platforms=platforms,
+            tvs_events=meta.get("tvs_events") or [],
+            running_direction=direction,
+            train_type_id=tt_id,
+            service_pattern_id=sp_id,
         )
 
     @classmethod
@@ -1807,7 +1892,7 @@ class ReportAssembler:
 
         return ReportSection(
             section_id=ReportSectionId.GEOMETRY_PROVENANCE,
-            title="Resource Geometry Provenance and Baseline Integrity",
+            title="Resource Geometry Provenance",  # v1.14.5: Baseline Invariant column removed
             section_number="11.0",
             is_applicable=is_app,
             not_applicable_reason="No infrastructure provenance mappings supplied." if not is_app else None,
@@ -1835,14 +1920,12 @@ class ReportAssembler:
             section_number="12.0",
             is_applicable=True,
             narrative_paragraphs=[
-                "Records software build versions, input dataset IDs, SHA-256 configuration hashes, mathematical solver time steps, "
-                "and verification status to ensure total calculation auditability.",
                 f"Operational Performance Factor is configured at {pf_pct}% ({pf_src}), scaling train operational traction force "
                 f"and service braking deceleration to {pf_pct}% of nominal capability. Safety-critical supervised braking, emergency "
                 f"braking, and signalling protection envelopes remain unscaled at 100% of nominal capability.",
             ],
             kpis={
-                "Software Version": "1.3.0",
+                "Software Version": REPORT_SOFTWARE_LABEL,
                 "Config Hash": package.effective_config_hash,
                 "Model Fidelity": infra.model_fidelity,
                 "Signalling Tech": infra.signalling_technology,

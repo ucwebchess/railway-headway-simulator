@@ -25,6 +25,7 @@ def _create_minimal_infrastructure_wb(path: Path, link_ids: list[str]) -> Path:
     meta.append(["PROPERTY", "VALUE"])
     meta.append(["WORKBOOK_TYPE", "INFRASTRUCTURE"])
     meta.append(["SCHEMA_VERSION", "1.0.0"])
+    meta.append(["PROJECT_ID", "PRJ_BLOCK_FALLBACK"])  # v1.14.5: required by the report header
 
     ws_nodes = wb.create_sheet("Nodes")
     ws_nodes.append(["NODE_ID", "NODE_TYPE"])

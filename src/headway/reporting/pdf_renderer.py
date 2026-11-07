@@ -11,6 +11,7 @@ Generates publication-quality formal PDF engineering reports matching the visual
 - Embedded static high-resolution engineering figures (speed envelope, blocking stairway, etc.)
 """
 
+import logging
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -36,9 +37,12 @@ from reportlab.platypus import (
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.export_static import export_figure_headless
 from headway.reporting.report_models import (
+    REPORT_FOOTER_LABEL,
     ReportDocument,
     ReportSectionId,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 class NumberedCanvas(canvas.Canvas):
@@ -74,7 +78,7 @@ class NumberedCanvas(canvas.Canvas):
         self.setLineWidth(0.5)
         self.line(margin_l, 32, margin_r, 32)
 
-        footer_left = "Railway Headway & Line Capacity Assessment Subsystem"
+        footer_left = REPORT_FOOTER_LABEL  # v1.14.5 Task 10
         footer_right = f"Page {self._pageNumber} of {page_count}"
         self.drawString(margin_l, 20, footer_left)
         self.drawRightString(margin_r, 20, footer_right)
@@ -137,9 +141,10 @@ class PdfReportRenderer:
         story.append(Paragraph(document.metadata.subtitle, styles["ReportSubtitle"]))
 
         meta_line = (
-            f"Project: <b>{document.metadata.project_id}</b> &nbsp;|&nbsp; "
+            f"Project: <b>{xml_escape(document.metadata.project_id)}</b> &nbsp;|&nbsp; "
             f"Scenario: <b>{document.metadata.scenario_id}</b> &nbsp;|&nbsp; "
-            f"Run ID: <code>{document.metadata.simulation_run_id}</code>"
+            f"Run ID: <code>{document.metadata.simulation_run_id}</code> &nbsp;|&nbsp; "
+            f"Software: {xml_escape(document.metadata.software_version)}"
         )
         story.append(Paragraph(meta_line, styles["MetaText"]))
         story.append(Spacer(1, 6))
@@ -156,6 +161,31 @@ class PdfReportRenderer:
         # Temporary directory for static figure images
         with tempfile.TemporaryDirectory() as tmp_fig_dir:
             fig_dir_path = Path(tmp_fig_dir)
+
+            def _figure_image(f_key: str, width_pt: float, height_pt: float, px_w: int, px_h: int):
+                """Static PNG of one figure as a flowable (muted placeholder if export fails)."""
+                fig_obj = document.figures_data.get(f_key)
+                if fig_obj is None:
+                    return None
+                img_path = fig_dir_path / f"{f_key}.png"
+                try:
+                    export_figure_headless(fig_obj, img_path, width=px_w, height=px_h, dpi=200)
+                    if img_path.exists():
+                        return Image(str(img_path), width=width_pt, height=height_pt)
+                except Exception as exc:  # same placeholder fallback as the section figures below
+                    _LOG.warning("PDF static export failed for %s: %s", f_key, exc)
+                return Paragraph(f"<i>[Figure: {f_key}]</i>", styles["MutedText"])
+
+            # v1.14.5 Task 11: rolling-stock characteristic charts side by side, directly after the
+            # Rolling Stock Characteristics summary table of the executive dashboard.
+            rs_keys = [k for k in ("fig_tractive_effort", "fig_davis_resistance") if k in document.figures_data]
+            if rs_keys:
+                half = cls.CONTENT_WIDTH / 2.0 - 6
+                cells = [_figure_image(k, half, half / 2.0, 1000, 500) for k in rs_keys]
+                story.append(Paragraph("<b>Rolling Stock Characteristics — Performance Curves</b>", styles["TableCellBold"]))
+                story.append(Spacer(1, 4))
+                story.append(Table([cells], colWidths=[half + 6] * len(cells)))
+                story.append(Spacer(1, 12))
 
             # Render Sections 1 to 18
             for s_id, s in document.sections.items():
@@ -200,6 +230,14 @@ class PdfReportRenderer:
                     if (tbl.metadata or {}).get("footnote"):
                         story.append(Paragraph(xml_escape(str(tbl.metadata["footnote"])), styles["MutedText"]))
                     story.append(Spacer(1, 8))
+
+                # v1.14.5: figures placed after the tables (Section 6 Service Alignment Diagram:
+                # full width, ~4 in = 288 pt high).
+                for f_key in s.post_table_figure_keys:
+                    flow = _figure_image(f_key, 1080, 288, 1600, 427)
+                    if flow is not None:
+                        story.append(flow)
+                        story.append(Spacer(1, 6))
 
                 # Recommendations
                 if s.recommendations:

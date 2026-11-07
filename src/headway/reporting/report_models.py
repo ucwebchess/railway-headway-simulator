@@ -18,6 +18,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.tables import EngineeringTable
 
+# v1.14.5: report display strings for the software identity (display only; the package
+# version in headway.core.version is unchanged and independent of these labels).
+REPORT_SOFTWARE_LABEL = "OpenTrack-2026"
+REPORT_FOOTER_LABEL = "Headway & Capacity Simulation - OpenTrack 2026"
+
 
 class ReportType(str, Enum):
     """P14-TYP-001: Standardized report classification categories."""
@@ -383,7 +388,7 @@ class ReportMetadata:
     report_type: ReportType
     running_direction: RunningDirection
     generation_time: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    software_version: str = "1.3.0"
+    software_version: str = REPORT_SOFTWARE_LABEL
     input_configuration_hash: str = ""
     validation_status: str = "VALID"
     title: str = "Railway Headway & Line Capacity Assessment"
@@ -427,6 +432,8 @@ class ReportSection:
     figure_keys: List[str] = field(default_factory=list)
     callout_boxes: List[Dict[str, str]] = field(default_factory=list)
     recommendations: List[Recommendation] = field(default_factory=list)
+    # v1.14.5: figures rendered after the section's tables (e.g. the Section 6 Service Alignment Diagram).
+    post_table_figure_keys: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -484,6 +491,7 @@ class ReportDocument:
                     "kpis": s.kpis,
                     "tables": [t.table_id for t in s.tables],
                     "figure_keys": s.figure_keys,
+                    "post_table_figure_keys": s.post_table_figure_keys,
                     "callout_boxes": s.callout_boxes,
                     "recommendations": [r.to_dict() for r in s.recommendations],
                 }
