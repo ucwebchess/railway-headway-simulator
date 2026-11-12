@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import pandas as pd
+
 from headway.analysis.blocking_time import ResourceBlockingInterval
 from headway.analysis.headway_results import HeadwayResult, MixedTrafficHeadwayMatrix
 from headway.core.exceptions import ReportingError
@@ -436,6 +438,9 @@ class ReportAssembler:
         # 7. Assemble Sections
         sections: Dict[ReportSectionId, ReportSection] = {}
 
+        # Section 0.0: Warnings (v1.15.0 / #69) -- first, always included
+        sections[ReportSectionId.WARNINGS] = cls._build_section_warnings(package, direction)
+
         # Section 1: Speed, Gradients & Curvature
         sections[ReportSectionId.SPEED_GRADIENT_CURVATURE] = cls._build_section_speed_alignment(
             package, direction, figures_data
@@ -549,6 +554,8 @@ class ReportAssembler:
                 )
 
         for sec_id, sec in sections.items():
+            if sec_id == ReportSectionId.WARNINGS:
+                continue  # v1.15.0: warnings are never excluded by template or user selection
             if sec_id not in allowed_by_template:
                 sec.is_applicable = False
                 sec.not_applicable_reason = f"Excluded by template '{getattr(cfg.report_type, 'value', str(cfg.report_type))}'"
@@ -1861,12 +1868,57 @@ class ReportAssembler:
                 f"{v:.1f} s on {n} of {len(per_block)} blocks" for v, n in sorted(overrides.items())
             )
         release_txt += ")."
-        origin_txt = f" ({origin})" if origin else ""
+        if not origin:
+            # v1.15.0 (#69): no block on the first route link -> no origin block.
+            return (
+                f"Approach = Sighting ({sight:.1f}s) + Driver Reaction ({react:.1f}s) = {sight + react:.1f} s for every "
+                f"block; the first route link carries no block, so there is no origin block. "
+                f"Setup = Route Setup ({setup:.1f} s). " + release_txt
+            )
         return (
             f"Approach = Sighting ({sight:.1f}s) + Driver Reaction ({react:.1f}s) = {sight + react:.1f} s for every "
-            f"non-origin block; the origin block{origin_txt} carries no approach allowance, so its Approach column "
+            f"non-origin block; the origin block ({origin}) carries no approach allowance, so its Approach column "
             f"is the physical pre-entry time from departure to front entry. Setup = Route Setup ({setup:.1f} s). "
             + release_txt
+        )
+
+    @classmethod
+    def _build_section_warnings(
+        cls,
+        package: SimulationResultPackage,
+        direction: RunningDirection,
+    ) -> ReportSection:
+        """Section 0.0: Warnings (v1.15.0 / #69), from ``package.metadata["warnings"]``."""
+        records = list((package.metadata or {}).get("warnings") or [])
+        tables: List[EngineeringTable] = []
+        if records:
+            rows = [
+                {
+                    "Code": str(w.get("code", "")),
+                    "Train": str(w.get("train_id", "")),
+                    "Direction": str(w.get("direction", "")),
+                    "Message": str(w.get("message", "")),
+                }
+                for w in records
+            ]
+            df = pd.DataFrame(rows, columns=["Code", "Train", "Direction", "Message"])
+            tables.append(
+                EngineeringTable(
+                    table_id="TBL_WARNINGS",
+                    title="Simulation Warnings",
+                    raw_dataframe=df,
+                    running_direction=direction,
+                )
+            )
+        return ReportSection(
+            section_id=ReportSectionId.WARNINGS,
+            title="Warnings",
+            section_number="0.0",
+            is_applicable=True,
+            narrative_paragraphs=(
+                [f"{len(records)} warning(s) were raised during this analysis."] if records else ["No warnings."]
+            ),
+            tables=tables,
         )
 
     @classmethod

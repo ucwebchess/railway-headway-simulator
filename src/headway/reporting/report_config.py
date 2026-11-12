@@ -28,11 +28,13 @@ TEMPLATE_SECTIONS: Dict[ReportType, Set[ReportSectionId]] = {
     ReportType.DETAILED_ENGINEERING: set(ReportSectionId),
     ReportType.EXECUTIVE_SUMMARY: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.ASSUMPTIONS_AUDIT,
         ReportSectionId.CONCLUSIONS_RECOMMENDATIONS,
     },
     ReportType.CAPACITY_ASSESSMENT: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.BLOCKING_STAIRWAY,
         ReportSectionId.SEVEN_COMPONENT_BREAKDOWN,
         ReportSectionId.CONFLICT_RANKING,
@@ -44,6 +46,7 @@ TEMPLATE_SECTIONS: Dict[ReportType, Set[ReportSectionId]] = {
     },
     ReportType.HEADWAY_ASSESSMENT: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.SPEED_GRADIENT_CURVATURE,
         ReportSectionId.BLOCKING_STAIRWAY,
         ReportSectionId.SEVEN_COMPONENT_BREAKDOWN,
@@ -54,6 +57,7 @@ TEMPLATE_SECTIONS: Dict[ReportType, Set[ReportSectionId]] = {
     },
     ReportType.MIXED_TRAFFIC: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.MIXED_TRAFFIC_MATRIX,
         ReportSectionId.OPERATIONAL_ASSESSMENT,
         ReportSectionId.ASSUMPTIONS_AUDIT,
@@ -61,24 +65,28 @@ TEMPLATE_SECTIONS: Dict[ReportType, Set[ReportSectionId]] = {
     },
     ReportType.TVS_ASSESSMENT: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.TVS_ASSESSMENT,
         ReportSectionId.ASSUMPTIONS_AUDIT,
         ReportSectionId.CONCLUSIONS_RECOMMENDATIONS,
     },
     ReportType.STOCHASTIC_ASSESSMENT: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.STOCHASTIC_RELIABILITY,
         ReportSectionId.ASSUMPTIONS_AUDIT,
         ReportSectionId.CONCLUSIONS_RECOMMENDATIONS,
     },
     ReportType.SCENARIO_COMPARISON: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.SCENARIO_COMPARISON,
         ReportSectionId.ASSUMPTIONS_AUDIT,
         ReportSectionId.CONCLUSIONS_RECOMMENDATIONS,
     },
     ReportType.VALIDATION_REPORT: {
         ReportSectionId.EXECUTIVE_SUMMARY,
+        ReportSectionId.WARNINGS,  # v1.15.0: always included
         ReportSectionId.VERIFICATION_LIMITATIONS,
         ReportSectionId.ASSUMPTIONS_AUDIT,
         ReportSectionId.CONCLUSIONS_RECOMMENDATIONS,

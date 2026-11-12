@@ -8,6 +8,7 @@ P13 (visualization), and P14 (reports) without introducing new calculations.
 
 from datetime import datetime, timezone
 import itertools
+import logging
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -77,7 +78,7 @@ from headway.signalling.block_geometry_validation import (
     enforce_block_geometry,
 )
 from headway.signalling.coordinator import SignallingCoordinator
-from headway.simulation.dispatching import DispatchPolicy
+from headway.simulation.dispatching import DispatchPolicy, select_entry_block
 from headway.simulation.integrator import MicroscopicSimulator
 from headway.simulation.multi_train_engine import (
     MultiTrainSimulationResult,
@@ -93,6 +94,8 @@ from headway.simulation.trajectory import TrajectorySample, TrainTrajectory
 from headway.ui.direction_selector import DirectionSelector
 from headway.ui.progress import ProgressTracker
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -497,6 +500,9 @@ class SimulationRunner:
         max_speed_ms = min(speed_limit_ms, primary_tt.max_speed_ms)
 
         # 2. Pass 1: Leader-only microscopic simulation & Technical Headway Solving (DEF-05)
+        # v1.15.0 (#69): WARNING_ENTRY_GAP records from Pass 1 and Pass 2 (deduplicated into
+        # package.metadata["warnings"] once per analysis).
+        entry_gap_records: List[Dict[str, Any]] = []
         traj_leader_p1, _, simulated_route, train_leader_p1, coord_p1 = cls._run_multitrain_simulation(
             track_links=track_links,
             primary_tt=primary_tt,
@@ -512,6 +518,7 @@ class SimulationRunner:
             dt_s=dt_s,
             max_duration_s=max_duration_s,
             service_id=service_label,
+            entry_gap_sink=entry_gap_records,
         )
 
         if not traj_leader_p1 or not traj_leader_p1.samples:
@@ -569,7 +576,15 @@ class SimulationRunner:
                 "Origin block could not be determined from route ordering.",
                 error_code="ERR_ORIGIN_BLOCK_UNDETERMINED",
             )
-        origin_block_id = min(route_min_s, key=route_min_s.get)
+        # v1.15.0 (#69): the origin block is the dispatcher's entry block (same helper, Pass 1
+        # resources, route origin). No block on the first link -> None (no origin block; do not raise).
+        entry_selection = select_entry_block(
+            route=simulated_route,
+            resources=coord_p1.resource_controller.resources,
+            entry_point_m=0.0,
+            train_length_m=train_leader_p1.params.length_m,
+        )
+        origin_block_id = entry_selection.block.resource_id if entry_selection.block is not None else None
 
         # Trajectory samples for front exit timing & speed interpolation (UIC 406 Part 1)
         import numpy as np
@@ -851,6 +866,7 @@ class SimulationRunner:
             dt_s=dt_s,
             max_duration_s=max_duration_s,
             service_id=service_label,
+            entry_gap_sink=entry_gap_records,
         )
 
         if tracker:
@@ -1471,6 +1487,18 @@ class SimulationRunner:
 
         fol_id = traj_follower.train_id if traj_follower is not None else "TRN_FOLLOWER"
 
+        # v1.15.0 (#69): WARNING_ENTRY_GAP once per analysis, deduplicated by
+        # (train_id, block_id, direction) across Pass 1 and Pass 2.
+        report_warnings: List[Dict[str, Any]] = []
+        seen_warning_keys = set()
+        for w in entry_gap_records:
+            key = (w["train_id"], w["block_id"], w["direction"])
+            if key in seen_warning_keys:
+                continue
+            seen_warning_keys.add(key)
+            report_warnings.append(w)
+            logger.warning(w["message"])
+
         # 9. Build Canonical Result Package (P13)
         package = SimulationResultPackage(
             run_id=run_id,
@@ -1487,6 +1515,10 @@ class SimulationRunner:
             metadata={
                 "project": project,
                 "project_name": project.name,
+                # v1.15.0 (#69): report warnings (Section 0.0), list of dicts with keys
+                # code, train_id, block_id, direction, entry_point_m, block_entry_m, gap_m,
+                # warn_threshold_m, message.
+                "warnings": report_warnings,
                 "scenarios": scenarios,
                 "active_service_pattern_id": (
                     str(active_pattern.service_pattern_id)
@@ -1982,6 +2014,7 @@ class SimulationRunner:
         dt_s: float = 1.0,
         max_duration_s: float = 7200.0,
         service_id: Optional[str] = None,
+        entry_gap_sink: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[TrainTrajectory, Optional[TrainTrajectory], Route, TrainServiceInstance, SignallingCoordinator]:
         """Execute microscopic multi-train simulation along the given (route) track links with MultiTrainSimulator."""
         traversals: List[LinkTraversal] = []
@@ -2079,6 +2112,9 @@ class SimulationRunner:
         )
 
         sim.run_simulation(max_duration_s=eff_max_duration_s)
+        if entry_gap_sink is not None:
+            # v1.15.0 (#69): dispatcher WARNING_ENTRY_GAP records of this pass
+            entry_gap_sink.extend(dict(w) for w in sim.origin_queue.entry_gap_warnings)
 
         traj_leader = cls._extract_trajectory(train_leader)
         traj_follower = cls._extract_trajectory(train_follower) if train_follower is not None else None

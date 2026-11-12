@@ -34,6 +34,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.0] — 2026-11-12
+
+Dispatcher entry block selection (#69). At departure the dispatcher reserved the first TRACK_BLOCK registered on the first route link (or `BLK_<link>`), ignoring running direction and offset. In REVERSE that is the block the train reaches **last** on its first link, so three shipped runs had an inflated technical headway: 01c 266 → 159 s, 02-bidirectional 153 → 87 s, 04c 220 → 118 s. All other runs, including every FORWARD run, are unchanged, as are all journey times.
+
+### Physics engine changes
+- None. `simulation/multi_train_engine.py` and the integrator are unchanged. The fix is in the origin dispatcher (`simulation/dispatching.py`) and in the runner's origin-block choice (`ui/simulation_runner.py`, the origin pick only).
+
+### Fixed
+- New `select_entry_block(route, resources, entry_point_m, train_length_m) -> EntryBlockSelection` (`simulation/dispatching.py`). It searches the **first route link only**, among TRACK_BLOCKs with an interval on that link plus the `BLK_<link>` name fallback, which is preserved. A block's entry in the direction of travel is its smallest start offset (FORWARD traversal) or its largest end offset (REVERSE traversal). The selected block is the one whose entry is nearest at or beyond the entry point. Ties break by resource ID, so registration order no longer matters.
+- `OriginDepartureQueue.can_authorize_entry` checks the selected block: `ENTRY_BLOCK_OCCUPIED_<id>` if it is unavailable.
+- `OriginDepartureQueue.dispatch_candidate` now reserves the selected block **before** any state change. A `ResourceConflictError` leaves the train queued, not RUNNING and without a departure time. Previously the train was set RUNNING first.
+- No block on the first route link: the train is dispatched without a reservation, with no error and no warning (u8000 user project).
+- The runner's origin block (Section 10 "origin block carries no approach allowance") uses the same helper with Pass 1 resources and entry point 0.0, so the runner and the dispatcher always agree. When there is no block on the first link, there is no origin block and no error. `ERR_ORIGIN_BLOCK_UNDETERMINED` is unchanged for routes without any route block.
+
+### Added
+- `WARNING_ENTRY_GAP` (`EntryGapWarning`, a `UserWarning`): issued when the selected block's entry is more than `max(train length, 100 m)` from the entry point. Message: "WARNING_ENTRY_GAP: Train {id} in {direction} entered route at {entry} m; first block {block} at {block entry} m; gap {gap} m exceeds threshold {threshold} m." Recorded once per (train, block, direction) across both runner passes in `package.metadata["warnings"]`. On the shipped examples only 03 REVERSE warns: BLK_STN_01 750 m ahead, one record each for leader and follower; headway unchanged at 179 s.
+- Report Section **0.0 Warnings** (`ReportSectionId.WARNINGS`): the first section, always included, never excluded by template or user selection, and not offered as a checkbox. It shows "No warnings." or a Code | Train | Direction | Message table. Reports now have 19 sections instead of 18.
+- Issue drafts targeting v1.15.2: `docs/issues/blk_link_name_fallback.md`, `docs/issues/start_signal_direction.md`, `docs/issues/entry_offset_aware_reservation.md`.
+- `tests/integration/test_v1150_dispatcher_entry_block.py`: 14 tests, FORWARD and REVERSE.
+
+### Changed
+- Section 10 timing note when there is no origin block: "for every block; the first route link carries no block, so there is no origin block".
+- u8000 (user project, not shipped): headway 130 s / 130 s unchanged, no warnings. Section 10 row 1 (BLK_UP_00 FORWARD, BLK_UP_34 REVERSE) is no longer treated as an origin block. Its Approach is now 5.0 s (sighting + reaction) instead of 0.0 s, and the interval starts 5 s earlier: FORWARD 27.0 → 22.0 s, REVERSE 44.0 → 39.0 s.
+
+### Tests
+- `tests/integration/test_report_integration.py`: `len(doc.sections)` 18 → 19.
+- `tests/fixtures/v1142_chart_hashes.json`: `04_tunnel_tvs` `REVERSE/fig_blocking_stairway` regenerated. The follower shift is +118.0 s instead of +220.0 s.
+
+---
+
 ## [1.14.6] — 2026-11-12
 
 Reverse berth rear overhang. A train longer than its stop segment (the `<PLATFORM_ID>@s<N>` segment selected by `SEGMENT_HINT_OFFSET_M`) berthed one segment length past that segment's entry. Its rear could hang off the platform by up to `L - segment length`, for example 63.08 m for u8000 `PLT_AUH` REVERSE (202 m train, 61.08 m + 138.92 m segments). Such a train now berths against the parent platform end in the direction of travel. Trains that fit their stop segment are unchanged: shipped-example baselines (headway, journey time, every stop's front/rear) are identical in FORWARD and REVERSE.

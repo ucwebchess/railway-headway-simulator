@@ -363,7 +363,7 @@ class TestReportIntegration:
         assert doc.executive_kpis.technical_headway_s == 90.0
         assert doc.executive_kpis.theoretical_capacity_tph == 40.0
         assert doc.executive_kpis.controlling_bottleneck_id == "BLK_03"
-        assert len(doc.sections) == 18
+        assert len(doc.sections) == 19  # v1.15.0: + Section 0.0 Warnings
 
         # 2. Validation
         audit = ReportValidator.validate_report(doc, raise_on_error=True)
@@ -421,7 +421,7 @@ class TestReportIntegration:
             report_dict = data.get("report_data", data)
             assert report_dict["metadata"]["scenario_id"] == "SCEN_INTEG_BASE"
             assert report_dict["executive_kpis"]["technical_headway_s"] == 90.0
-            assert len(report_dict["sections"]) == 18
+            assert len(report_dict["sections"]) == 19  # v1.15.0: + Section 0.0 Warnings
 
             # 9. ZIP Package Export
             zip_path = tmp_path / "report_package.zip"
