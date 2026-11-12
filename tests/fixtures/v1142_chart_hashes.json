@@ -1,5 +1,5 @@
 {
-  "_comment": "v1.14.2 default-off chart output: sha256 of fig.to_json() + trace names, captured on unmodified main 0355ddf via SimulationRunner.run_simulation_pipeline -> doc.figures_data, in the CI environment (Python 3.11, plotly 7.1.0, pandas 3.1.1, numpy 2.4.6). Plotly's JSON includes its template, so the hashes are plotly-version specific, like fixtures/v1141_chart_hashes.json. v1.14.5: the fig_blocking_stairway hashes (here and in v1141_chart_hashes.json) were regenerated in the same CI environment after Task 4 moved the stairway annotation; the JSON differs from unmodified main 9080e82 only in layout.annotations[1] (x 0.02 -> 0.5, xanchor center and yanchor top added). The speed-alignment hashes are unchanged.",
+  "_comment": "v1.14.2 default-off chart output: sha256 of fig.to_json() + trace names, captured on unmodified main 0355ddf via SimulationRunner.run_simulation_pipeline -> doc.figures_data, in the CI environment (Python 3.11, plotly 7.1.0, pandas 3.1.1, numpy 2.4.6). Plotly's JSON includes its template, so the hashes are plotly-version specific, like fixtures/v1141_chart_hashes.json. v1.14.5: the fig_blocking_stairway hashes (here and in v1141_chart_hashes.json) were regenerated in the same CI environment after Task 4 moved the stairway annotation; the JSON differs from unmodified main 9080e82 only in layout.annotations[1] (x 0.02 -> 0.5, xanchor center and yanchor top added). The speed-alignment hashes are unchanged. v1.15.0 (#69): 04_tunnel_tvs REVERSE/fig_blocking_stairway regenerated in the same environment; the REVERSE follower shift is 118.0 s instead of 220.0 s because the dispatcher now reserves the true entry block BLK_T02 instead of BLK_T01. No other entry changed.",
   "04_tunnel_tvs": {
     "FORWARD/fig_speed_alignment": {
       "sha256": "4036f5e8dcf2e9d68dbd727ddf76101664d515ce857cc4c8f45ec287da0b42f5",
@@ -23,10 +23,10 @@
       ]
     },
     "REVERSE/fig_blocking_stairway": {
-      "sha256": "f32f02957a98d4c038bc21951b949d634eb5440edac7f069f9952c0148efd54a",
+      "sha256": "38e73b9c5c65b6358aa5aa5a458438e64e3c0ad8107a3b4f9c7b1028b240c76a",
       "names": [
         "Leader Train (SRV_TNL_01)",
-        "Follower Train (SRV_TNL_01) [Shifted +220.0s]"
+        "Follower Train (SRV_TNL_01) [Shifted +118.0s]"
       ]
     }
   },

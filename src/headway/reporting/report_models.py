@@ -42,6 +42,7 @@ class ReportSectionId(str, Enum):
     """Enumeration of all supported report sections."""
 
     EXECUTIVE_SUMMARY = "EXECUTIVE_SUMMARY"
+    WARNINGS = "WARNINGS"  # v1.15.0 (#69): Section 0.0, always included
     SPEED_GRADIENT_CURVATURE = "SPEED_GRADIENT_CURVATURE"
     BLOCKING_STAIRWAY = "BLOCKING_STAIRWAY"
     SEVEN_COMPONENT_BREAKDOWN = "SEVEN_COMPONENT_BREAKDOWN"

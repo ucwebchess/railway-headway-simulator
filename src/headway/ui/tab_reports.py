@@ -30,7 +30,8 @@ from headway.ui.file_manager import FileManager
 from headway.ui.state import session_state
 
 
-ALL_SECTIONS = [s.value for s in ReportSectionId]
+# v1.15.0: Section 0.0 Warnings is always included and therefore not offered as a checkbox.
+ALL_SECTIONS = [s.value for s in ReportSectionId if s != ReportSectionId.WARNINGS]
 
 
 def create_reports_tab() -> Dict[str, Any]:
