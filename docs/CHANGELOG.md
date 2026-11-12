@@ -34,6 +34,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.0.1] — 2026-11-13
+
+Report direction in a UI session. Tab 10 (template, section selection, Generate) stores a `ReportConfig` carrying the current run's direction in the session, and the next Tab 8 run passed it to `ReportAssembler.assemble_report`, which used `cfg.running_direction or package.running_direction`. After switching the direction radio and re-running, the report was assembled in the **previous** run's frame: platform extents in the stale frame, stops from the new run. Run 2 then failed with `ERR_CHART_ALIGNMENT_FRAME` (shipped 03, 05c, 06, 07c, both orders) or was silently labelled with the wrong direction (01c, 02-bidirectional, 04c). No cache or mutation was involved. Simulation results (headway, journey time) were never affected.
+
+### Physics engine changes
+- None. No file under `simulation/` changed. The fix is in report assembly and the UI handlers.
+
+### Fixed
+- `ReportAssembler.assemble_report` (`reporting/report_assembly.py`): `package.running_direction` is authoritative for its report (new `ReportAssembler.resolve_report_direction`). A `ReportConfig.running_direction` that is set and differs from the package now raises `ERR_REPORT_DIRECTION_MISMATCH` (`ReportDirectionMismatchError`, a `ReportingError`) naming both values and the rule, instead of being silently preferred. `None` or an equal value behaves as before.
+- `ui/simulation_runner.py`: the automatic post-run report uses the session `ReportConfig` with `running_direction=None` (`dataclasses.replace`), so a stale session direction can no longer reach the assembler.
+- `ui/tab_reports.py`: the template and section-selection handlers store `ReportConfig(..., running_direction=None)`. Generate is unchanged and still passes `pkg.running_direction`.
+- `ui/tab_results.py`: the speed-profile CSV export uses `pkg.running_direction` instead of the direction radio (`session_state.selected_running_direction`), so changing the radio without re-running no longer exports the CSV in the wrong frame.
+
+### Added
+- `tests/integration/test_v11501_report_direction_session.py` (8 tests): emulated UI session in both orders (FWD→REV, REV→FWD on 07c), mismatch raises (04c, both directions), no config direction unchanged, speed CSV uses the package direction (both directions).
+- Issue draft targeting v1.15.2: `docs/issues/version_info_stale.md`.
+
+### Changed
+- Version 1.15.0.1. `VERSION_INFO` is intentionally left untouched (see `docs/issues/version_info_stale.md`).
+- Shipped examples: all 14 separate runs (7 datasets × FWD/REV) give identical headway, journey time and report fingerprints. In a paired UI session, run 2 now succeeds with the same results as a fresh single run in that direction, and every report has `doc.running_direction == package.running_direction`.
+
+---
+
 ## [1.15.0] — 2026-11-12
 
 Dispatcher entry block selection (#69). At departure the dispatcher reserved the first TRACK_BLOCK registered on the first route link (or `BLK_<link>`), ignoring running direction and offset. In REVERSE that is the block the train reaches **last** on its first link, so three shipped runs had an inflated technical headway: 01c 266 → 159 s, 02-bidirectional 153 → 87 s, 04c 220 → 118 s. All other runs, including every FORWARD run, are unchanged, as are all journey times.

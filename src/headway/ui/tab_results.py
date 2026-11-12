@@ -391,7 +391,7 @@ def create_results_tab() -> Dict[str, Any]:
             primary_traj,
             permissible_speed_envelope=env,
             track_links=track_links,
-            running_direction=session_state.selected_running_direction,
+            running_direction=pkg.running_direction,  # v1.15.0.1: the exported package's direction
         )
         out_dir = Path(session_state.reports_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
