@@ -14,8 +14,10 @@ Strictly satisfies RHS-P02-001 § 15:
 - No braking or dwell calculations during P02.
 """
 
+import re
+import warnings
 from dataclasses import dataclass, replace
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from headway.core.exceptions import InfrastructureError
 from headway.data.canonical import InfrastructureModel, Platform, Station, StoppingPoint
@@ -37,6 +39,167 @@ class TrainOverhangError(StationGeometryError):
 
 #: Length comparison tolerance (m) for the platform fit check.
 FIT_TOLERANCE_M = 1e-3
+
+
+class PlatformBerthOverhangError(StationGeometryError):
+    """v1.14.6: a computed berth footprint leaves the parent platform by more than the unavoidable overhang."""
+
+    DEFAULT_ERROR_CODE = "ERR_PLATFORM_BERTH_OVERHANG"
+
+
+class RouteStopsNoTrainLengthError(StationGeometryError):
+    """v1.14.6: a berth / route-stop position was requested without a positive train length."""
+
+    DEFAULT_ERROR_CODE = "ERR_ROUTE_STOPS_NO_TRAIN_LENGTH"
+
+
+class BerthFallbackWarning(UserWarning):
+    """v1.14.6: the train is longer than its stop segment and berths against the parent platform."""
+
+
+#: Numerical noise allowed on top of the unavoidable overhang in the berth containment check (m).
+BERTH_NUMERIC_TOLERANCE_M = 1e-3
+
+_SEGMENT_NUMBER_RE = re.compile(r"@s(\d+)$")
+
+
+@dataclass(frozen=True)
+class BerthPosition:
+    """v1.14.6: train-front berth position at a platform stop, as a physical link offset.
+
+    The front can lie on a different link from the stop segment (a train longer than its stop
+    segment berths against the parent platform end, which may be on a sibling segment's link).
+    ``fits_segment`` is True when the train fits its stop segment (segment-scoped rule kept).
+    """
+
+    link_id: str
+    offset_m: float
+    fits_segment: bool = True
+
+
+def parent_platform_segments(platform: Platform, platforms: Iterable[Platform]) -> List[Platform]:
+    """The link-level segments of ``platform``'s parent platform, in track order (``@s1`` first).
+
+    Platforms without a parent (no ``PlatformSpans`` segmentation) are their own single segment.
+    """
+    parent = getattr(platform, "parent_platform_id", None)
+    if not parent:
+        return [platform]
+    sibs: Dict[str, Platform] = {
+        p.platform_id: p for p in platforms if getattr(p, "parent_platform_id", None) == parent
+    }
+    sibs.setdefault(platform.platform_id, platform)
+
+    def _order(item: Tuple[int, Platform]) -> Tuple[int, int]:
+        idx, p = item
+        m = _SEGMENT_NUMBER_RE.search(p.platform_id)
+        return (int(m.group(1)) if m else 10**9, idx)
+
+    return [p for _, p in sorted(enumerate(sibs.values()), key=_order)]
+
+
+def berth_containment_tolerance_m(train_length_m: float, parent_platform_length_m: float) -> float:
+    """v1.14.6: allowed overhang = the unavoidable overhang ``max(0, L - P)`` + 1 mm numerical noise."""
+    return max(0.0, float(train_length_m) - float(parent_platform_length_m)) + BERTH_NUMERIC_TOLERANCE_M
+
+
+def check_berth_containment(
+    platform_id: str,
+    front_m: float,
+    train_length_m: float,
+    parent_platform_length_m: float,
+    direction: RunningDirection,
+) -> None:
+    """v1.14.6: raise ``ERR_PLATFORM_BERTH_OVERHANG`` if a berth footprint leaves the parent platform.
+
+    Positions are in the parent platform's *travel frame*: 0 = the platform end the train enters,
+    ``parent_platform_length_m`` = the platform end in the direction of travel. The front is at
+    ``front_m`` and the rear at ``front_m - train_length_m`` in both running directions.
+    """
+    tol = berth_containment_tolerance_m(train_length_m, parent_platform_length_m)
+    rear_m = float(front_m) - float(train_length_m)
+    for end_name, excess in (("rear", -rear_m), ("front", float(front_m) - float(parent_platform_length_m))):
+        if excess > tol:
+            raise PlatformBerthOverhangError(
+                f"Berth at platform '{platform_id}' ({direction.value}): the train {end_name} lies "
+                f"{excess:.3f} m outside the platform; the allowed overhang is {tol:.3f} m "
+                f"(train {float(train_length_m):.2f} m, platform {float(parent_platform_length_m):.2f} m).",
+                context={
+                    "platform_id": platform_id,
+                    "end": end_name,
+                    "overhang_m": round(excess, 6),
+                    "allowed_overhang_m": round(tol, 6),
+                    "train_length_m": float(train_length_m),
+                    "parent_platform_length_m": float(parent_platform_length_m),
+                    "direction": direction.value,
+                },
+            )
+
+
+def berth_front_offset(
+    segment: Platform,
+    parent_extent: Optional[Sequence[Platform]],
+    train_length_m: Optional[float],
+    direction: RunningDirection,
+) -> BerthPosition:
+    """v1.14.6: the single berth rule — where the train front stops at a platform stop.
+
+    ``segment`` is the stop segment (selected by ``SEGMENT_HINT_OFFSET_M``); ``parent_extent`` is
+    the parent platform's link-level segments in track order (see ``parent_platform_segments``).
+    FORWARD runs along increasing link offsets, REVERSE along decreasing offsets.
+
+    * Train fits its stop segment (``L <= segment length``): unchanged pre-v1.14.6 rule — the
+      front stops one train length past the segment's entry end in the direction of travel.
+    * Train longer than its stop segment: the front pulls up to the **parent platform end** in
+      the direction of travel (the hint stays the stop segment for reporting), a
+      ``BerthFallbackWarning`` is issued, and the footprint is checked against the parent
+      platform (``ERR_PLATFORM_BERTH_OVERHANG`` beyond the unavoidable overhang).
+    """
+    if train_length_m is None or not float(train_length_m) > 0.0:
+        raise RouteStopsNoTrainLengthError(
+            f"A berth position at platform '{segment.platform_id}' needs a positive train length "
+            f"(got {train_length_m!r}).",
+            context={"platform_id": segment.platform_id, "train_length_m": train_length_m},
+        )
+    L = float(train_length_m)
+    segs = list(parent_extent or [])
+    if not any(p.platform_id == segment.platform_id for p in segs):
+        segs = [segment]
+    reverse = direction == RunningDirection.REVERSE
+    parent_id = getattr(segment, "parent_platform_id", None) or segment.platform_id
+    parent_len = float(sum(float(p.length_m) for p in segs))
+    seg_len = float(segment.length_m)
+    start, end = float(segment.start_offset_m), float(segment.end_offset_m)
+
+    # Travel-frame entry of the stop segment (0 = parent end the train enters).
+    travel = list(reversed(segs)) if reverse else segs
+    entry_t = 0.0
+    for p in travel:
+        if p.platform_id == segment.platform_id:
+            break
+        entry_t += float(p.length_m)
+
+    if L <= seg_len + FIT_TOLERANCE_M:
+        # Segment-scoped rule kept bit-for-bit for trains that fit (v1.14.6 decision C4).
+        if reverse:
+            off = max(start, end - min(seg_len, L))
+        else:
+            off = min(end, start + min(seg_len, L))
+        check_berth_containment(parent_id, entry_t + abs(off - (end if reverse else start)), L, parent_len, direction)
+        return BerthPosition(link_id=segment.link_id, offset_m=off, fits_segment=True)
+
+    # Train longer than its stop segment: berth against the parent platform end (Policy A).
+    check_berth_containment(parent_id, parent_len, L, parent_len, direction)
+    m = _SEGMENT_NUMBER_RE.search(segment.platform_id)
+    seg_label = m.group(1) if m else segment.platform_id
+    warnings.warn(
+        f"Train {L:.1f}m exceeds segment {seg_label} ({seg_len:.1f}m); berthing against parent platform",
+        BerthFallbackWarning,
+        stacklevel=2,
+    )
+    exit_seg = segs[0] if reverse else segs[-1]
+    off = float(exit_seg.start_offset_m) if reverse else float(exit_seg.end_offset_m)
+    return BerthPosition(link_id=exit_seg.link_id, offset_m=off, fits_segment=False)
 
 
 def parent_platform_length_m(platform: Platform, platforms: Iterable[Platform]) -> float:
@@ -175,12 +338,24 @@ class StationPlatformModel:
     def get_stopping_points_for_platform(self, platform_id: str) -> List[StoppingPoint]:
         return [sp for sp in self.stopping_points.values() if sp.platform_id == platform_id]
 
-    def resolve_route_stops(self, route: Route) -> List[RoutePlatformStop]:
+    def resolve_route_stops(self, route: Route, train_length_m: Optional[float] = None) -> List[RoutePlatformStop]:
         """P02-ST-006 & P02-DIR-010: Map stations and platforms to route-distance coordinates.
 
         In reverse operation, stations are encountered in reverse order,
         and stopping points are mapped to the selected running direction.
+
+        v1.14.6: ``train_length_m`` is required (``ERR_ROUTE_STOPS_NO_TRAIN_LENGTH`` when missing
+        or non-positive, no silent default). The stopping position is the train-front berth from
+        the central rule ``berth_front_offset`` — the same rule the multi-train engine uses — so
+        the single-train and multi-train paths agree.
         """
+        if train_length_m is None or not float(train_length_m) > 0.0:
+            raise RouteStopsNoTrainLengthError(
+                f"resolve_route_stops needs a positive train_length_m (got {train_length_m!r}); "
+                "the stopping position depends on the train length.",
+                context={"route_id": getattr(route, "route_id", None), "train_length_m": train_length_m},
+            )
+        trav_by_link = {t.link_id: t for t in route.traversals}
         route_stops: List[RoutePlatformStop] = []
 
         for traversal in route.traversals:
@@ -201,12 +376,18 @@ class StationPlatformModel:
                 s_start = traversal.physical_offset_to_route_distance(plat.start_offset_m)
                 s_end = traversal.physical_offset_to_route_distance(plat.end_offset_m)
 
-                # Default stopping position
-                if stopping_point is not None:
-                    s_stop = traversal.physical_offset_to_route_distance(stopping_point.offset_m)
-                else:
-                    # If no explicit stopping point, default to platform exit end in running direction
-                    s_stop = max(s_start, s_end)
+                # v1.14.6: stopping position = central berth rule (train front), not the hint point.
+                berth = berth_front_offset(
+                    plat, self.parent_platform_segments(plat.platform_id), train_length_m, traversal.direction
+                )
+                berth_trav = trav_by_link.get(berth.link_id)
+                if berth_trav is None:
+                    raise StationGeometryError(
+                        f"Berth of platform '{plat.platform_id}' lies on link '{berth.link_id}', which is "
+                        f"not on route '{getattr(route, 'route_id', '')}'.",
+                        context={"platform_id": plat.platform_id, "berth_link_id": berth.link_id},
+                    )
+                s_stop = berth_trav.physical_offset_to_route_distance(berth.offset_m)
 
                 route_stops.append(
                     RoutePlatformStop(
@@ -244,3 +425,7 @@ class StationPlatformModel:
     def parent_platform_length_m(self, platform_id: str) -> float:
         """Physical length of the platform that segment ``platform_id`` belongs to."""
         return parent_platform_length_m(self.platforms[platform_id], self.platforms.values())
+
+    def parent_platform_segments(self, platform_id: str) -> List[Platform]:
+        """v1.14.6: segments of the platform that segment ``platform_id`` belongs to, in track order."""
+        return parent_platform_segments(self.platforms[platform_id], self.platforms.values())

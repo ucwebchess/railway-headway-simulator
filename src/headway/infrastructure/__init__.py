@@ -62,10 +62,15 @@ from headway.infrastructure.speed import (
     SpeedRestriction,
 )
 from headway.infrastructure.stations import (
+    BerthFallbackWarning,
+    BerthPosition,
+    PlatformBerthOverhangError,
     RoutePlatformStop,
+    RouteStopsNoTrainLengthError,
     StationGeometryError,
     StationPlatformModel,
     TrainOverhangError,
+    berth_front_offset,
 )
 from headway.infrastructure.switches import (
     JunctionTopology,
@@ -128,6 +133,11 @@ __all__ = [
     "RoutePlatformStop",
     "StationGeometryError",
     "TrainOverhangError",
+    "BerthPosition",
+    "berth_front_offset",
+    "BerthFallbackWarning",
+    "PlatformBerthOverhangError",
+    "RouteStopsNoTrainLengthError",
     # Tunnels & TVS
     "TunnelTVSModel",
     "RouteTVSSection",

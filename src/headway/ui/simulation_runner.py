@@ -50,6 +50,7 @@ from headway.data.canonical import (
 )
 from headway.infrastructure.direction import DirectionPolicy, RunningDirection
 from headway.infrastructure.route import LinkTraversal, Route
+from headway.infrastructure.stations import berth_front_offset, parent_platform_segments
 from headway.reporting.charts_speed import compute_permissible_speed_envelope
 from headway.reporting.report_assembly import ReportAssembler
 from headway.reporting.report_models import ReportDocument
@@ -1038,17 +1039,23 @@ class SimulationRunner:
                     pp for pp in _plat_lookup.values() if pp.station_id == getattr(_st, "station_id", None)
                 ]
                 for _po in _cands:
-                    _trav2 = next((t for t in simulated_route.traversals if t.link_id == _po.link_id), None)
+                    if not any(t.link_id == _po.link_id for t in simulated_route.traversals):
+                        continue
+                    # v1.14.6: the same central berth rule as the engine (site #2).
+                    _sibs = parent_platform_segments(_po, infra.platforms)
+                    _berth = berth_front_offset(_po, _sibs, float(train_len_m), running_direction)
+                    _trav2 = next((t for t in simulated_route.traversals if t.link_id == _berth.link_id), None)
                     if _trav2 is None:
                         continue
-                    _plen = float(_po.length_m)
                     if running_direction == RunningDirection.FORWARD:
-                        _off_t = min(float(_po.end_offset_m), float(_po.start_offset_m) + min(_plen, float(train_len_m)))
-                        _mk = _trav2.start_distance_m + _off_t
+                        _mk = _trav2.start_distance_m + _berth.offset_m
                     else:
-                        _off_t = max(float(_po.start_offset_m), float(_po.end_offset_m) - min(_plen, float(train_len_m)))
-                        _mk = _trav2.start_distance_m + (_trav2.link.length_m - _off_t)
-                    _ps2, _pe2 = _plat_span_by_id[_po.platform_id]
+                        _mk = _trav2.start_distance_m + (_trav2.link.length_m - _berth.offset_m)
+                    # v1.14.6 (G2): test the berth against the PARENT platform extent (union of its
+                    # segments on the route); credit the occupation to the stop segment ``_po``.
+                    _spans = [_plat_span_by_id[s.platform_id] for s in _sibs if s.platform_id in _plat_span_by_id]
+                    _ps2 = min(a for a, _b in _spans)
+                    _pe2 = max(_b for _a, _b in _spans)
                     if _ps2 - 5.0 <= _mk <= _pe2 + 5.0:
                         _assigned_platform_ids.add(_po.platform_id)
 
@@ -1677,7 +1684,6 @@ class SimulationRunner:
 
         stn_map = {s.station_id: s for s in getattr(infra, "stations", [])}
         plat_map = {p.platform_id: p for p in getattr(infra, "platforms", [])}
-        stopping_pt_map = {stp.platform_id: stp for stp in getattr(infra, "stopping_points", [])}
 
         fwd_link_starts: Dict[str, float] = {}
         cum_m = 0.0
@@ -1730,15 +1736,17 @@ class SimulationRunner:
                     f"ERR_STATION_STOP_FIELD_MISSING: Platform link '{platform.link_id}' is not part of corridor track links."
                 )
 
-            plat_link_start = fwd_link_starts[platform.link_id]
-            stp = stopping_pt_map.get(platform.platform_id)
-            if stp and getattr(stp, "offset_m", None) is not None:
-                offset_on_link = float(stp.offset_m)
-            else:
-                plat_len = float(platform.length_m) if getattr(platform, "length_m", None) else float(platform.end_offset_m - platform.start_offset_m)
-                offset_on_link = float(platform.start_offset_m) + plat_len / 2.0
-
-            fwd_stopping_pos_m = plat_link_start + offset_on_link
+            # v1.14.6: computed fallback = the central berth rule (site #5), the same rule the
+            # engine uses; the STATION_ARRIVED event below still takes precedence when present.
+            _berth = berth_front_offset(
+                platform, parent_platform_segments(platform, plat_map.values()), float(train_len_m), running_direction
+            )
+            if _berth.link_id not in fwd_link_starts:
+                raise StationStopFieldMissingError(
+                    f"ERR_STATION_STOP_FIELD_MISSING: Berth link '{_berth.link_id}' of platform "
+                    f"'{plt_id}' is not part of corridor track links."
+                )
+            fwd_stopping_pos_m = fwd_link_starts[_berth.link_id] + float(_berth.offset_m)
 
             if running_direction == RunningDirection.FORWARD:
                 front_stopping_pos_m = fwd_stopping_pos_m

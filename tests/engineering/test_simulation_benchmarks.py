@@ -427,7 +427,9 @@ def test_bench_p04_013_reverse_station_stops():
     """BENCH-P04-013: Reverse Station Sequence.
 
     Corridor with 2 stations: Station 1 at 1000m, Station 2 at 2500m (total 3500m).
-    In reverse, Station 2 is encountered first at reverse distance 1000m, Station 1 at 2500m.
+    In reverse, Station 2 is encountered first at reverse distance 1100m, Station 1 at 2600m
+    (v1.14.6: berth rule, 200 m train: front = platform entry end + 200 m; was 1000/2500 m at the
+    stopping-point hint).
     """
     graph = PhysicalNetworkGraph()
     graph.add_node(Node(node_id="ND_A", node_type=NodeType.ENDPOINT))
@@ -451,8 +453,8 @@ def test_bench_p04_013_reverse_station_stops():
     stn_model.add_stopping_point(StoppingPoint(stopping_point_id="SP_1", platform_id="PLT_1", link_id="LNK_AB", offset_m=1000.0))
     stn_model.add_stopping_point(StoppingPoint(stopping_point_id="SP_2", platform_id="PLT_2", link_id="LNK_AB", offset_m=2500.0))
 
-    stops_fwd = stn_model.resolve_route_stops(route_fwd)
-    stops_rev = stn_model.resolve_route_stops(route_rev)
+    stops_fwd = stn_model.resolve_route_stops(route_fwd, train_length_m=200.0)  # v1.14.6: required
+    stops_rev = stn_model.resolve_route_stops(route_rev, train_length_m=200.0)
 
     targets_fwd = BrakingTargetResolver.resolve_targets(route_fwd, station_views=stops_fwd)
     targets_rev = BrakingTargetResolver.resolve_targets(route_rev, station_views=stops_rev)

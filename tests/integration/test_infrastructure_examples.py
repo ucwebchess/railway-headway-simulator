@@ -125,8 +125,9 @@ def test_03_station_platform_geometry():
     route_rev = route_fwd.create_reverse_route(graph, "RT_STN_REV")
 
     preprocessor = InfrastructurePreprocessor(infra)
-    profile_fwd = preprocessor.preprocess_route(route_fwd, RunningDirection.FORWARD)
-    profile_rev = preprocessor.preprocess_route(route_rev, RunningDirection.REVERSE)
+    train_len = float(project.rolling_stock.train_types[0].length_m)  # v1.14.6: required
+    profile_fwd = preprocessor.preprocess_route(route_fwd, RunningDirection.FORWARD, train_length_m=train_len)
+    profile_rev = preprocessor.preprocess_route(route_rev, RunningDirection.REVERSE, train_length_m=train_len)
 
     assert len(profile_fwd.stations) == 1
     assert len(profile_rev.stations) == 1
@@ -158,8 +159,9 @@ def test_04_tunnel_tvs_boundary_reversal():
     route_rev = route_fwd.create_reverse_route(graph, "RT_TNL_REV")
 
     preprocessor = InfrastructurePreprocessor(infra)
-    profile_fwd = preprocessor.preprocess_route(route_fwd, RunningDirection.FORWARD)
-    profile_rev = preprocessor.preprocess_route(route_rev, RunningDirection.REVERSE)
+    train_len = float(project.rolling_stock.train_types[0].length_m)  # v1.14.6: required
+    profile_fwd = preprocessor.preprocess_route(route_fwd, RunningDirection.FORWARD, train_length_m=train_len)
+    profile_rev = preprocessor.preprocess_route(route_rev, RunningDirection.REVERSE, train_length_m=train_len)
 
     assert len(profile_fwd.tvs_sections) == 2
     assert len(profile_rev.tvs_sections) == 2

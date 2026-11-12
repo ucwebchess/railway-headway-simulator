@@ -89,22 +89,52 @@ def platform_route_extents(
     return sorted(merged.values(), key=lambda r: r["start_m"])
 
 
+#: v1.14.6: observed-position allowance of the diagram containment check (m) — the engine accepts
+#: arrival within ±1.0 m of the berth target (``ARRIVAL_POSITION_TOL_M``).
+CHART_POSITION_TOLERANCE_M = 1.0
+
+
+def chart_containment_tolerance_m(train_length_m: float, platform_length_m: float) -> float:
+    """v1.14.6: unavoidable overhang ``max(0, L - P)`` + the 1.0 m observed-position allowance."""
+    return max(0.0, float(train_length_m) - float(platform_length_m)) + CHART_POSITION_TOLERANCE_M
+
+
 def _check_stops_on_platforms(platforms: Sequence[Dict[str, Any]], station_events: Sequence[Any]) -> None:
-    """Every stop's front position must lie on its platform's route-frame extent (1 m tolerance)."""
+    """Every stop's train footprint must lie on its parent platform's route-frame extent.
+
+    v1.14.6: both the front and the rear are checked, using the recorded front/rear stopping
+    positions (0.01 m precision, route frame) rather than the 1 m-rounded ``route_chainage_km``.
+    The allowance is the unavoidable overhang ``max(0, L - P)`` + 1.0 m. Records without recorded
+    positions fall back to a front-only check on ``route_chainage_km`` with the 1.0 m allowance.
+    """
     by_id = {p["platform_id"]: p for p in platforms}
     for ev in station_events or []:
         pid = str(_get(ev, "platform_id", "") or "").split("@")[0]
         plat = by_id.get(pid)
-        km = _get(ev, "route_chainage_km")
-        if plat is None or km is None:
+        if plat is None:
             continue
-        x = float(km) * 1000.0
-        if not (plat["start_m"] - 1.0 <= x <= plat["end_m"] + 1.0):
-            raise ChartAlignmentFrameError(
-                f"Stop of {_get(ev, 'station_id')} at route chainage {x:.1f} m lies outside platform {pid} "
-                f"({plat['start_m']:.1f}-{plat['end_m']:.1f} m) on the Service Alignment Diagram.",
-                context={"station_id": _get(ev, "station_id"), "platform_id": pid},
-            )
+        lo, hi = float(plat["start_m"]), float(plat["end_m"])
+        front = _get(ev, "front_stopping_position_m")
+        rear = _get(ev, "rear_stopping_position_m")
+        if front is not None and rear is not None:
+            front, rear = float(front), float(rear)
+            tol = chart_containment_tolerance_m(abs(front - rear), hi - lo)
+            checks = (("front", front), ("rear", rear))
+        else:
+            km = _get(ev, "route_chainage_km")
+            if km is None:
+                continue
+            tol = CHART_POSITION_TOLERANCE_M
+            checks = (("front", float(km) * 1000.0),)
+        for end_name, x in checks:
+            if not (lo - tol <= x <= hi + tol):
+                raise ChartAlignmentFrameError(
+                    f"Stop of {_get(ev, 'station_id')}: train {end_name} at route chainage {x:.2f} m lies "
+                    f"outside platform {pid} ({lo:.2f}-{hi:.2f} m, allowed overhang {tol:.3f} m) on the "
+                    f"Service Alignment Diagram.",
+                    context={"station_id": _get(ev, "station_id"), "platform_id": pid, "end": end_name,
+                             "position_m": round(x, 3), "allowed_overhang_m": round(tol, 6)},
+                )
 
 
 def create_service_alignment_figure(

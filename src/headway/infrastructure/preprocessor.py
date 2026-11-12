@@ -16,7 +16,7 @@ from headway.infrastructure.direction import RunningDirection
 from headway.infrastructure.graph import PhysicalNetworkGraph
 from headway.infrastructure.route import Route
 from headway.infrastructure.speed import RouteSpeedProfile, SpeedRestriction
-from headway.infrastructure.stations import RoutePlatformStop, StationPlatformModel
+from headway.infrastructure.stations import RoutePlatformStop, RouteStopsNoTrainLengthError, StationPlatformModel
 from headway.infrastructure.tunnels import RouteTVSSection, TunnelTVSModel
 
 
@@ -63,17 +63,29 @@ class InfrastructurePreprocessor:
         self.station_model: StationPlatformModel = StationPlatformModel(infrastructure)
         self.tunnel_tvs_model: TunnelTVSModel = TunnelTVSModel(infrastructure)
 
-        # Cache keyed by (route_id, direction_str)
-        self._cache: Dict[Tuple[str, str], RouteProfile] = {}
+        # Cache keyed by (route_id, direction_str, train_length_m) — v1.14.6: stops depend on train length
+        self._cache: Dict[Tuple[str, str, float], RouteProfile] = {}
 
     def preprocess_route(
         self,
         route: Route,
         running_direction: RunningDirection = RunningDirection.FORWARD,
         train_category: Optional[str] = None,
+        train_length_m: Optional[float] = None,
     ) -> RouteProfile:
-        """P02-PREP-001 & 002: Generate or retrieve preprocessed route profile."""
-        cache_key = (route.route_id, running_direction.value)
+        """P02-PREP-001 & 002: Generate or retrieve preprocessed route profile.
+
+        v1.14.6: ``train_length_m`` is required — station stopping positions come from the
+        central berth rule, which depends on the train length (``ERR_ROUTE_STOPS_NO_TRAIN_LENGTH``
+        when missing or non-positive). The profile cache is keyed by it.
+        """
+        if train_length_m is None or not float(train_length_m) > 0.0:
+            raise RouteStopsNoTrainLengthError(
+                f"preprocess_route needs a positive train_length_m (got {train_length_m!r}); station "
+                "stopping positions depend on the train length.",
+                context={"route_id": route.route_id, "train_length_m": train_length_m},
+            )
+        cache_key = (route.route_id, running_direction.value, float(train_length_m))
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -90,7 +102,7 @@ class InfrastructurePreprocessor:
             restrictions=self.speed_restrictions,
             train_category=train_category,
         )
-        stops = self.station_model.resolve_route_stops(active_route)
+        stops = self.station_model.resolve_route_stops(active_route, train_length_m=train_length_m)
         tvs = self.tunnel_tvs_model.resolve_route_tvs_sections(active_route)
 
         profile = RouteProfile(
