@@ -39,7 +39,7 @@ from headway.data.canonical import (
 )
 from headway.infrastructure.direction import RunningDirection
 from headway.infrastructure.route import PositionMappingError, Route
-from headway.infrastructure.stations import RoutePlatformStop
+from headway.infrastructure.stations import RoutePlatformStop, berth_front_offset, parent_platform_segments
 from headway.rolling_stock.train import RollingStockParameters
 from headway.signalling.platform_controller import PlatformSelectionPolicy
 from headway.signalling.resource_types import ResourceCategory, ResourceUsageRecord, SignallingEvent
@@ -370,11 +370,9 @@ class MultiTrainSimulator:
             plat_link = None
             plat_offset = 0.0
             if plat_obj:
-                plat_link = plat_obj.link_id
-                if train.running_direction == RunningDirection.REVERSE:
-                    plat_offset = max(plat_obj.start_offset_m, plat_obj.end_offset_m - min(plat_obj.length_m, train.params.length_m))
-                else:
-                    plat_offset = min(plat_obj.end_offset_m, plat_obj.start_offset_m + min(plat_obj.length_m, train.params.length_m))
+                # v1.14.6: central berth rule (call-site substitution only; see stations.berth_front_offset).
+                _berth = berth_front_offset(plat_obj, parent_platform_segments(plat_obj, self.coordinator.platform_controller.platforms.values()), train.params.length_m, train.running_direction)
+                plat_link, plat_offset = _berth.link_id, _berth.offset_m
             else:
                 plat_res = self.coordinator.resource_controller.resources.get(stop.platform_id) if getattr(stop, "platform_id", None) else None
                 if not plat_res and getattr(stop, "station_id", None):

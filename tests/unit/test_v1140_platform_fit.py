@@ -79,14 +79,17 @@ def _project(platform_m: float, segment_m: float, hint_m: Optional[float]) -> Ca
     return CanonicalProject(project_id="PRJ_FIT", name="Platform fit", infrastructure=infra, operations=ops)
 
 
-def _stop_on_segment(project: CanonicalProject, direction: RunningDirection) -> RoutePlatformStop:
-    """Resolve the stop the train makes, along a route in ``direction``, on its stop segment."""
+def _stop_on_segment(project: CanonicalProject, direction: RunningDirection, train_length_m: float) -> RoutePlatformStop:
+    """Resolve the stop the train makes, along a route in ``direction``, on its stop segment.
+
+    v1.14.6: ``resolve_route_stops`` needs the train length (berth rule ``berth_front_offset``).
+    """
     sim = project_with_stop_segments(project)
     stop_segment = sim.operations.service_patterns[0].stops[0].platform_id
     graph = PhysicalNetworkGraph(sim.infrastructure)
     traversals: List[tuple] = [("L1", FWD), ("L2", FWD)] if direction is FWD else [("L2", REV), ("L1", REV)]
     route = RouteEngine(graph).build_route_from_traversals(f"RT_{direction.value}", traversals)
-    stops = StationPlatformModel(sim.infrastructure).resolve_route_stops(route)
+    stops = StationPlatformModel(sim.infrastructure).resolve_route_stops(route, train_length_m=train_length_m)
     matches = [s for s in stops if s.platform.platform_id == stop_segment]
     assert len(matches) == 1, [s.platform.platform_id for s in stops]
     return matches[0]
@@ -103,7 +106,7 @@ def _controller(project: CanonicalProject) -> PlatformController:
 def test_train_fits_on_parent_platform_not_just_segment(direction):
     """A 202 m train stopping on a 200 m segment of a 400 m physical platform fits."""
     project = _project(platform_m=400.0, segment_m=200.0, hint_m=300.0)
-    stop = _stop_on_segment(project, direction)
+    stop = _stop_on_segment(project, direction, train_length_m=202.0)
 
     # The train stops on ONE segment, which alone is shorter than the train ...
     assert stop.platform.platform_id == "PLT_P@s2"
@@ -129,7 +132,7 @@ def test_train_does_not_fit_on_parent_platform(direction):
     segment lengths; independent of the stop segment and the running direction.)
     """
     project = _project(platform_m=300.0, segment_m=150.0, hint_m=None)  # mid-platform hint
-    stop = _stop_on_segment(project, direction)
+    stop = _stop_on_segment(project, direction, train_length_m=310.0)
     assert stop.parent_platform_length_m == pytest.approx(300.0)
     assert stop.platform_length_m == pytest.approx(150.0)
     assert stop.is_train_accommodated(310.0) is False
@@ -156,23 +159,26 @@ def test_train_does_not_fit_on_parent_platform(direction):
 def test_stopping_interval_uses_parent_platform_bounds(direction):
     """The berthed train may extend from its stop segment onto the sibling segment.
 
-    Mirrored geometry per direction: the stop point lies 100 m before the platform's far end
-    in the running direction, so a 202 m train's rear lies on the other segment.
+    Mirrored geometry per direction: the hint selects the segment at the platform's far end in
+    the running direction; the 202 m train is longer than that 200 m segment, so (v1.14.6) it
+    berths against the parent platform end and its rear lies on the other segment.
     """
     hint = 300.0 if direction is FWD else 100.0
-    stop = _stop_on_segment(_project(platform_m=400.0, segment_m=200.0, hint_m=hint), direction)
+    stop = _stop_on_segment(_project(platform_m=400.0, segment_m=200.0, hint_m=hint), direction, train_length_m=202.0)
     assert stop.platform.platform_id == ("PLT_P@s2" if direction is FWD else "PLT_P@s1")
     assert (stop.parent_route_distance_start_m, stop.parent_route_distance_end_m) == (
         pytest.approx(0.0), pytest.approx(400.0))
 
     s_rear, s_front, within = stop.evaluate_train_stopping_interval(202.0)
-    assert s_front == pytest.approx(300.0)
-    assert s_rear == pytest.approx(98.0)
+    # v1.14.6: front at the parent platform end (was 300.0 = the hint point), rear 198.0 (was 98.0)
+    assert s_front == pytest.approx(400.0)
+    assert s_rear == pytest.approx(198.0)
     seg_lo = min(stop.route_distance_start_m, stop.route_distance_end_m)
     assert s_rear < seg_lo  # rear is outside the stop segment, on the sibling segment
     assert within is True
 
-    _, _, within = stop.evaluate_train_stopping_interval(301.0)  # rear before platform start
+    # rear before platform start (v1.14.6: 401 m with the front at 400 m; was 301 m with the front at 300 m)
+    _, _, within = stop.evaluate_train_stopping_interval(401.0)
     assert within is False
 
 

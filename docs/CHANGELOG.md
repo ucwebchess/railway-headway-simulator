@@ -34,6 +34,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.6] — 2026-11-12
+
+Reverse berth rear overhang. A train longer than its stop segment (the `<PLATFORM_ID>@s<N>` segment selected by `SEGMENT_HINT_OFFSET_M`) berthed one segment length past that segment's entry. Its rear could hang off the platform by up to `L - segment length`, for example 63.08 m for u8000 `PLT_AUH` REVERSE (202 m train, 61.08 m + 138.92 m segments). Such a train now berths against the parent platform end in the direction of travel. Trains that fit their stop segment are unchanged: shipped-example baselines (headway, journey time, every stop's front/rear) are identical in FORWARD and REVERSE.
+
+### Physics engine changes
+- Only the berth-position call site was modified (`simulation/multi_train_engine.py`, stop-target block). All physics (integration, resistance, signalling) is unchanged.
+
+### Breaking
+- `StationPlatformModel.resolve_route_stops(route, train_length_m=...)` and `InfrastructurePreprocessor.preprocess_route(..., train_length_m=...)` now require a positive train length; there is no default. A missing or non-positive length raises `ERR_ROUTE_STOPS_NO_TRAIN_LENGTH` (`RouteStopsNoTrainLengthError`). The preprocessor cache key now includes the train length.
+- `resolve_route_stops` stopping positions now come from the central berth rule instead of the stopping-point hint or the segment exit end. This path is not used by the production engine (`station_views=[]`).
+
+### Fixed
+- One berth rule, `stations.berth_front_offset(segment, parent_extent, train_length_m, direction) -> BerthPosition(link_id, offset_m, fits_segment)`, replaces three independent copies: the engine stop target, the runner occupation window and the runner station-stop fallback, plus `resolve_route_stops`. If the train fits its stop segment, the previous rule applies (front one train length past the segment entry). If it is longer, the front stops at the parent platform end in the direction of travel. Because the berth can lie on a sibling segment's link, `BerthPosition` carries a `link_id`.
+- A train longer than its stop segment issues `BerthFallbackWarning`: "Train {L}m exceeds segment {N} ({seg}m); berthing against parent platform". The segment hint stays advisory and the stop is still reported on the stop segment.
+- Berth containment: a footprint that leaves the parent platform by more than the unavoidable overhang `max(0, L - P) + 1 mm` raises `ERR_PLATFORM_BERTH_OVERHANG` (`PlatformBerthOverhangError`).
+- Platform occupation window (`simulation_runner`): a berth is matched against the **parent** platform extent ±5 m, not the stop segment's own span. The occupation is credited to the stop segment and attributed to the parent platform (Section 6 and Section 11), consistent with the v1.14.1 fit check.
+- Service Alignment Diagram check: both the train front **and rear** are checked against the parent platform extent. It uses the recorded 0.01 m front/rear stopping positions instead of the 1 m `route_chainage_km`, with allowance `max(0, L - P) + 1.0 m`. Records without positions fall back to the front-only check.
+
+### Changed
+- u8000 (user project, not shipped):
+  - `PLT_AUH` REVERSE: front 35,570.08 → 35,509 m, rear 35,772.08 → 35,711 m.
+  - `PLT_YAS` FORWARD, the mirror case (123.12 m + 76.88 m segments, stop on `@s1`): front 24,231.97 → 24,308.85 m, rear 24,029.97 → 24,106.85 m.
+  - Both overhangs are now `L - P` = 2 m.
+
+### Added
+- `tests/unit/test_v1146_berth_overhang.py`: AUH-geometry berth tests in both directions, required train length, cache key, and end-to-end berth / occupation / Section 11 on a modified example 06.
+- Issue draft targeting v1.15.0: `docs/issues/fit_check_not_wired.md`. The v1.14.1 fit check (`ERR_TRAIN_OVERHANG`) is not called on the simulation path, so a train longer than its parent platform is not rejected.
+
+### Tests
+- Callers of `resolve_route_stops` / `preprocess_route` pass `train_length_m`.
+- `tests/unit/test_infrastructure.py::TestStationsAndPlatforms::test_train_stopping_geometry_and_platform_bounds`: stopping position 850 → 700 m (berth rule instead of the stopping-point hint).
+- `tests/unit/test_v1140_platform_fit.py::test_stopping_interval_uses_parent_platform_bounds`: front 300 → 400 m, rear 98 → 198 m.
+
+---
+
 ## [1.14.5] — 2026-11-07
 
 Report graphics and labeling corrections. Presentation only; no physics engine, importer, schema or example-data changes. New charts render in both FORWARD and REVERSE.

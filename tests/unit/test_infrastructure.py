@@ -338,21 +338,23 @@ class TestStationsAndPlatforms:
 
         engine = RouteEngine(graph)
         route_fwd = engine.build_route_from_traversals("RT_STN", [("LNK_STN", RunningDirection.FORWARD)])
-        stops = stn_model.resolve_route_stops(route_fwd)
+        stops = stn_model.resolve_route_stops(route_fwd, train_length_m=200.0)
 
         assert len(stops) == 1
         stop = stops[0]
-        assert stop.stopping_position_m == 850.0
+        # v1.14.6: the stopping position is the central berth rule (front = platform entry end +
+        # train length for a train that fits), no longer the stopping-point hint (was 850.0).
+        assert stop.stopping_position_m == 700.0
 
-        # Train of length 200m stops at 850m -> rear is at 650m (both inside platform [500, 900])
+        # Train of length 200m stops at 700m -> rear is at 500m (both inside platform [500, 900])
         s_rear, s_front, fits = stop.evaluate_train_stopping_interval(train_length_m=200.0)
-        assert s_front == 850.0
-        assert s_rear == 650.0
+        assert s_front == 700.0
+        assert s_rear == 500.0
         assert fits is True
 
-        # Train of length 400m stops at 850m -> rear is at 450m (protrudes before platform start 500m)
+        # Train of length 400m with the front at 700m -> rear at 300m (protrudes before platform start 500m)
         s_rear, s_front, fits = stop.evaluate_train_stopping_interval(train_length_m=400.0)
-        assert s_rear == 450.0
+        assert s_rear == 300.0
         assert fits is False
 
 
@@ -447,8 +449,8 @@ class TestPreprocessorAndVisualizationAdapters:
         engine = RouteEngine(graph)
         route_fwd = engine.build_route_from_traversals("RT_TEST", [("LK_1", RunningDirection.FORWARD)])
 
-        profile_fwd = preprocessor.preprocess_route(route_fwd, RunningDirection.FORWARD)
-        profile_rev = preprocessor.preprocess_route(route_fwd, RunningDirection.REVERSE)
+        profile_fwd = preprocessor.preprocess_route(route_fwd, RunningDirection.FORWARD, train_length_m=150.0)
+        profile_rev = preprocessor.preprocess_route(route_fwd, RunningDirection.REVERSE, train_length_m=150.0)
 
         # Baseline immutability: original canonical link was not modified
         assert link.gradient_decimal == 0.005
