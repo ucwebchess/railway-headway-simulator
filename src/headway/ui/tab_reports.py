@@ -158,7 +158,7 @@ def create_reports_tab() -> Dict[str, Any]:
         selected = [s.value for s in allowed_secs if s.value in ALL_SECTIONS]
         session_state.report_config = ReportConfig(
             report_type=r_type,
-            running_direction=session_state.selected_running_direction,
+            running_direction=None,  # v1.15.0.1: the package direction is authoritative
             included_sections=list(allowed_secs),
         )
         return selected
@@ -173,7 +173,7 @@ def create_reports_tab() -> Dict[str, Any]:
         sec_enums = [ReportSectionId(s) for s in selected_sections if s in ALL_SECTIONS]
         session_state.report_config = ReportConfig(
             report_type=r_type,
-            running_direction=session_state.selected_running_direction,
+            running_direction=None,  # v1.15.0.1: the package direction is authoritative
             included_sections=sec_enums,
         )
 

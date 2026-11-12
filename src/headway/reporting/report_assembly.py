@@ -236,8 +236,39 @@ def resolve_report_project_id(package: Any, project: Optional[Any] = None, displ
     return pid
 
 
+class ReportDirectionMismatchError(ReportingError):
+    """v1.15.0.1: ``ReportConfig.running_direction`` contradicts ``package.running_direction``."""
+
+    DEFAULT_ERROR_CODE = "ERR_REPORT_DIRECTION_MISMATCH"
+
+
 class ReportAssembler:
     """Assembles standardized simulation results into a structured ReportDocument."""
+
+    @staticmethod
+    def resolve_report_direction(package: SimulationResultPackage, cfg: ReportConfig) -> RunningDirection:
+        """v1.15.0.1: the package's running direction is authoritative for its report.
+
+        ``ReportConfig.running_direction`` may be ``None`` (use the package direction) or equal to
+        ``package.running_direction``. Any other value raises ``ERR_REPORT_DIRECTION_MISMATCH``
+        instead of assembling the package's results in the frame of another direction.
+        """
+        pkg_dir = package.running_direction
+        cfg_dir = cfg.running_direction
+        if cfg_dir is not None and RunningDirection(cfg_dir) != pkg_dir:
+            raise ReportDirectionMismatchError(
+                f"ReportConfig.running_direction is {RunningDirection(cfg_dir).value} but the package "
+                f"(run {getattr(package, 'run_id', '?')}) was simulated in {pkg_dir.value}. The package's "
+                f"running direction is authoritative for its report (v1.15.0.1): leave "
+                f"ReportConfig.running_direction unset (None) or equal to package.running_direction.",
+                context={
+                    "config_running_direction": RunningDirection(cfg_dir).value,
+                    "package_running_direction": pkg_dir.value,
+                    "run_id": getattr(package, "run_id", None),
+                    "rule": "ReportAssembler.resolve_report_direction: package.running_direction is authoritative",
+                },
+            )
+        return pkg_dir
 
     @classmethod
     def assemble_report(
@@ -249,7 +280,8 @@ class ReportAssembler:
     ) -> ReportDocument:
         """Assembles a full ReportDocument from a SimulationResultPackage."""
         cfg = config or ReportConfig()
-        direction = cfg.running_direction or package.running_direction
+        # v1.15.0.1: package direction is authoritative; a mismatching config raises.
+        direction = cls.resolve_report_direction(package, cfg)
         r_id = report_id or f"RPT-{package.scenario_id}-{direction.value}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
         # Resolve active canonical project

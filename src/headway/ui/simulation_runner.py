@@ -6,6 +6,7 @@ P09 (multi-train), P10 (capacity & sensitivity), P11 (stochastic), P12 (scenario
 P13 (visualization), and P14 (reports) without introducing new calculations.
 """
 
+import dataclasses
 from datetime import datetime, timezone
 import itertools
 import logging
@@ -1603,6 +1604,10 @@ class SimulationRunner:
             except Exception:
                 active_report_cfg = None
 
+        if active_report_cfg is not None:
+            # v1.15.0.1: a (session) report config never carries a direction into a run; the
+            # package's direction is authoritative (ReportAssembler.resolve_report_direction).
+            active_report_cfg = dataclasses.replace(active_report_cfg, running_direction=None)
         report_doc = ReportAssembler.assemble_report(package, config=active_report_cfg, project=project)
         audit_rep = ReportValidator.validate_report(report_doc)
 
