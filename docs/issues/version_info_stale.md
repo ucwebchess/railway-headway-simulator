@@ -1,6 +1,6 @@
 # `VERSION_INFO` and `get_build_info()["phase"]` are stale (target: v1.15.2)
 
-**Status:** open. Noted during v1.15.0.1 (report direction in a UI session). Out of scope there (decision D3): the patch sets `__version__` and `pyproject.toml` to `1.15.0.1` and leaves `VERSION_INFO` untouched.
+**Status:** resolved in v1.15.2. `VERSION_INFO: Tuple[int, ...] = tuple(int(p) for p in __version__.split("."))` and `get_build_info()["phase"] = f"Release {__version__}"`. `tests/unit/test_version.py` now asserts both against `__version__` (the hard-coded `(1, 11, 3)` and `len == 3` pins are gone). Originally noted during v1.15.0.1 (report direction in a UI session), where it was out of scope (decision D3).
 
 ## Observation
 

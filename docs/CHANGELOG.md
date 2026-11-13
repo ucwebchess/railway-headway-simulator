@@ -34,6 +34,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.2] — 2026-11-13
+
+Test infrastructure and documentation polish. Patch release: reporting and test hygiene only.
+
+### Physics engine changes
+- None. No file under `src/headway/simulation/` and no importer or example data changed. Simulation results are unchanged.
+
+### Changed
+- **WARNING_TRAIN_OVERHANG message trimmed** (at the source, `SimulationRunner._fit_check_service_stops`, so the `metadata["warnings"]` record, the `TrainOverhangWarning`, the log line and the Section 0.0 Message column all agree):
+  - before: "WARNING_TRAIN_OVERHANG: Train TRN_HSR (202.0 m) exceeds platform PLT_AUH (200.0 m) by 2.0 m. Simulation continues; overhang disclosed in Sections 6 and 11."
+  - after: "WARNING_TRAIN_OVERHANG: Train TRN_HSR (202.0 m) exceeds platform PLT_AUH (200.0 m) by 2.0 m."
+- **`VERSION_INFO` and `get_build_info()["phase"]` derived from `__version__`** (`docs/issues/version_info_stale.md`, resolved). `VERSION_INFO: Tuple[int, ...] = tuple(int(p) for p in __version__.split("."))` gives `(1, 15, 2)` here. The type widens from `Tuple[int, int, int]` to allow four-part versions. `phase` becomes `"Release 1.15.2"` (was the stale `(1, 11, 3)` / `"Release 1.11.2"`).
+- **Test isolation** (`docs/issues/test_isolation_leak.md`, resolved): a new autouse fixture `tests/conftest.py::_isolated_session_state` restores the `session_state` singleton to a fresh `AppState()` before and after every test. The 20 report tests and 2 block-load tests named in the issue had already stopped failing in v1.14.5. No test assertion changed.
+- **Chart regression tests are Plotly-version tolerant.** `test_v1143_chart_overlays.py::test_default_off_byte_identical_to_v1142` and `test_v1142_chart_overlays.py::test_tvs_overlay_absent_when_flag_false` compare a structural fingerprint (`tests/fixtures/v1142_chart_structure.json`: trace count, sorted names, x range, points per trace) on every Plotly version. They keep the SHA-256 byte identity only on the Plotly version the hashes were captured with (7.1.0). Neither hash fixture was deleted or modified.
+- Version 1.15.2.
+
+### Added
+- `tests/chart_structure.py` (fingerprint and assertion helper) and `tests/fixtures/v1142_chart_structure.json`. Captured on v1.15.1 (ae5830f); each figure was verified against its SHA-256 at capture.
+- `tests/integration/test_v1152_session_isolation.py`: `test_no_session_state_leak` (the 22 tests of `test_report_integration.py` that read `session_state.current_project`, in two seeded random orders and once with example 01 open), `test_session_state_is_clean_at_test_start` and `test_restore_fresh_session_state_clears_everything`. `tests/session_pollution_plugin.py` is used only by the guard.
+- `docs/issues/plotly_upgrade_checklist.md`: on a Plotly upgrade the structural tests must still pass; regenerate the hash fixtures and bump `hash_plotly_version`.
+
+---
+
 ## [1.15.1] — 2026-11-13
 
 Fit check wiring (`docs/issues/fit_check_not_wired.md`). The v1.14.1 platform fit rule (`RoutePlatformStop.check_train_fit`: a train fits iff `L <= parent platform length + 1 mm`) existed but was never called on the production pipeline, so a train longer than its platform was simulated without any notice. It now runs for every scheduled stop. Policy: **Option B, named warning.** The overhang is disclosed and the simulation continues unchanged.

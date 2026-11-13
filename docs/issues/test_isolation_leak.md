@@ -1,6 +1,6 @@
 # Test isolation: report tests depend on a project left open in `session_state` by earlier tests (target: v1.15.0)
 
-**Status:** open. Found while preparing v1.14.5 (branch `fix/v1.14.5-report-graphics`). Not fixed in v1.14.5.
+**Status:** resolved in v1.15.2. The 20 report tests and the 2 block-load tests described below had already stopped failing in v1.14.5 (own `project_id` in the synthetic builders; `PROJECT_ID` row in the block-load workbook). The v1.15.2 pre-flight confirmed that on v1.15.1 both files pass on their own, and that the 22 tests reading `session_state.current_project` pass with nothing open and with example 01 open. The leak itself is closed by an autouse fixture in `tests/conftest.py` (`_isolated_session_state`). It restores every field of the singleton to a fresh `AppState()` before and after every test (wider than `AppState.reset()`, which keeps user settings). No test assertion changed. Guard: `tests/integration/test_v1152_session_isolation.py::test_no_session_state_leak` runs the 22 session-reading tests in two seeded random orders and once with a foreign project open. The production UI fallback is unchanged. Originally found while preparing v1.14.5.
 
 ## Observation
 

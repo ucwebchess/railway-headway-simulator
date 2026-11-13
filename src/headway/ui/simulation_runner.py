@@ -1788,8 +1788,7 @@ class SimulationRunner:
                     message = (
                         f"{WARNING_TRAIN_OVERHANG}: Train {train_type_id} ({train_length_m:.1f} m) "
                         f"exceeds platform {stop.parent_platform_id} ({parent_len:.1f} m) "
-                        f"by {overhang_m:.1f} m. Simulation continues; overhang disclosed "
-                        f"in Sections 6 and 11."
+                        f"by {overhang_m:.1f} m."
                     )
                     warnings.warn(message, TrainOverhangWarning, stacklevel=2)
                     records.append({
