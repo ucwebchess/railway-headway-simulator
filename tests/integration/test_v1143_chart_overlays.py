@@ -4,7 +4,6 @@ physics checks on the acceleration-phases CSV. Reporting only; no engine or impo
 CI uses shipped corrected examples (04_tunnel_tvs: TVS zones; 07_hsr_140km: stations). The
 user's Service 8000 corridor is evidence-only (PR body) because its workbooks are never committed.
 """
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -22,6 +21,7 @@ from headway.reporting.chart_overlays import (
 )
 from headway.reporting.tables import create_accel_phases_dataframe
 from headway.ui.simulation_runner import SimulationRunner
+from tests.chart_structure import STRUCTURE, assert_chart_matches
 from tests.corrected_variants import load_corrected_variant
 
 DIRECTIONS = (RunningDirection.FORWARD, RunningDirection.REVERSE)
@@ -47,7 +47,10 @@ def vlines(fig):
     return [s for s in (fig.layout.shapes or ()) if s.line.dash == "dash"]
 
 
-# --- default off: byte-identical to v1.14.2 -------------------------------------------------
+# --- default off: identical to v1.14.2 ------------------------------------------------------
+# v1.15.2: structural fingerprint (tests/fixtures/v1142_chart_structure.json) on every Plotly
+# version; SHA-256 byte identity (v1142_chart_hashes.json) additionally on the Plotly version the
+# hashes were captured with (tests/chart_structure.py, docs/issues/plotly_upgrade_checklist.md).
 
 @pytest.mark.parametrize("chart", CHARTS)
 @pytest.mark.parametrize("direction", DIRECTIONS, ids=lambda d: d.name)
@@ -56,9 +59,10 @@ def test_default_off_byte_identical_to_v1142(example, direction, chart):
     _, pkg, doc = run(example, direction)
     assert pkg.metadata["chart_overlays"] == {k: False for k in ALL_ON}
     fig = doc.figures_data[chart]
-    expected = HASHES[example][f"{direction.name}/{chart}"]
+    key = f"{direction.name}/{chart}"
+    expected = HASHES[example][key]
     assert [t.name for t in fig.data] == expected["names"]
-    assert hashlib.sha256(fig.to_json().encode()).hexdigest() == expected["sha256"]
+    assert_chart_matches(fig, STRUCTURE["v1142_default_off"][example][key], sha256=expected["sha256"])
 
 
 # --- REVERSE speed profile: overlays live on the chart's own (forward/physical) axis ---------

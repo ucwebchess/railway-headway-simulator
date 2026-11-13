@@ -1930,7 +1930,9 @@ class ReportAssembler:
         """Section 0.0: Warnings (v1.15.0 / #69), from ``package.metadata["warnings"]``.
 
         Code-agnostic: every record is one row (Code, Train, Direction, Message). v1.15.0 records
-        WARNING_ENTRY_GAP; v1.15.1 adds WARNING_TRAIN_OVERHANG (Train = train type ID).
+        WARNING_ENTRY_GAP; v1.15.1 adds WARNING_TRAIN_OVERHANG (Train = train type ID). The Message
+        column shows the record's ``message`` verbatim (v1.15.2: the overhang message ends at the
+        overhang value; the "Simulation continues; ..." sentence was dropped at the source).
         """
         records = list((package.metadata or {}).get("warnings") or [])
         tables: List[EngineeringTable] = []

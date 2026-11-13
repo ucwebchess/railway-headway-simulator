@@ -1,6 +1,5 @@
 """Reporting-only regression coverage; no engine or importer modifications."""
 import base64
-import hashlib
 import io
 import json
 from pathlib import Path
@@ -16,6 +15,7 @@ from headway.reporting.charts_speed import create_speed_distance_figure
 from headway.reporting.tables import ACCEL_PHASE_COLUMNS, create_accel_phases_csv, create_accel_phases_dataframe
 from headway.infrastructure.direction import RunningDirection
 from headway.ui.simulation_runner import SimulationRunner
+from tests.chart_structure import STRUCTURE, assert_chart_matches
 from tests.corrected_variants import load_corrected_variant
 
 
@@ -59,7 +59,8 @@ def test_tvs_overlay_absent_when_flag_false(hsr):
                "fig_blocking_stairway": create_blocking_stairway_figure(next(iter(pkg.headway_results.values())), metadata=pkg.metadata)}
     for key, fig in figures.items():
         assert [t.name for t in fig.data] == hashes[key]["names"]
-        assert hashlib.sha256(fig.to_json().encode()).hexdigest() == hashes[key]["sha256"]
+        # v1.15.2: structure on every Plotly version; SHA-256 only on the hashes' Plotly version.
+        assert_chart_matches(fig, STRUCTURE["v1141_default_off"][key], sha256=hashes[key]["sha256"])
 
 
 def test_station_overlay_added_when_flag_true(hsr):

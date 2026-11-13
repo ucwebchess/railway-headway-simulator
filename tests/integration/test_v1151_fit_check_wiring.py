@@ -148,9 +148,8 @@ def test_train_overhangs_2m_warns(direction):
     assert w["platform_length_m"] == pytest.approx(200.0)
     assert w["overhang_m"] == pytest.approx(2.0)
     assert w["message"] == (
-        "WARNING_TRAIN_OVERHANG: Train TRN_TEST (202.0 m) exceeds platform PLT_X (200.0 m) by 2.0 m. "
-        "Simulation continues; overhang disclosed in Sections 6 and 11."
-    )
+        "WARNING_TRAIN_OVERHANG: Train TRN_TEST (202.0 m) exceeds platform PLT_X (200.0 m) by 2.0 m."
+    )  # v1.15.2: trailing "Simulation continues; overhang disclosed in Sections 6 and 11." removed
     assert str(caught[0].message) == w["message"]
     assert fit["PLT_X"]["fits"] is False and fit["PLT_X"]["overhang_m"] == pytest.approx(2.0)
 

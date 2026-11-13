@@ -1,0 +1,222 @@
+{
+  "_comment": "v1.15.2: Plotly-version-tolerant structural fingerprints of the default-off charts pinned by v1142_chart_hashes.json (v1142_default_off; tests/integration/test_v1143_chart_overlays.py) and v1141_chart_hashes.json (v1141_default_off; tests/integration/test_v1142_chart_overlays.py). Fields: trace_count, trace_names (sorted), x_range [min, max] of all trace x data (rounded 1e-6; the charts autorange), points_per_trace [name, n] in trace order. Captured on main ae5830f (v1.15.1) with plotly 7.1.0; every figure was verified against its SHA-256 at capture. hash_plotly_version: the SHA-256 fixtures are asserted only on this plotly version (docs/issues/plotly_upgrade_checklist.md).",
+  "hash_plotly_version": "7.1.0",
+  "v1142_default_off": {
+    "04_tunnel_tvs": {
+      "FORWARD/fig_speed_alignment": {
+        "trace_count": 2,
+        "trace_names": [
+          "Permissible Speed Envelope",
+          "Simulated Speed: TRN_LEADER"
+        ],
+        "x_range": [
+          0.0,
+          5.0
+        ],
+        "points_per_trace": [
+          [
+            "Simulated Speed: TRN_LEADER",
+            202
+          ],
+          [
+            "Permissible Speed Envelope",
+            3
+          ]
+        ]
+      },
+      "FORWARD/fig_blocking_stairway": {
+        "trace_count": 2,
+        "trace_names": [
+          "Follower Train (SRV_TNL_01) [Shifted +121.0s]",
+          "Leader Train (SRV_TNL_01)"
+        ],
+        "x_range": [
+          0.1,
+          2.55
+        ],
+        "points_per_trace": [
+          [
+            "Leader Train (SRV_TNL_01)",
+            2
+          ],
+          [
+            "Follower Train (SRV_TNL_01) [Shifted +121.0s]",
+            2
+          ]
+        ]
+      },
+      "REVERSE/fig_speed_alignment": {
+        "trace_count": 2,
+        "trace_names": [
+          "Permissible Speed Envelope",
+          "Simulated Speed: TRN_LEADER"
+        ],
+        "x_range": [
+          0.0,
+          5.0
+        ],
+        "points_per_trace": [
+          [
+            "Simulated Speed: TRN_LEADER",
+            202
+          ],
+          [
+            "Permissible Speed Envelope",
+            3
+          ]
+        ]
+      },
+      "REVERSE/fig_blocking_stairway": {
+        "trace_count": 2,
+        "trace_names": [
+          "Follower Train (SRV_TNL_01) [Shifted +118.0s]",
+          "Leader Train (SRV_TNL_01)"
+        ],
+        "x_range": [
+          0.1,
+          2.45
+        ],
+        "points_per_trace": [
+          [
+            "Leader Train (SRV_TNL_01)",
+            2
+          ],
+          [
+            "Follower Train (SRV_TNL_01) [Shifted +118.0s]",
+            2
+          ]
+        ]
+      }
+    },
+    "07_hsr_140km": {
+      "FORWARD/fig_speed_alignment": {
+        "trace_count": 2,
+        "trace_names": [
+          "Permissible Speed Envelope",
+          "Simulated Speed: TRN_LEADER"
+        ],
+        "x_range": [
+          0.0,
+          140.0
+        ],
+        "points_per_trace": [
+          [
+            "Simulated Speed: TRN_LEADER",
+            2970
+          ],
+          [
+            "Permissible Speed Envelope",
+            448
+          ]
+        ]
+      },
+      "FORWARD/fig_blocking_stairway": {
+        "trace_count": 2,
+        "trace_names": [
+          "Follower Train (SRV_6000) [Shifted +251.0s]",
+          "Leader Train (SRV_6000)"
+        ],
+        "x_range": [
+          0.0,
+          138.346
+        ],
+        "points_per_trace": [
+          [
+            "Leader Train (SRV_6000)",
+            92
+          ],
+          [
+            "Follower Train (SRV_6000) [Shifted +251.0s]",
+            92
+          ]
+        ]
+      },
+      "REVERSE/fig_speed_alignment": {
+        "trace_count": 2,
+        "trace_names": [
+          "Permissible Speed Envelope",
+          "Simulated Speed: TRN_LEADER"
+        ],
+        "x_range": [
+          0.0,
+          140.0
+        ],
+        "points_per_trace": [
+          [
+            "Simulated Speed: TRN_LEADER",
+            2970
+          ],
+          [
+            "Permissible Speed Envelope",
+            448
+          ]
+        ]
+      },
+      "REVERSE/fig_blocking_stairway": {
+        "trace_count": 2,
+        "trace_names": [
+          "Follower Train (SRV_6000) [Shifted +257.0s]",
+          "Leader Train (SRV_6000)"
+        ],
+        "x_range": [
+          0.0,
+          138.748
+        ],
+        "points_per_trace": [
+          [
+            "Leader Train (SRV_6000)",
+            92
+          ],
+          [
+            "Follower Train (SRV_6000) [Shifted +257.0s]",
+            92
+          ]
+        ]
+      }
+    }
+  },
+  "v1141_default_off": {
+    "fig_speed_alignment": {
+      "trace_count": 2,
+      "trace_names": [
+        "Permissible Speed Envelope",
+        "Simulated Speed: TRN_LEADER"
+      ],
+      "x_range": [
+        0.0,
+        140.0
+      ],
+      "points_per_trace": [
+        [
+          "Simulated Speed: TRN_LEADER",
+          2970
+        ],
+        [
+          "Permissible Speed Envelope",
+          448
+        ]
+      ]
+    },
+    "fig_blocking_stairway": {
+      "trace_count": 2,
+      "trace_names": [
+        "Follower Train (SRV_6000) [Shifted +251.0s]",
+        "Leader Train (SRV_6000)"
+      ],
+      "x_range": [
+        0.0,
+        138.346
+      ],
+      "points_per_trace": [
+        [
+          "Leader Train (SRV_6000)",
+          92
+        ],
+        [
+          "Follower Train (SRV_6000) [Shifted +251.0s]",
+          92
+        ]
+      ]
+    }
+  }
+}
