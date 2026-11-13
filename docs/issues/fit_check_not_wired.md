@@ -1,6 +1,6 @@
 # The v1.14.1 platform fit check is not wired into the simulation pipeline (target: v1.15.0)
 
-**Status:** open. Found in the v1.14.6 pre-flight audit (branch `fix/v1.14.6-reverse-berth-overhang`). Deliberately **not** fixed in v1.14.6 (decisions A3 / C2 / C3).
+**Status:** resolved in v1.15.1 (Option B, named warning `WARNING_TRAIN_OVERHANG`; the simulation continues and is unchanged). Item 3 below (tightening the berth containment allowance) is **not** done: with Option B a too-long train still berths with its unavoidable overhang, so the v1.14.6 allowance `max(0, L - P) + 1 mm` stays. Escalation to an error: `docs/issues/train_overhang_error_escalation.md` (v1.15.2). Originally found in the v1.14.6 pre-flight audit (branch `fix/v1.14.6-reverse-berth-overhang`) and deliberately not fixed there (decisions A3 / C2 / C3).
 
 ## Observation
 

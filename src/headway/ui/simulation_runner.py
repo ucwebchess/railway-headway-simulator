@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import itertools
 import logging
 import math
+import warnings
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from headway.analysis.blocking_time import (
@@ -52,7 +53,13 @@ from headway.data.canonical import (
 )
 from headway.infrastructure.direction import DirectionPolicy, RunningDirection
 from headway.infrastructure.route import LinkTraversal, Route
-from headway.infrastructure.stations import berth_front_offset, parent_platform_segments
+from headway.infrastructure.stations import (
+    RoutePlatformStop,
+    TrainOverhangError,
+    berth_front_offset,
+    parent_platform_length_m,
+    parent_platform_segments,
+)
 from headway.reporting.charts_speed import compute_permissible_speed_envelope
 from headway.reporting.report_assembly import ReportAssembler
 from headway.reporting.report_models import ReportDocument
@@ -114,6 +121,14 @@ class SimulationJobConfig:
 
 # Standard UIC 406 driver perception-and-reaction allowance; see UIC 406 §4.2.3.
 DRIVER_REACTION_TIME_S: float = 4.0
+
+#: v1.15.1: report warning code for a train longer than the physical platform it stops at.
+WARNING_TRAIN_OVERHANG: str = "WARNING_TRAIN_OVERHANG"
+
+
+class TrainOverhangWarning(UserWarning):
+    """v1.15.1: WARNING_TRAIN_OVERHANG. The train is longer than the physical (parent) platform it stops
+    at. Option B: the overhang is disclosed (Section 0.0, Sections 6 and 11) and the simulation continues."""
 
 
 class SimulationRunnerError(SimulationError):
@@ -499,6 +514,19 @@ class SimulationRunner:
             # Default train type (no rolling stock): its top speed follows the ROUTE limit.
             primary_tt = primary_tt.model_copy(update={"max_speed_ms": speed_limit_ms})
         max_speed_ms = min(speed_limit_ms, primary_tt.max_speed_ms)
+
+        # v1.15.1: fit check disclosure (Option B: named warning, simulation continues). The v1.14.1
+        # RoutePlatformStop.check_train_fit runs for every scheduled stop; ERR_TRAIN_OVERHANG is caught
+        # and converted into WARNING_TRAIN_OVERHANG. Disclosure only: nothing below reads the result
+        # except package.metadata ("warnings", "platform_fit").
+        overhang_records, platform_fit = cls._fit_check_service_stops(
+            service_stops=service_stops,
+            platforms=list(infra.platforms) if infra and infra.platforms else [],
+            stations=list(infra.stations) if infra and infra.stations else [],
+            train_type_id=str(primary_tt.train_type_id),
+            train_length_m=float(train_len_m),
+            running_direction=running_direction,
+        )
 
         # 2. Pass 1: Leader-only microscopic simulation & Technical Headway Solving (DEF-05)
         # v1.15.0 (#69): WARNING_ENTRY_GAP records from Pass 1 and Pass 2 (deduplicated into
@@ -1490,10 +1518,15 @@ class SimulationRunner:
 
         # v1.15.0 (#69): WARNING_ENTRY_GAP once per analysis, deduplicated by
         # (train_id, block_id, direction) across Pass 1 and Pass 2.
+        # v1.15.1: WARNING_TRAIN_OVERHANG (pre-run fit check) first, deduplicated by
+        # (train_id, platform_id, segment_id, direction); train_id is the train type ID.
         report_warnings: List[Dict[str, Any]] = []
         seen_warning_keys = set()
-        for w in entry_gap_records:
-            key = (w["train_id"], w["block_id"], w["direction"])
+        for w in [*overhang_records, *entry_gap_records]:
+            if w.get("code") == WARNING_TRAIN_OVERHANG:
+                key = (WARNING_TRAIN_OVERHANG, w["train_id"], w["platform_id"], w["segment_id"], w["direction"])
+            else:
+                key = (w["train_id"], w["block_id"], w["direction"])
             if key in seen_warning_keys:
                 continue
             seen_warning_keys.add(key)
@@ -1516,10 +1549,14 @@ class SimulationRunner:
             metadata={
                 "project": project,
                 "project_name": project.name,
-                # v1.15.0 (#69): report warnings (Section 0.0), list of dicts with keys
-                # code, train_id, block_id, direction, entry_point_m, block_entry_m, gap_m,
-                # warn_threshold_m, message.
+                # v1.15.0 (#69): report warnings (Section 0.0), list of dicts. Every record has
+                # code, train_id, direction, message. WARNING_ENTRY_GAP adds block_id, entry_point_m,
+                # block_entry_m, gap_m, warn_threshold_m. v1.15.1 WARNING_TRAIN_OVERHANG adds
+                # platform_id, segment_id, train_length_m, platform_length_m, overhang_m.
                 "warnings": report_warnings,
+                # v1.15.1: fit of the train against each physical platform it stops at (Sections 6 / 11):
+                # parent platform ID -> parent_platform_length_m, train_length_m, overhang_m, fits.
+                "platform_fit": platform_fit,
                 "scenarios": scenarios,
                 "active_service_pattern_id": (
                     str(active_pattern.service_pattern_id)
@@ -1692,6 +1729,87 @@ class SimulationRunner:
             f"and active pattern cannot be uniquely determined for scenario '{scenario_id}', "
             f"direction {running_direction.value}, train type '{primary_train_type_id}'."
         )
+
+    @staticmethod
+    def _fit_check_service_stops(
+        service_stops: Sequence[Any],
+        platforms: Sequence[Platform],
+        stations: Sequence[Station],
+        train_type_id: str,
+        train_length_m: float,
+        running_direction: RunningDirection,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+        """v1.15.1: run the v1.14.1 fit check for every scheduled stop (Option B, named warning).
+
+        The production pipeline holds ``StationStop`` objects (``platform_id`` = stop segment), not
+        ``RoutePlatformStop``: ``resolve_route_stops`` is not on this path. A ``RoutePlatformStop`` is
+        therefore built per stop segment and its ``check_train_fit`` is called. The check uses only the
+        train length and ``parent_platform_length_m`` (sum of the parent's segments); the route-position
+        fields are set to the segment's own extent and are not used by it.
+
+        ``ERR_TRAIN_OVERHANG`` is never raised from here: it is converted into one WARNING_TRAIN_OVERHANG
+        record per (train type, parent platform, stop segment, direction) and a ``TrainOverhangWarning``.
+        Leader and follower share the train type, so the record names the type, not TRN_LEADER/FOLLOWER.
+
+        Returns ``(records, platform_fit)``; ``platform_fit`` maps each parent platform with a stop to
+        ``parent_platform_length_m``, ``train_length_m``, ``overhang_m`` (0.0 when it fits, i.e.
+        ``L <= P + FIT_TOLERANCE_M``) and ``fits``.
+        """
+        plat_map = {p.platform_id: p for p in platforms}
+        stn_map = {s.station_id: s for s in stations}
+        records: List[Dict[str, Any]] = []
+        seen = set()
+        platform_fit: Dict[str, Dict[str, Any]] = {}
+        for st_stop in service_stops:
+            plat = plat_map.get(getattr(st_stop, "platform_id", None))
+            if plat is None:
+                continue  # unresolvable stops are rejected earlier (ERR_STATION_STOP_FIELD_MISSING)
+            station = stn_map.get(plat.station_id) or Station(station_id=plat.station_id, name=plat.station_id)
+            seg_len = float(plat.length_m)
+            stop = RoutePlatformStop(
+                station=station,
+                platform=plat,
+                stopping_point=None,
+                route_distance_start_m=0.0,
+                route_distance_end_m=seg_len,
+                stopping_position_m=seg_len,
+                direction=running_direction,
+                parent_platform_length_m=parent_platform_length_m(plat, platforms),
+            )
+            parent_len = float(stop.parent_platform_length_m)
+            overhang_m = 0.0
+            try:
+                stop.check_train_fit(train_length_m)
+            except TrainOverhangError:
+                overhang_m = float(train_length_m) - parent_len
+                key = (train_type_id, stop.parent_platform_id, plat.platform_id, running_direction.value)
+                if key not in seen:
+                    seen.add(key)
+                    message = (
+                        f"{WARNING_TRAIN_OVERHANG}: Train {train_type_id} ({train_length_m:.1f} m) "
+                        f"exceeds platform {stop.parent_platform_id} ({parent_len:.1f} m) "
+                        f"by {overhang_m:.1f} m. Simulation continues; overhang disclosed "
+                        f"in Sections 6 and 11."
+                    )
+                    warnings.warn(message, TrainOverhangWarning, stacklevel=2)
+                    records.append({
+                        "code": WARNING_TRAIN_OVERHANG,
+                        "train_id": train_type_id,
+                        "platform_id": stop.parent_platform_id,
+                        "segment_id": plat.platform_id,
+                        "train_length_m": float(train_length_m),
+                        "platform_length_m": parent_len,
+                        "overhang_m": overhang_m,
+                        "direction": running_direction.value,
+                        "message": message,
+                    })
+            platform_fit.setdefault(stop.parent_platform_id, {
+                "parent_platform_length_m": parent_len,
+                "train_length_m": float(train_length_m),
+                "overhang_m": overhang_m,
+                "fits": overhang_m == 0.0,
+            })
+        return records, platform_fit
 
     @staticmethod
     def _project_with_stop_segments(project: Any) -> Any:

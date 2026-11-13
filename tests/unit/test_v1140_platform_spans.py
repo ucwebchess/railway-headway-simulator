@@ -294,7 +294,9 @@ def test_11_report_aggregation():
     assert list(df.columns) == [
         "Platform ID", "Station", "Total Occupation (s)", "Arrival Approach (s)",
         "Passenger Dwell (s)", "Departure Clearance (s)", "Segments",
+        "Overhang (m)",  # v1.15.1: fit-check disclosure; no platform_fit passed -> "—" (raw None)
     ]
+    assert list(df["Overhang (m)"]) == [None, None]
     assert list(df["Platform ID"]) == ["PLT_X", "PLT_Y"]  # one row per parent, no segment rows
     x = df.iloc[0]
     assert (x["Arrival Approach (s)"], x["Passenger Dwell (s)"], x["Departure Clearance (s)"]) == (20.0, 60.0, 30.0)
