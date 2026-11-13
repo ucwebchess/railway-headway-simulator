@@ -52,7 +52,7 @@ Test infrastructure and documentation polish. Patch release: reporting and test 
 
 ### Added
 - `tests/chart_structure.py` (fingerprint and assertion helper) and `tests/fixtures/v1142_chart_structure.json`. Captured on v1.15.1 (ae5830f); each figure was verified against its SHA-256 at capture.
-- `tests/integration/test_v1152_session_isolation.py`: `test_no_session_state_leak` (the 22 tests of `test_report_integration.py` that read `session_state.current_project`, in two seeded random orders and once with example 01 open), `test_session_state_is_clean_at_test_start` and `test_restore_fresh_session_state_clears_everything`. `tests/session_pollution_plugin.py` is used only by the guard.
+- `tests/integration/test_v1152_session_isolation.py`: `test_no_session_state_leak` (the 22 tests of `test_report_integration.py` that read `session_state.current_project`, in two seeded random orders: one with a clean session, one with example 01 open), `test_session_state_is_clean_at_test_start` and `test_restore_fresh_session_state_clears_everything`. `tests/session_pollution_plugin.py` is used only by the guard.
 - `docs/issues/plotly_upgrade_checklist.md`: on a Plotly upgrade the structural tests must still pass; regenerate the hash fixtures and bump `hash_plotly_version`.
 
 ---

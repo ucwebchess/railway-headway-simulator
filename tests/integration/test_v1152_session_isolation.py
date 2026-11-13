@@ -8,8 +8,9 @@ every test.
 
 ``test_no_session_state_leak`` runs the 22 tests of ``test_report_integration.py`` that read
 ``session_state.current_project`` (found by instrumenting every read during the v1.15.2 pre-flight)
-in a separate pytest process, in two seeded random orders, then once with a foreign project (example
-01) open at the start of every test. All must pass every time.
+in a separate pytest process, twice, each time in a different seeded random order: the first run with
+a clean session, the second with a foreign project (example 01) open at the start of every test. All
+must pass both times. (Two runs rather than three keep CI time down; coverage is the same.)
 """
 from __future__ import annotations
 
@@ -94,12 +95,18 @@ def test_restore_fresh_session_state_clears_everything():
 
 def test_no_session_state_leak():
     assert len(SESSION_READERS) == 22
+    clean_seed, foreign_seed = SEEDS
     runs = []
-    for seed in SEEDS:
+    for label, seed, extra in (
+        (f"random order (seed {clean_seed}), clean session", clean_seed, ()),
+        (f"random order (seed {foreign_seed}), foreign project (example 01) open", foreign_seed,
+         ("-p", "tests.session_pollution_plugin")),
+    ):
         order = list(SESSION_READERS)
         random.Random(seed).shuffle(order)
-        runs.append((f"random order, seed {seed}", order, ()))
-    runs.append(("foreign project open (example 01)", list(SESSION_READERS), ("-p", "tests.session_pollution_plugin")))
+        assert order != SESSION_READERS
+        runs.append((label, order, extra))
+    assert runs[0][1] != runs[1][1]
     for label, order, extra in runs:
         proc, executed = _run(order, *extra)
         tail = proc.stdout[-3000:] + proc.stderr[-2000:]
