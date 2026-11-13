@@ -34,6 +34,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.1] — 2026-11-13
+
+Fit check wiring (`docs/issues/fit_check_not_wired.md`). The v1.14.1 platform fit rule (`RoutePlatformStop.check_train_fit`: a train fits iff `L <= parent platform length + 1 mm`) existed but was never called on the production pipeline, so a train longer than its platform was simulated without any notice. It now runs for every scheduled stop. Policy: **Option B, named warning.** The overhang is disclosed and the simulation continues unchanged.
+
+### Physics engine changes
+- None. No file under `simulation/` changed. The check runs in the runner before Pass 1 and only writes `package.metadata`. Chart tolerance and berth tolerance (`max(0, L - P) + 1 mm`, v1.14.6) are unchanged.
+
+### Added
+- `SimulationRunner._fit_check_service_stops` (`ui/simulation_runner.py`): before Pass 1, for every `StationStop` of the active service pattern, builds a `RoutePlatformStop` for the stop segment and calls `check_train_fit(train length)`. The production path holds no `RoutePlatformStop` (`resolve_route_stops` is not on it); the check uses only lengths. `ERR_TRAIN_OVERHANG` is caught, never raised.
+- `WARNING_TRAIN_OVERHANG` (`TrainOverhangWarning`, a `UserWarning`): "WARNING_TRAIN_OVERHANG: Train {train type} ({L} m) exceeds platform {parent} ({P} m) by {L - P} m. Simulation continues; overhang disclosed in Sections 6 and 11." One record per (train type, parent platform, stop segment, direction) in `package.metadata["warnings"]`, with keys `code, train_id, platform_id, segment_id, train_length_m, platform_length_m, overhang_m, direction, message`. `train_id` is the train type ID because leader and follower share it. The v1.15.0 dedupe loop covers both codes.
+- `package.metadata["platform_fit"]`: parent platform → `parent_platform_length_m, train_length_m, overhang_m, fits`, for the platforms with a stop in this run.
+- Section 6 "Station Platform Track Occupation Breakdown": new last column **Overhang (m)**. It shows `L - P` when the train does not fit, 0.0 when it fits (within 1 mm), and "—" for a platform passed without a stop.
+- Section 11 "Platform Segment Provenance": new last column **Train Fits**. It shows "Yes" or "No — overhang X.X m" for every segment of a parent platform with a stop in this run, and "—" otherwise. The Resource Geometry Provenance Register is unchanged.
+- Section 0.0 Warnings now lists `WARNING_TRAIN_OVERHANG` alongside `WARNING_ENTRY_GAP` (same Code | Train | Direction | Message table; the renderer was already code-agnostic).
+- `report_config.TRAIN_OVERHANG_ERROR_LIMIT_M: Optional[float] = None`: reserved for escalation to `ERR_TRAIN_OVERHANG` above a threshold, **not read or enforced** in v1.15.1 (`docs/issues/train_overhang_error_escalation.md`, v1.15.2).
+- `tests/integration/test_v1151_fit_check_wiring.py`: 11 tests, FORWARD and REVERSE (32 cases). The u8000 tests use an in-memory stand-in (shipped example 06 with a 202 m train) because the user project is never committed.
+
+### Changed
+- Version 1.15.1 (`VERSION_INFO` still untouched, see `docs/issues/version_info_stale.md`).
+- `tests/integration/test_report_integration.py`: the Section 6 exact-column assertion includes "Overhang (m)" (07c: 0.0 on all five platforms).
+- Shipped examples (14 runs): headway, journey time and existing warnings unchanged; no `WARNING_TRAIN_OVERHANG` (no shipped train overhangs a stop platform).
+- u8000 (user project, not shipped): headway 130 / 130 s and journey 1229 / 1234 s unchanged. TRN_HSR (202 m) overhangs **three** 200 m platforms by 2.0 m in each direction: PLT_ADS (200.00 m), PLT_YAS (123.12 + 76.88 m), PLT_AUH (61.08 + 138.92 m). Three warnings per direction, previously silent.
+
+---
+
 ## [1.15.0.1] — 2026-11-13
 
 Report direction in a UI session. Tab 10 (template, section selection, Generate) stores a `ReportConfig` carrying the current run's direction in the session, and the next Tab 8 run passed it to `ReportAssembler.assemble_report`, which used `cfg.running_direction or package.running_direction`. After switching the direction radio and re-running, the report was assembled in the **previous** run's frame: platform extents in the stale frame, stops from the new run. Run 2 then failed with `ERR_CHART_ALIGNMENT_FRAME` (shipped 03, 05c, 06, 07c, both orders) or was silently labelled with the wrong direction (01c, 02-bidirectional, 04c). No cache or mutation was involved. Simulation results (headway, journey time) were never affected.

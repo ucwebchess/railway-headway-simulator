@@ -1527,7 +1527,14 @@ class ReportAssembler:
         narrative_paras: List[str] = []
         tables: List[EngineeringTable] = []
         if is_app:
-            tables.append(create_platform_occupation_table(records, running_direction=direction))
+            # v1.15.1: "Overhang (m)" from the pipeline fit check.
+            tables.append(
+                create_platform_occupation_table(
+                    records,
+                    running_direction=direction,
+                    platform_fit=(package.metadata or {}).get("platform_fit"),
+                )
+            )
 
             # v1.14.0: narrative works on parent platforms (segments aggregated).
             from headway.reporting.platform_aggregation import (
@@ -1920,7 +1927,11 @@ class ReportAssembler:
         package: SimulationResultPackage,
         direction: RunningDirection,
     ) -> ReportSection:
-        """Section 0.0: Warnings (v1.15.0 / #69), from ``package.metadata["warnings"]``."""
+        """Section 0.0: Warnings (v1.15.0 / #69), from ``package.metadata["warnings"]``.
+
+        Code-agnostic: every record is one row (Code, Train, Direction, Message). v1.15.0 records
+        WARNING_ENTRY_GAP; v1.15.1 adds WARNING_TRAIN_OVERHANG (Train = train type ID).
+        """
         records = list((package.metadata or {}).get("warnings") or [])
         tables: List[EngineeringTable] = []
         if records:
@@ -1972,7 +1983,14 @@ class ReportAssembler:
                 create_platform_segment_provenance_table,
             )
 
-            tables.append(create_platform_segment_provenance_table(plt_records, running_direction=direction))
+            # v1.15.1: "Train Fits" from the pipeline fit check.
+            tables.append(
+                create_platform_segment_provenance_table(
+                    plt_records,
+                    running_direction=direction,
+                    platform_fit=(package.metadata or {}).get("platform_fit"),
+                )
+            )
 
         return ReportSection(
             section_id=ReportSectionId.GEOMETRY_PROVENANCE,

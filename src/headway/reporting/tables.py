@@ -496,24 +496,40 @@ def create_resource_provenance_table(
 create_resource_geometry_provenance_table = create_resource_provenance_table
 
 
+def train_fits_label(parent_platform_id: str, platform_fit: Optional[Dict[str, Dict[str, Any]]]) -> str:
+    """v1.15.1 Section 11 "Train Fits": ``Yes`` / ``No — overhang X.X m`` for a parent platform the
+    train stops at in this run (``package.metadata["platform_fit"]``), ``—`` otherwise."""
+    fit = (platform_fit or {}).get(parent_platform_id)
+    if fit is None:
+        return "—"
+    return "Yes" if fit["fits"] else f"No — overhang {fit['overhang_m']:.1f} m"
+
+
 def create_platform_segment_provenance_table(
     records: Sequence[Any],
     running_direction: RunningDirection = RunningDirection.FORWARD,
+    platform_fit: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> EngineeringTable:
-    """v1.14.0 Section 11: platform segment provenance — one row per generated segment."""
+    """v1.14.0 Section 11: platform segment provenance — one row per generated segment.
+
+    v1.15.1: "Train Fits" column. The fit is per parent platform, so every segment of a too-short parent
+    reads ``No — overhang X.X m``; platforms without a stop in this run read ``—``.
+    """
     cols = [
         "Segment ID", "Parent Platform", "Station", "Track", "Link ID", "Start Offset (m)", "End Offset (m)",
         "Length (m)", "Track Start Ch. (km)", "Track End Ch. (km)", "Stop Segment", "Geometry Source",
+        "Train Fits",
     ]
     raw_rows, fmt_rows = [], []
     for r in records:
         parent = r.parent_platform_id or "—"
+        fits = train_fits_label(r.parent_platform_id or r.segment_id, platform_fit)
         raw_rows.append({
             "Segment ID": r.segment_id, "Parent Platform": parent, "Station": r.station_id, "Track": r.track_id,
             "Link ID": r.link_id, "Start Offset (m)": round(r.start_offset_m, 3), "End Offset (m)": round(r.end_offset_m, 3),
             "Length (m)": round(r.length_m, 3), "Track Start Ch. (km)": r.track_start_chainage_km,
             "Track End Ch. (km)": r.track_end_chainage_km, "Stop Segment": "Yes" if r.is_stop_segment else "No",
-            "Geometry Source": r.geometry_source,
+            "Geometry Source": r.geometry_source, "Train Fits": fits,
         })
         fmt_rows.append({
             "Segment ID": r.segment_id, "Parent Platform": parent, "Station": r.station_id, "Track": r.track_id,
@@ -522,6 +538,7 @@ def create_platform_segment_provenance_table(
             "Track Start Ch. (km)": "N/A" if r.track_start_chainage_km is None else f"{r.track_start_chainage_km:.3f}",
             "Track End Ch. (km)": "N/A" if r.track_end_chainage_km is None else f"{r.track_end_chainage_km:.3f}",
             "Stop Segment": "Yes" if r.is_stop_segment else "No", "Geometry Source": r.geometry_source,
+            "Train Fits": fits,
         })
     return EngineeringTable(
         table_id="TBL_PLATFORM_SEGMENT_PROVENANCE",
@@ -606,11 +623,15 @@ def create_scenario_comparison_table(
 def create_platform_occupation_table(
     records: Optional[Sequence[Any]] = None,
     running_direction: RunningDirection = RunningDirection.FORWARD,
+    platform_fit: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> EngineeringTable:
     """Section 6 Platform Track Occupation table — one row per platform (v1.14.0).
 
     Columns: Platform ID, Station, Total Occupation (s), Arrival Approach (s),
-             Passenger Dwell (s), Departure Clearance (s), Segments
+             Passenger Dwell (s), Departure Clearance (s), Segments, Overhang (m)
+    v1.15.1 "Overhang (m)": ``L - P`` of the train against the parent platform when it does not fit,
+    0.0 when it fits (``L <= P + FIT_TOLERANCE_M``), from ``package.metadata["platform_fit"]``; ``—``
+    (raw ``None``) for a platform without a stop in this run.
     Link-level segment records (``<PLATFORM_ID>@s<N>``) are aggregated to their parent
     PlatformSpans platform (see ``headway.reporting.platform_aggregation``); the segment
     IDs are listed in the Segments column and in the table footnote.
@@ -628,11 +649,14 @@ def create_platform_occupation_table(
         "Passenger Dwell (s)",
         "Departure Clearance (s)",
         "Segments",
+        "Overhang (m)",
     ]
     aggregates = aggregate_platform_records(records)
     raw_rows = []
     formatted_rows = []
     for agg in aggregates:
+        fit = (platform_fit or {}).get(agg.platform_id)
+        overhang_m = None if fit is None else round(float(fit["overhang_m"]), 3)
         raw_rows.append({
             "Platform ID": agg.platform_id,
             "Station": agg.station_name or agg.station_id,
@@ -641,6 +665,7 @@ def create_platform_occupation_table(
             "Passenger Dwell (s)": round(agg.passenger_dwell_s, 1),
             "Departure Clearance (s)": round(agg.departure_clearance_s, 1),
             "Segments": agg.segments_label,
+            "Overhang (m)": overhang_m,
         })
         formatted_rows.append({
             "Platform ID": agg.platform_id,
@@ -650,6 +675,7 @@ def create_platform_occupation_table(
             "Passenger Dwell (s)": f"{agg.passenger_dwell_s:.1f}",
             "Departure Clearance (s)": f"{agg.departure_clearance_s:.1f}",
             "Segments": agg.segments_label,
+            "Overhang (m)": "—" if overhang_m is None else f"{overhang_m:.1f}",
         })
 
     raw_df = pd.DataFrame(raw_rows, columns=cols) if raw_rows else pd.DataFrame(columns=cols)

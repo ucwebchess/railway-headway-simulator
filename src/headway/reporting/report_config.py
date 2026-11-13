@@ -12,6 +12,11 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Union
 from headway.infrastructure.direction import RunningDirection
 from headway.reporting.report_models import ReportSectionId, ReportType
 
+# v1.15.1: reserved for future fit-check escalation. None = warn-only (Option B).
+# When set to a float, a train exceeding the parent platform by more than that
+# value raises ERR_TRAIN_OVERHANG. Not enforced in v1.15.1.
+TRAIN_OVERHANG_ERROR_LIMIT_M: Optional[float] = None
+
 
 class PaperSize(str, Enum):
     A3 = "A3"

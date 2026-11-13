@@ -980,8 +980,10 @@ class TestReportIntegration:
             "Passenger Dwell (s)",
             "Departure Clearance (s)",
             "Segments",
+            "Overhang (m)",  # v1.15.1: fit-check disclosure (0.0 when the train fits)
         ]
         assert list(df.columns) == expected_cols
+        assert list(df["Overhang (m)"]) == [0.0] * 5  # 202 m train, 250 m platforms
         assert len(df) == 5
         assert sorted(df["Platform ID"]) == ["PLT_02", "PLT_03", "PLT_04", "PLT_ADR", "PLT_DJD"]
         assert all(seg == f"{pid}@s1" for pid, seg in zip(df["Platform ID"], df["Segments"]))
